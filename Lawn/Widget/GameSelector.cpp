@@ -337,6 +337,24 @@ GameSelector::GameSelector(LawnApp* theApp)
 	mAchievementsWidget = new AchievementsWidget(this->mApp);
 	mAchievementsWidget->Move(0, mApp->mHeight);
 
+	this->AddWidget(mAdventureButton);
+	this->AddWidget(mMinigameButton);
+	this->AddWidget(mPuzzleButton);
+	this->AddWidget(mOptionsButton);
+	this->AddWidget(mQuitButton);
+	this->AddWidget(mHelpButton);
+	this->AddWidget(mStoreButton);
+	this->AddWidget(mAlmanacButton);
+	this->AddWidget(mSurvivalButton);
+	this->AddWidget(mZenGardenButton);
+	this->AddWidget(mChangeUserButton);
+	this->AddWidget(mZombatarButton); // @Patoke: add new widgets
+	//this->AddWidget(mZombatarScreen); // @Patoke: add new widgets
+	this->AddWidget(mAchievementsButton);
+	this->AddWidget(mAchievementsWidget);
+	this->AddWidget(mQuickPlayButton);
+	this->AddWidget(mOverlayWidget);
+
 	TodHesitationTrace("gameselectorinit");
 }
 
@@ -1025,69 +1043,34 @@ void GameSelector::TrackButton(DialogButton* theButton, const char* theTrackName
 void GameSelector::AddedToManager(WidgetManager* theWidgetManager)
 {
 	Widget::AddedToManager(theWidgetManager);
-
-	theWidgetManager->AddWidget(mAdventureButton);
-	theWidgetManager->AddWidget(mMinigameButton);
-	theWidgetManager->AddWidget(mPuzzleButton);
-	theWidgetManager->AddWidget(mOptionsButton);
-	theWidgetManager->AddWidget(mQuitButton);
-	theWidgetManager->AddWidget(mHelpButton);
-	theWidgetManager->AddWidget(mStoreButton);
-	theWidgetManager->AddWidget(mAlmanacButton);
-	theWidgetManager->AddWidget(mSurvivalButton);
-	theWidgetManager->AddWidget(mZenGardenButton);
-	theWidgetManager->AddWidget(mChangeUserButton);
-	theWidgetManager->AddWidget(mOverlayWidget);
-	theWidgetManager->AddWidget(mZombatarButton); // @Patoke: add new widgets
-	//theWidgetManager->AddWidget(mZombatarWidget);
-	theWidgetManager->AddWidget(mAchievementsButton);
-	theWidgetManager->AddWidget(mAchievementsWidget);
-	//theWidgetManager->AddWidget(mQuickPlayButton);
+	this->Move(-800, 0);
 }
 
 //0x44BCA0
 void GameSelector::RemovedFromManager(WidgetManager* theWidgetManager)
 {
 	Widget::RemovedFromManager(theWidgetManager);
-
-	theWidgetManager->RemoveWidget(mAdventureButton);
-	theWidgetManager->RemoveWidget(mMinigameButton);
-	theWidgetManager->RemoveWidget(mPuzzleButton);
-	theWidgetManager->RemoveWidget(mOptionsButton);
-	theWidgetManager->RemoveWidget(mQuitButton);
-	theWidgetManager->RemoveWidget(mHelpButton);
-	theWidgetManager->RemoveWidget(mStoreButton);
-	theWidgetManager->RemoveWidget(mAlmanacButton);
-	theWidgetManager->RemoveWidget(mSurvivalButton);
-	theWidgetManager->RemoveWidget(mZenGardenButton);
-	theWidgetManager->RemoveWidget(mChangeUserButton);
-	theWidgetManager->RemoveWidget(mOverlayWidget);
-	theWidgetManager->RemoveWidget(mZombatarButton); // @Patoke: new widgets
-	//theWidgetManager->RemoveWidget(mZombatarWidget);
-	theWidgetManager->RemoveWidget(mAchievementsButton);
-	theWidgetManager->RemoveWidget(mAchievementsWidget);
-	//theWidgetManager->RemoveWidget(mQuickPlayButton);
 }
 
 //0x44BD80
 void GameSelector::OrderInManagerChanged()
 {
-	mWidgetManager->PutInfront(mAchievementsWidget, this);
-	mWidgetManager->PutInfront(mOverlayWidget, this);
-	mWidgetManager->PutInfront(mAlmanacButton, this);
-	mWidgetManager->PutInfront(mStoreButton, this);
-	mWidgetManager->PutInfront(mHelpButton, this);
-	mWidgetManager->PutInfront(mQuitButton, this);
-	mWidgetManager->PutInfront(mOptionsButton, this);
-	mWidgetManager->PutInfront(mAdventureButton, this);
-	mWidgetManager->PutInfront(mMinigameButton, this);
-	mWidgetManager->PutInfront(mPuzzleButton, this);
-	mWidgetManager->PutInfront(mZenGardenButton, this);
-	mWidgetManager->PutInfront(mSurvivalButton, this);
-	mWidgetManager->PutInfront(mChangeUserButton, this);
-	mWidgetManager->PutInfront(mZombatarButton, this); // @Patoke: z order for new widgets
-	mWidgetManager->PutInfront(mAchievementsButton, this);
-	//mWidgetManager->PutInfront(mQuickPlayButton, this);
+	//mWidgetManager->PutInfront(mAchievementsWidget, this);
+	//mWidgetManager->PutInfront(mOverlayWidget, this);
+	//mWidgetManager->PutInfront(mAlmanacButton, this);
+	//mWidgetManager->PutInfront(mStoreButton, this);
+	//mWidgetManager->PutInfront(mHelpButton, this);
+	//mWidgetManager->PutInfront(mQuitButton, this);
+	//mWidgetManager->PutInfront(mOptionsButton, this);
+	//mWidgetManager->PutInfront(mAdventureButton, this);
+	//mWidgetManager->PutInfront(mMinigameButton, this);
+	//mWidgetManager->PutInfront(mPuzzleButton, this);
+	//mWidgetManager->PutInfront(mZenGardenButton, this);
+	//mWidgetManager->PutInfront(mSurvivalButton, this);
+	//mWidgetManager->PutInfront(mChangeUserButton, this);
+	//mWidgetManager->PutInfront(mZombatarButton, this); // @Patoke: z order for new widgets
+	//mWidgetManager->PutInfront(mAchievementsButton, this);
+	////mWidgetManager->PutInfront(mQuickPlayButton, this);
 }
 
 //0x44BE60

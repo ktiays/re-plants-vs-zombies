@@ -7,19 +7,25 @@
 #include "../../LawnApp.h"
 #include "ZombatarItems.h"
 #include "LawnDialog.h"
+#include "../Zombie.h"
 
 class LawnApp;
 
 class ZombatarScreen : public LawnDialog {
 public:
 	LawnApp* mApp;							//+GOTY @Patoke: 0x184
-	DWORD dword188;							//+GOTY @Patoke: 0x188
+	Zombie* mZombiePreview;					//+GOTY @Patoke: 0x188
 	DWORD dword18C;							//+GOTY @Patoke: 0x18C
 	DWORD dword190;							//+GOTY @Patoke: 0x190
 	ZombatarItems* mZombatarItems;			//+GOTY @Patoke: 0x194
 
 	ZombatarScreen(LawnApp* theApp);
 	virtual ~ZombatarScreen();
+
+	virtual void                Update();
+	virtual void                Draw(Graphics* g);
+	virtual void                AddedToManager(WidgetManager* theWidgetManager);
+	virtual void                RemovedFromManager(WidgetManager* theWidgetManager);
 
 };
 

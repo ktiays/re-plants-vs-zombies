@@ -237,3 +237,33 @@ void PottedPlant::InitializePottedPlant(SeedType theSeedType)
 	mLastFertilizedTime = 0;
 	mLastChocolateTime = 0;
 }
+
+void PlayerInfo::DeleteZombatarFromIndex(int* theIndex)
+{
+	if (*theIndex < 0 || *theIndex > mNumZombatars - 1)
+	{
+		TodTraceAndLog("Attempting to delete invalid Zombatar at index %d", *theIndex);
+		return;
+	}
+
+	if (*theIndex == mNumZombatars - 1)
+	{
+		// if zombatar is at the end of the list, we can just invalidate it
+		mNumZombatars = mNumZombatars - 1;
+	}
+	else
+	{
+		if (*theIndex > 0)
+		{
+			// if the zombatar is in the middle of the list, we need to shift the rest of the list down
+			memcpy(&mZombatars[*theIndex], &mZombatars[*theIndex + 1], sizeof(Zombatar) * (mNumZombatars - *theIndex));
+		}
+		else
+		{
+			// if the zombatar is at the beginning of the list, we can just shift the rest of the list down
+			memcpy(mZombatars, &mZombatars[1], sizeof(Zombatar) * mNumZombatars - sizeof(Zombatar));
+		}
+
+		--mNumZombatars;
+	}
+}

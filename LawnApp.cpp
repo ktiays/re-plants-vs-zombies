@@ -1975,6 +1975,16 @@ void LawnApp::ButtonDepress(int theId)
 			FinishTimesUpDialog();
 			return;
 
+		// @Patoke todo: implement this
+		case Dialogs::DIALOG_DELETEZOMBATAR:
+			// DeleteZombatar();
+			return;
+
+		// @Patoke todo: implement this
+		case Dialogs::DIALOG_ZOMBATAR_TOS:
+			// SetHasDisplayedZombatarTOS();
+			return;
+
 		case 20008:
 			KillDialog(20008);
 			KillDialog(Dialogs::DIALOG_CHECKING_UPDATES);
