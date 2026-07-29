@@ -9,6 +9,7 @@ target_include_directories(
 add_library(
     pvz_engine_core
     STATIC
+        core/src/ApplicationRunner.cpp
         core/src/BinaryStateIO.cpp
         core/src/PakArchive.cpp
         core/src/PakResourceStore.cpp
@@ -61,6 +62,7 @@ if(BUILD_TESTING)
     add_executable(
         pvz_engine_core_tests
         tests/BinaryStateIOTests.cpp
+        tests/ApplicationRunnerTests.cpp
         tests/EngineApiContractTests.cpp
         tests/PakArchiveTests.cpp
         tests/XmlDocumentTests.cpp

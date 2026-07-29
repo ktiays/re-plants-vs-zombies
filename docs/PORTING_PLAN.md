@@ -21,6 +21,8 @@ an SDL platform backend, a Metal renderer, and a native BASS audio backend.
 Last updated: 2026-07-30
 
 - [x] Portable engine API and core CMake targets
+- [x] Shared 100 Hz application runner with bounded catch-up, suspension,
+  transient-input consumption, and render-device lifecycle tests
 - [x] Automated platform-leakage and architecture-dependent-type checks
 - [x] Explicit little-endian state reader/writer with malformed-input tests
 - [x] Portable game lifecycle target and headless 100 Hz smoke runner
@@ -48,13 +50,19 @@ Last updated: 2026-07-30
   snapshots use fieldwise schemas while retaining their version-2 Windows
   record sizes
 - [x] macOS Release build and tests under Apple Clang
+- [x] SDL macOS application foundation: resizable high-DPI Metal window,
+  event/input translation, monotonic timing, and logical pointer coordinates
+- [x] Metal presentation foundation: `CAMetalLayer`, `BGRA8Unorm`, one command
+  buffer per frame, drawable-unavailable handling, and clear/present validation
 - [ ] Windows runtime parity baseline for the reconstructed legacy target
 - [ ] Migration of the remaining gameplay `Board`, `Challenge`, data-array, and
   effect snapshots from raw object blocks to fieldwise fixed-width schemas
 - [x] Mapping portable XML tokens into runtime definitions used by effects
 - [ ] Existing Windows backend adapters
-- [ ] SDL macOS platform backend
-- [ ] Metal renderer
+- [ ] Complete SDL macOS platform backend (fullscreen, cursor, and lifecycle
+  parity remain)
+- [ ] Complete Metal renderer (logical target, textures, sprite pipelines,
+  batching, clipping, transforms, and golden-image validation remain)
 - [ ] Native audio backend
 - [ ] Full gameplay parity and productization
 
@@ -310,3 +318,22 @@ The first vertical slice is complete when the portable engine contracts and
 state codec build on macOS, the real PAK can be enumerated, XML definitions can
 load, a Metal window renders the title screen, one effect and one MO3 transition
 play, and a Windows save fixture loads. Work proceeds in that dependency order.
+
+## macOS developer entrypoint
+
+The current native slice requires CMake, Ninja, Xcode's macOS SDK, and SDL2.
+Build and launch the app through the project-local entrypoint:
+
+```sh
+./script/build_and_run.sh
+```
+
+Set `PVZ_PAK_PATH` to make the app mount a user-owned retail archive during
+startup:
+
+```sh
+PVZ_PAK_PATH=/path/to/main.pak ./script/build_and_run.sh
+```
+
+The Run action in Codex uses the same script. `--verify`, `--debug`, `--logs`,
+and `--telemetry` are available for local runtime validation.

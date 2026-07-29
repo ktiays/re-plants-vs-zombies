@@ -147,8 +147,11 @@ void TestMalformedInput()
 
 } // namespace
 
+void RunApplicationRunnerTests();
+
 int main()
 {
+    RunApplicationRunnerTests();
     TestGoldenEncoding();
     TestRoundTrip();
     TestMalformedInput();

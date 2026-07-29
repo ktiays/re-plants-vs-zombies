@@ -12,11 +12,30 @@ option(
     "Build the reconstructed Win32/Direct3D game used as the parity reference."
     ${WIN32}
 )
+option(
+    PVZ_BUILD_MACOS_APP
+    "Build the SDL platform and Metal renderer application for macOS."
+    OFF
+)
 
 if(PVZ_BUILD_PORTABLE_ENGINE)
     include(CTest)
     add_subdirectory(engine)
     add_subdirectory(game)
+endif()
+
+if(PVZ_BUILD_MACOS_APP)
+    if(NOT APPLE)
+        message(FATAL_ERROR "PVZ_BUILD_MACOS_APP requires macOS.")
+    endif()
+    if(NOT PVZ_BUILD_PORTABLE_ENGINE)
+        message(
+            FATAL_ERROR
+            "PVZ_BUILD_MACOS_APP requires PVZ_BUILD_PORTABLE_ENGINE."
+        )
+    endif()
+    enable_language(OBJCXX)
+    add_subdirectory(platform/macos)
 endif()
 
 if(PVZ_BUILD_LEGACY_WINDOWS)

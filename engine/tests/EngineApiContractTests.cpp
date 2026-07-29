@@ -1,5 +1,6 @@
 #include "pvz/engine/Game.h"
 #include "pvz/engine/Resources.h"
+#include "pvz/engine/Runtime.h"
 #include "pvz/engine/StateIO.h"
 #include "pvz/engine/Types.h"
 #include "pvz/engine/Xml.h"
@@ -18,3 +19,11 @@ static_assert(std::has_virtual_destructor_v<pvz::engine::IStateReader>);
 static_assert(std::has_virtual_destructor_v<pvz::engine::IStateWriter>);
 static_assert(
     std::has_virtual_destructor_v<pvz::engine::IXmlDocumentLoader>);
+static_assert(
+    std::has_virtual_destructor_v<pvz::engine::IMonotonicClock>);
+static_assert(
+    std::has_virtual_destructor_v<pvz::engine::IPlatformEventLoop>);
+static_assert(
+    std::has_virtual_destructor_v<pvz::engine::IInputSystem>);
+static_assert(
+    std::has_virtual_destructor_v<pvz::engine::IRenderDevice>);

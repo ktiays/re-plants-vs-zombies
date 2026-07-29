@@ -20,6 +20,7 @@ enum class KeyCode : std::uint16_t
     ArrowRight,
     ArrowUp,
     ArrowDown,
+    Count,
 };
 
 enum class PointerButton : std::uint8_t
@@ -27,6 +28,7 @@ enum class PointerButton : std::uint8_t
     Primary,
     Secondary,
     Middle,
+    Count,
 };
 
 struct PointerState
