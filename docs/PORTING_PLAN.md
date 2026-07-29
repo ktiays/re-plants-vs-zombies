@@ -30,6 +30,12 @@ Last updated: 2026-07-30
   45,309,674 payload bytes
 - [x] Portable XML documents loaded through the resource protocol, including
   the multi-root fragments used by particle definitions
+- [x] Typed, owned runtime mappings for reanimation, particle, parameter-track,
+  and trail definitions with legacy-compatible defaults
+- [x] Engine-owned XML loading protocol used by the game definition loader;
+  production game sources cannot include engine-core headers
+- [x] Runtime definition mapping validated against all 146 reanimations,
+  112 particle systems, and the trail definition in the supplied retail PAK
 - [x] Source parsing validated against all 261 XML and reanimation definitions
   in the supplied retail PAK: 971,910 nodes
 - [x] Versioned architecture-neutral XML definition document cache, round-trip
@@ -45,7 +51,7 @@ Last updated: 2026-07-30
 - [ ] Windows runtime parity baseline for the reconstructed legacy target
 - [ ] Migration of the remaining gameplay `Board`, `Challenge`, data-array, and
   effect snapshots from raw object blocks to fieldwise fixed-width schemas
-- [ ] Mapping portable XML tokens into runtime definitions
+- [x] Mapping portable XML tokens into runtime definitions used by effects
 - [ ] Existing Windows backend adapters
 - [ ] SDL macOS platform backend
 - [ ] Metal renderer

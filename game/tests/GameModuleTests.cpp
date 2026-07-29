@@ -56,6 +56,12 @@ public:
         return mResources;
     }
 
+    [[nodiscard]] pvz::engine::IXmlDocumentLoader&
+    GetXmlDocuments() override
+    {
+        return mXmlDocuments;
+    }
+
     [[nodiscard]] TestLogger& GetTestLogger()
     {
         return mLogger;
@@ -91,8 +97,30 @@ private:
         }
     };
 
+    class EmptyXmlDocumentLoader final
+        : public pvz::engine::IXmlDocumentLoader
+    {
+    public:
+        [[nodiscard]] bool Load(
+            std::string_view thePath,
+            pvz::engine::XmlDocumentMode theMode,
+            std::vector<pvz::engine::XmlNode>& theRoots,
+            pvz::engine::XmlDocumentDiagnostic& theDiagnostic)
+            const override
+        {
+            static_cast<void>(thePath);
+            static_cast<void>(theMode);
+            static_cast<void>(theRoots);
+            theDiagnostic.mError =
+                pvz::engine::XmlDocumentError::ResourceReadFailed;
+            theDiagnostic.mLine = 0;
+            return false;
+        }
+    };
+
     TestLogger mLogger;
     EmptyResourceStore mResources;
+    EmptyXmlDocumentLoader mXmlDocuments;
 };
 
 class EmptyInputFrame final : public pvz::engine::IInputFrame
@@ -269,7 +297,12 @@ void TestInvalidSchemaIsTransactional()
 
 void RunLegacyDataSyncTests();
 void RunLegacySaveFormatTests();
+void RunDefinitionLoaderTests();
 void RunPlayerInfoSerializationTests();
+void RunReanimationDefinitionTests();
+void RunParameterTrackTests();
+void RunParticleDefinitionTests();
+void RunTrailDefinitionTests();
 
 int main()
 {
@@ -277,7 +310,12 @@ int main()
     TestInvalidSchemaIsTransactional();
     RunLegacyDataSyncTests();
     RunLegacySaveFormatTests();
+    RunDefinitionLoaderTests();
     RunPlayerInfoSerializationTests();
+    RunReanimationDefinitionTests();
+    RunParameterTrackTests();
+    RunParticleDefinitionTests();
+    RunTrailDefinitionTests();
 
     if (gFailureCount != 0)
     {

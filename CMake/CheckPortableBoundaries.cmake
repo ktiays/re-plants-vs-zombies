@@ -51,19 +51,34 @@ set(PVZ_FORBIDDEN_PATTERNS
 set(PVZ_VIOLATION_COUNT 0)
 
 foreach(PVZ_SOURCE IN LISTS PVZ_PORTABLE_SOURCES)
+    file(
+        RELATIVE_PATH PVZ_RELATIVE_SOURCE
+        "${PVZ_SOURCE_ROOT}"
+        "${PVZ_SOURCE}"
+    )
     file(STRINGS "${PVZ_SOURCE}" PVZ_LINES)
     set(PVZ_LINE_NUMBER 0)
 
     foreach(PVZ_LINE IN LISTS PVZ_LINES)
         math(EXPR PVZ_LINE_NUMBER "${PVZ_LINE_NUMBER} + 1")
 
+        if(
+            PVZ_RELATIVE_SOURCE MATCHES "^game/(include|src)/" AND
+            PVZ_LINE MATCHES
+                "#[ \t]*include[ \t]*[<\"]pvz/engine/core/"
+        )
+            message(
+                SEND_ERROR
+                "${PVZ_RELATIVE_SOURCE}:${PVZ_LINE_NUMBER}: "
+                "portable game may depend only on the engine API: "
+                "${PVZ_LINE}"
+            )
+            math(EXPR PVZ_VIOLATION_COUNT "${PVZ_VIOLATION_COUNT} + 1")
+            continue()
+        endif()
+
         foreach(PVZ_PATTERN IN LISTS PVZ_FORBIDDEN_PATTERNS)
             if(PVZ_LINE MATCHES "${PVZ_PATTERN}")
-                file(
-                    RELATIVE_PATH PVZ_RELATIVE_SOURCE
-                    "${PVZ_SOURCE_ROOT}"
-                    "${PVZ_SOURCE}"
-                )
                 message(
                     SEND_ERROR
                     "${PVZ_RELATIVE_SOURCE}:${PVZ_LINE_NUMBER}: "

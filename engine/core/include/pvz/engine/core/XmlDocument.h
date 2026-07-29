@@ -2,6 +2,7 @@
 
 #include "pvz/engine/Resources.h"
 #include "pvz/engine/StateIO.h"
+#include "pvz/engine/Xml.h"
 #include "pvz/engine/core/XmlPullParser.h"
 
 #include <cstddef>
@@ -14,29 +15,8 @@
 namespace pvz::engine::core
 {
 
-struct XmlNode
-{
-    std::string mName;
-    std::string mValue;
-    std::vector<XmlAttribute> mAttributes;
-    std::vector<XmlNode> mChildren;
-    std::uint32_t mLine{};
-
-    [[nodiscard]] const std::string* FindAttribute(
-        std::string_view theName) const;
-};
-
-enum class XmlDocumentError : std::uint8_t
-{
-    None,
-    ResourceReadFailed,
-    EmptyDocument,
-    MultipleRoots,
-    TextOutsideRoot,
-    ParserFailed,
-    InvalidCache,
-    UnsupportedCacheVersion,
-};
+using ::pvz::engine::XmlNode;
+using ::pvz::engine::XmlDocumentError;
 
 class XmlDocument
 {
@@ -54,6 +34,7 @@ public:
 
     [[nodiscard]] const XmlNode* GetRoot() const;
     [[nodiscard]] std::span<const XmlNode> GetRoots() const;
+    [[nodiscard]] std::vector<XmlNode> TakeRoots();
     [[nodiscard]] std::size_t GetNodeCount() const;
     [[nodiscard]] XmlDocumentError GetError() const;
     [[nodiscard]] XmlError GetParserError() const;

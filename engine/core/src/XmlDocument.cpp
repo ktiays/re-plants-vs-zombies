@@ -138,16 +138,6 @@ constexpr std::uint32_t kMinimumEncodedAttributeSize = 9;
 
 } // namespace
 
-const std::string* XmlNode::FindAttribute(std::string_view theName) const
-{
-    for (const auto& anAttribute : mAttributes)
-    {
-        if (anAttribute.mName == theName)
-            return &anAttribute.mValue;
-    }
-    return nullptr;
-}
-
 bool XmlDocument::Load(
     const IResourceStore& theResources,
     std::string_view thePath)
@@ -363,6 +353,12 @@ const XmlNode* XmlDocument::GetRoot() const
 std::span<const XmlNode> XmlDocument::GetRoots() const
 {
     return mRoots;
+}
+
+std::vector<XmlNode> XmlDocument::TakeRoots()
+{
+    mNodeCount = 0;
+    return std::move(mRoots);
 }
 
 std::size_t XmlDocument::GetNodeCount() const

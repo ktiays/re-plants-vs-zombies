@@ -36,6 +36,12 @@ public:
         return mResources;
     }
 
+    [[nodiscard]] pvz::engine::IXmlDocumentLoader&
+    GetXmlDocuments() override
+    {
+        return mXmlDocuments;
+    }
+
 private:
     class EmptyResourceStore final : public pvz::engine::IResourceStore
     {
@@ -66,8 +72,30 @@ private:
         }
     };
 
+    class EmptyXmlDocumentLoader final
+        : public pvz::engine::IXmlDocumentLoader
+    {
+    public:
+        [[nodiscard]] bool Load(
+            std::string_view thePath,
+            pvz::engine::XmlDocumentMode theMode,
+            std::vector<pvz::engine::XmlNode>& theRoots,
+            pvz::engine::XmlDocumentDiagnostic& theDiagnostic)
+            const override
+        {
+            static_cast<void>(thePath);
+            static_cast<void>(theMode);
+            static_cast<void>(theRoots);
+            theDiagnostic.mError =
+                pvz::engine::XmlDocumentError::ResourceReadFailed;
+            theDiagnostic.mLine = 0;
+            return false;
+        }
+    };
+
     HeadlessLogger mLogger;
     EmptyResourceStore mResources;
+    EmptyXmlDocumentLoader mXmlDocuments;
 };
 
 class EmptyInputFrame final : public pvz::engine::IInputFrame

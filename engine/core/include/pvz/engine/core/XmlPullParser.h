@@ -1,5 +1,7 @@
 #pragma once
 
+#include "pvz/engine/Xml.h"
+
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -8,6 +10,8 @@
 
 namespace pvz::engine::core
 {
+
+using ::pvz::engine::XmlAttribute;
 
 enum class XmlTokenType : std::uint8_t
 {
@@ -26,12 +30,6 @@ enum class XmlError : std::uint8_t
     InvalidEntity,
     MismatchedEndElement,
     UnsupportedDeclaration,
-};
-
-struct XmlAttribute
-{
-    std::string mName;
-    std::string mValue;
 };
 
 struct XmlToken

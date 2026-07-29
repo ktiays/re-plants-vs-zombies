@@ -1,4 +1,5 @@
 #include "pvz/engine/core/BinaryStateIO.h"
+#include "pvz/engine/core/ResourceXmlDocumentLoader.h"
 #include "pvz/engine/core/XmlDocument.h"
 
 #include <array>
@@ -19,6 +20,7 @@ using pvz::engine::core::XmlDocumentError;
 using pvz::engine::core::XmlError;
 using pvz::engine::core::BinaryStateReader;
 using pvz::engine::core::BinaryStateWriter;
+using pvz::engine::core::ResourceXmlDocumentLoader;
 
 class MemoryResourceStore final : public IResourceStore
 {
@@ -124,6 +126,43 @@ void TestXmlDocumentResourceProtocol()
     Expect(
         aDocument.GetError() == XmlDocumentError::ResourceReadFailed,
         "missing XML resource error");
+}
+
+void TestXmlDocumentLoaderProtocol()
+{
+    const MemoryResourceStore aResources(
+        "definitions/effects.xml",
+        "<first/><second/>");
+    const ResourceXmlDocumentLoader aLoader(aResources);
+    std::vector<pvz::engine::XmlNode> aRoots;
+    pvz::engine::XmlDocumentDiagnostic aDiagnostic;
+    Expect(
+        aLoader.Load(
+            "definitions/effects.xml",
+            pvz::engine::XmlDocumentMode::Fragment,
+            aRoots,
+            aDiagnostic),
+        "XML loader protocol loads a fragment");
+    Expect(
+        aRoots.size() == 2 &&
+            aDiagnostic.mError ==
+                pvz::engine::XmlDocumentError::None,
+        "XML loader returns roots and a clear diagnostic");
+
+    Expect(
+        !aLoader.Load(
+            "definitions/missing.xml",
+            pvz::engine::XmlDocumentMode::Fragment,
+            aRoots,
+            aDiagnostic),
+        "XML loader protocol reports missing resources");
+    Expect(
+        aRoots.size() == 2,
+        "failed XML protocol load preserves destination");
+    Expect(
+        aDiagnostic.mError ==
+            pvz::engine::XmlDocumentError::ResourceReadFailed,
+        "XML loader protocol returns a typed diagnostic");
 }
 
 void TestXmlDocumentFailures()
@@ -242,6 +281,7 @@ void RunXmlDocumentTests()
 {
     TestXmlDocumentTree();
     TestXmlDocumentResourceProtocol();
+    TestXmlDocumentLoaderProtocol();
     TestXmlDocumentFailures();
     TestXmlDocumentCache();
 }

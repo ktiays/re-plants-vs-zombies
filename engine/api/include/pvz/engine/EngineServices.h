@@ -1,6 +1,7 @@
 #pragma once
 
 #include "pvz/engine/Resources.h"
+#include "pvz/engine/Xml.h"
 
 #include <cstdint>
 #include <string_view>
@@ -31,6 +32,7 @@ public:
 
     [[nodiscard]] virtual ILogger& GetLogger() = 0;
     [[nodiscard]] virtual IResourceStore& GetResources() = 0;
+    [[nodiscard]] virtual IXmlDocumentLoader& GetXmlDocuments() = 0;
 };
 
 } // namespace pvz::engine

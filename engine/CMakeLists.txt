@@ -12,6 +12,7 @@ add_library(
         core/src/BinaryStateIO.cpp
         core/src/PakArchive.cpp
         core/src/PakResourceStore.cpp
+        core/src/ResourceXmlDocumentLoader.cpp
         core/src/XmlDocument.cpp
         core/src/XmlPullParser.cpp
 )

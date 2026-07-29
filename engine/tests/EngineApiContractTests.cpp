@@ -2,6 +2,7 @@
 #include "pvz/engine/Resources.h"
 #include "pvz/engine/StateIO.h"
 #include "pvz/engine/Types.h"
+#include "pvz/engine/Xml.h"
 
 #include <cstdint>
 #include <type_traits>
@@ -15,3 +16,5 @@ static_assert(std::has_virtual_destructor_v<pvz::engine::IGame>);
 static_assert(std::has_virtual_destructor_v<pvz::engine::IResourceStore>);
 static_assert(std::has_virtual_destructor_v<pvz::engine::IStateReader>);
 static_assert(std::has_virtual_destructor_v<pvz::engine::IStateWriter>);
+static_assert(
+    std::has_virtual_destructor_v<pvz::engine::IXmlDocumentLoader>);
