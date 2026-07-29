@@ -1,639 +1,417 @@
 #include "DataSync.h"
 
-DataReader::DataReader()
-{
-	mFile = nullptr;
-	mData = nullptr;
-	mDataLen = 0;
-	mDataPos = 0;
-	mOwnData = false;
-}
+#include <algorithm>
+#include <array>
+#include <bit>
+#include <cstring>
+#include <limits>
+#include <stdexcept>
 
-//0x441B20、0x441B80
 DataReader::~DataReader()
 {
-	if (mFile)
-	{
-		fclose(mFile);
-		mFile = nullptr;
-	}
-
-	if (mOwnData)
-	{
-		delete[] mData;
-	}
-
-	mData = nullptr;
-	mDataLen = 0;
-	mDataPos = 0;
-	mOwnData = false;
+    Close();
 }
 
 bool DataReader::OpenFile(const std::string& theFileName)
 {
-	mFile = fopen(theFileName.c_str(), "rb");
-	return mFile;
+    Close();
+    mFile = std::fopen(theFileName.c_str(), "rb");
+    return mFile != nullptr;
 }
 
-void DataReader::OpenMemory(const void* theData, unsigned long theDataLen, bool takeOwnership)
+void DataReader::OpenMemory(
+    const void* theData,
+    std::size_t theDataLen,
+    bool theTakeOwnership)
 {
-	if (mFile)
-	{
-		fclose(mFile);
-		mFile = nullptr;
-	}
-	if (mOwnData)
-	{
-		delete[] mData;
-	}
-
-	mData = (char*)theData;
-	mDataLen = theDataLen;
-	mOwnData = takeOwnership;
+    Close();
+    mData = static_cast<char*>(const_cast<void*>(theData));
+    mDataLen = theDataLen;
+    mDataPos = 0;
+    mOwnData = theTakeOwnership;
 }
 
 void DataReader::Close()
 {
-	if (mFile)
-	{
-		fclose(mFile);
-		mFile = nullptr;
-	}
+    if (mFile)
+    {
+        std::fclose(mFile);
+        mFile = nullptr;
+    }
+
+    if (mOwnData)
+        delete[] mData;
+
+    mData = nullptr;
+    mDataLen = 0;
+    mDataPos = 0;
+    mOwnData = false;
 }
 
-//0x441BE0
-void DataReader::ReadBytes(void* theMem, unsigned long theNumBytes)
+void DataReader::ReadBytes(void* theMemory, std::size_t theByteCount)
 {
-	if (mData)
-	{
-		mDataPos += theNumBytes;
-		if (mDataPos > mDataLen)
-		{
-			throw DataReaderException();
-		}
+    if (mData)
+    {
+        if (mDataPos > mDataLen || theByteCount > mDataLen - mDataPos)
+            throw DataReaderException();
 
-		memcpy(theMem, mData, theNumBytes);
-		mData += theNumBytes;
-	}
-	else if (!mFile || fread(theMem, sizeof(char), theNumBytes, mFile) != theNumBytes)
-	{
-		throw DataReaderException();
-	}
+        std::memcpy(theMemory, mData + mDataPos, theByteCount);
+        mDataPos += theByteCount;
+        return;
+    }
+
+    if (!mFile ||
+        std::fread(theMemory, sizeof(std::uint8_t), theByteCount, mFile) !=
+            theByteCount)
+    {
+        throw DataReaderException();
+    }
 }
 
-void DataReader::Rewind(unsigned long theNumBytes)
+void DataReader::Rewind(std::size_t theByteCount)
 {
-	theNumBytes = std::min(theNumBytes, mDataPos);
-	mDataPos -= theNumBytes;
-	mData -= theNumBytes;
+    theByteCount = std::min(theByteCount, mDataPos);
+    mDataPos -= theByteCount;
 }
 
-unsigned short DataReader::ReadShort()
+std::uint16_t DataReader::ReadShort()
 {
-	unsigned short aShort;
-	ReadBytes(&aShort, sizeof(aShort));
-	return aShort;
+    std::array<std::uint8_t, 2> aBytes{};
+    ReadBytes(aBytes.data(), aBytes.size());
+    return static_cast<std::uint16_t>(
+        static_cast<std::uint16_t>(aBytes[0]) |
+        static_cast<std::uint16_t>(
+            static_cast<std::uint16_t>(aBytes[1]) << 8));
 }
 
-unsigned long DataReader::ReadLong()
+std::uint64_t DataReader::ReadUInt64()
 {
-	unsigned int aLong;
-	ReadBytes(&aLong, sizeof(aLong));
-	return aLong;
+    const auto aLow = static_cast<std::uint64_t>(ReadLong());
+    const auto aHigh = static_cast<std::uint64_t>(ReadLong());
+    return aLow | (aHigh << 32);
 }
 
-unsigned char DataReader::ReadByte()
+std::uint32_t DataReader::ReadLong()
 {
-	unsigned char aChar;
-	ReadBytes(&aChar, sizeof(aChar));
-	return aChar;
+    std::array<std::uint8_t, 4> aBytes{};
+    ReadBytes(aBytes.data(), aBytes.size());
+    return static_cast<std::uint32_t>(aBytes[0]) |
+           (static_cast<std::uint32_t>(aBytes[1]) << 8) |
+           (static_cast<std::uint32_t>(aBytes[2]) << 16) |
+           (static_cast<std::uint32_t>(aBytes[3]) << 24);
+}
+
+std::uint8_t DataReader::ReadByte()
+{
+    std::uint8_t aValue{};
+    ReadBytes(&aValue, sizeof(aValue));
+    return aValue;
 }
 
 bool DataReader::ReadBool()
 {
-	bool aBool;
-	ReadBytes(&aBool, sizeof(aBool));
-	return aBool;
+    return ReadByte() != 0;
 }
 
 float DataReader::ReadFloat()
 {
-	float aFloat;
-	ReadBytes(&aFloat, sizeof(aFloat));
-	return aFloat;
+    return std::bit_cast<float>(ReadLong());
 }
 
 double DataReader::ReadDouble()
 {
-	double aDouble;
-	ReadBytes(&aDouble, sizeof(aDouble));
-	return aDouble;
+    return std::bit_cast<double>(ReadUInt64());
 }
 
-void DataReader::ReadString(SexyString& theStr)
+void DataReader::ReadString(std::string& theString)
 {
-	unsigned int aStrLen = ReadShort();
-	theStr.resize(aStrLen);
-	ReadBytes((void*)theStr.c_str(), aStrLen);
+    const auto aLength = ReadShort();
+    theString.resize(aLength);
+    ReadBytes(theString.data(), aLength);
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-//0x441E70
 DataSync::DataSync(DataReader& theReader)
 {
-	Reset();
-	mReader = &theReader;
+    Reset();
+    mReader = &theReader;
 }
 
-//0x441F10
 DataSync::DataSync(DataWriter& theWriter)
 {
-	Reset();
-	mWriter = &theWriter;
+    Reset();
+    mWriter = &theWriter;
 }
 
-//0x441FB0
-DataSync::~DataSync()
-{
-}
-
-//0x442020
 void DataSync::ResetPointerTable()
 {
-	mIntToPointerMap.clear();
-	mPointerToIntMap.clear();
-	mPointerSyncList.clear();
-	mCurPointerIndex = 1;
-	mPointerToIntMap[nullptr] = 0;
-	mIntToPointerMap[0] = nullptr;
+    mIntToPointerMap.clear();
+    mPointerToIntMap.clear();
+    mPointerSyncList.clear();
+    mCurPointerIndex = 1;
+    mPointerToIntMap[nullptr] = 0;
+    mIntToPointerMap[0] = nullptr;
 }
 
 void DataSync::Reset()
 {
-	mReader = nullptr;
-	mWriter = nullptr;
-	ResetPointerTable();
+    mReader = nullptr;
+    mWriter = nullptr;
+    mVersion = 0;
+    ResetPointerTable();
 }
 
-void DataSync::SyncBytes(void* theData, unsigned long theDataLen)
+void DataSync::SyncBytes(void* theData, std::size_t theDataLen)
 {
-	if (mReader)
-	{
-		mReader->ReadBytes(theData, theDataLen);
-	}
-	else
-	{
-		mWriter->WriteBytes(theData, theDataLen);
-	}
+    if (mReader)
+        mReader->ReadBytes(theData, theDataLen);
+    else
+        mWriter->WriteBytes(theData, theDataLen);
 }
 
-void DataSync::SyncLong(unsigned long& theNum)
+void DataSync::SyncBool(bool& theValue)
 {
-	if (mReader)
-	{
-		theNum = mReader->ReadLong();
-	}
-	else
-	{
-		mWriter->WriteLong(theNum);
-	}
+    if (mReader)
+        theValue = mReader->ReadBool();
+    else
+        mWriter->WriteBool(theValue);
 }
 
-void DataSync::SyncLong(char& theNum)
+void DataSync::SyncUInt64(std::uint64_t& theValue)
 {
-	SyncLong((unsigned long&)theNum);
+    if (mReader)
+        theValue = mReader->ReadUInt64();
+    else
+        mWriter->WriteUInt64(theValue);
 }
 
-void DataSync::SyncLong(short& theNum)
+void DataSync::SyncInt64(std::int64_t& theValue)
 {
-	SyncLong((unsigned long&)theNum);
+    if (mReader)
+    {
+        theValue = std::bit_cast<std::int64_t>(mReader->ReadUInt64());
+    }
+    else
+    {
+        mWriter->WriteUInt64(std::bit_cast<std::uint64_t>(theValue));
+    }
 }
 
-void DataSync::SyncLong(long& theNum)
+void DataSync::SyncFloat(float& theValue)
 {
-	SyncLong((unsigned long&)theNum);
+    if (mReader)
+        theValue = mReader->ReadFloat();
+    else
+        mWriter->WriteFloat(theValue);
 }
 
-void DataSync::SyncLong(unsigned char& theNum)
+void DataSync::SyncDouble(double& theValue)
 {
-	SyncLong((unsigned long&)theNum);
+    if (mReader)
+        theValue = mReader->ReadDouble();
+    else
+        mWriter->WriteDouble(theValue);
 }
 
-void DataSync::SyncLong(unsigned short& theNum)
+void DataSync::SyncString(std::string& theString)
 {
-	SyncLong((unsigned long&)theNum);
+    if (mReader)
+        mReader->ReadString(theString);
+    else
+        mWriter->WriteString(theString);
 }
 
-void DataSync::SyncLong(int& theNum)
-{
-	SyncLong((unsigned long&)theNum);
-}
-
-void DataSync::SyncSLong(long& theNum)
-{
-	if (mReader)
-	{
-		theNum = (long)mReader->ReadLong();
-	}
-	else
-	{
-		mWriter->WriteLong((unsigned long)theNum);
-	}
-}
-
-void DataSync::SyncSLong(char& theNum)
-{
-	SyncSLong((long&)theNum);
-}
-
-void DataSync::SyncSLong(short& theNum)
-{
-	SyncSLong((long&)theNum);
-}
-
-void DataSync::SyncSLong(int& theNum)
-{
-	SyncSLong((long&)theNum);
-}
-
-void DataSync::SyncSLong(unsigned char& theNum)
-{
-	SyncSLong((long&)theNum);
-}
-
-void DataSync::SyncSLong(unsigned short& theNum)
-{
-	SyncSLong((long&)theNum);
-}
-
-void DataSync::SyncSLong(unsigned long& theNum)
-{
-	SyncSLong((long&)theNum);
-}
-
-void DataSync::SyncShort(unsigned short& theNum)
-{
-	if (mReader)
-	{
-		theNum = mReader->ReadShort();
-	}
-	else
-	{
-		mWriter->WriteShort(theNum);
-	}
-}
-
-void DataSync::SyncShort(char& theNum)
-{
-	SyncShort((unsigned short&)theNum);
-}
-
-void DataSync::SyncShort(short& theNum)
-{
-	SyncShort((unsigned short&)theNum);
-}
-
-void DataSync::SyncShort(long& theNum)
-{
-	SyncShort((unsigned short&)theNum);
-}
-
-void DataSync::SyncShort(unsigned char& theNum)
-{
-	SyncShort((unsigned short&)theNum);
-}
-
-void DataSync::SyncShort(unsigned long& theNum)
-{
-	SyncShort((unsigned short&)theNum);
-}
-
-void DataSync::SyncShort(int& theNum)
-{
-	SyncShort((unsigned short&)theNum);
-}
-
-void DataSync::SyncSShort(short& theNum)
-{
-	if (mReader)
-	{
-		theNum = (short)mReader->ReadShort();
-	}
-	else
-	{
-		mWriter->WriteShort((unsigned short)theNum);
-	}
-}
-
-void DataSync::SyncSShort(char& theNum)
-{
-	SyncSShort((short&)theNum);
-}
-
-void DataSync::SyncSShort(long& theNum)
-{
-	SyncSShort((short&)theNum);
-}
-
-void DataSync::SyncSShort(unsigned char& theNum)
-{
-	SyncSShort((short&)theNum);
-}
-
-void DataSync::SyncSShort(unsigned short& theNum)
-{
-	SyncSShort((short&)theNum);
-}
-
-void DataSync::SyncSShort(unsigned long& theNum)
-{
-	SyncSShort((short&)theNum);
-}
-
-void DataSync::SyncSShort(int& theNum)
-{
-	SyncSShort((short&)theNum);
-}
-
-void DataSync::SyncByte(unsigned char& theChar)
-{
-	if (mReader)
-	{
-		theChar = mReader->ReadByte();
-	}
-	else
-	{
-		mWriter->WriteByte(theChar);
-	}
-}
-
-void DataSync::SyncByte(char& theChar)
-{
-	SyncByte((unsigned char&)theChar);
-}
-
-void DataSync::SyncByte(short& theChar)
-{
-	SyncByte((unsigned char&)theChar);
-}
-
-void DataSync::SyncByte(long& theChar)
-{
-	SyncByte((unsigned char&)theChar);
-}
-
-void DataSync::SyncByte(unsigned short& theChar)
-{
-	SyncByte((unsigned char&)theChar);
-}
-
-void DataSync::SyncByte(unsigned long& theChar)
-{
-	SyncByte((unsigned char&)theChar);
-}
-
-void DataSync::SyncByte(int& theChar)
-{
-	SyncByte((unsigned char&)theChar);
-}
-
-void DataSync::SyncSByte(char& theChar)
-{
-	if (mReader)
-	{
-		theChar = (char)mReader->ReadByte();
-	}
-	else
-	{
-		mWriter->WriteByte((unsigned char)theChar);
-	}
-}
-
-void DataSync::SyncSByte(short& theChar)
-{
-	SyncByte((char&)theChar);
-}
-
-void DataSync::SyncSByte(long& theChar)
-{
-	SyncByte((char&)theChar);
-}
-
-void DataSync::SyncSByte(unsigned char& theChar)
-{
-	SyncByte((char&)theChar);
-}
-
-void DataSync::SyncSByte(unsigned short& theChar)
-{
-	SyncByte((char&)theChar);
-}
-
-void DataSync::SyncSByte(unsigned long& theChar)
-{
-	SyncByte((char&)theChar);
-}
-
-void DataSync::SyncSByte(int& theChar)
-{
-	SyncByte((char&)theChar);
-}
-
-void DataSync::SyncBool(bool& theBool)
-{
-	if (mReader)
-	{
-		theBool = mReader->ReadBool();
-	}
-	else
-	{
-		mWriter->WriteBool(theBool);
-	}
-}
-
-void DataSync::SyncFloat(float& theFloat)
-{
-	if (mReader)
-	{
-		theFloat = mReader->ReadFloat();
-	}
-	else
-	{
-		mWriter->WriteFloat(theFloat);
-	}
-}
-
-void DataSync::SyncDouble(double& theDouble)
-{
-	if (mReader)
-	{
-		theDouble = mReader->ReadDouble();
-	}
-	else
-	{
-		mWriter->WriteDouble(theDouble);
-	}
-}
-
-void DataSync::SyncString(SexyString& theStr)
-{
-	if (mReader)
-	{
-		mReader->ReadString(theStr);
-	}
-	else
-	{
-		mWriter->WriteString(theStr);
-	}
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-DataWriter::DataWriter()
-{
-	mFile = nullptr;
-	mData = nullptr;
-	mDataLen = 0;
-	mCapacity = 0;
-}
-
-//0x4436A0、0x4436F0
 DataWriter::~DataWriter()
 {
-	if (mFile)
-	{
-		fclose(mFile);
-		mFile = nullptr;
-	}
-
-	delete[] mData;
-	mData = nullptr;
-	mDataLen = 0;
-	mCapacity = 0;
+    Close();
+    delete[] mData;
 }
 
 bool DataWriter::OpenFile(const std::string& theFileName)
 {
-	mFile = fopen(theFileName.c_str(), "wb");
-	return mFile;
+    Close();
+    delete[] mData;
+    mData = nullptr;
+    mDataLen = 0;
+    mCapacity = 0;
+    mFile = std::fopen(theFileName.c_str(), "wb");
+    return mFile != nullptr;
 }
 
 void DataWriter::Close()
 {
-	if (mFile)
-	{
-		fclose(mFile);
-		mFile = nullptr;
-	}
+    if (mFile)
+    {
+        std::fclose(mFile);
+        mFile = nullptr;
+    }
 }
 
-//0x443730
-void DataWriter::EnsureCapacity(unsigned long theNumBytes)
+void DataWriter::EnsureCapacity(std::size_t theRequiredCapacity)
 {
-	if (mCapacity < theNumBytes)
-	{
-		// 每次将容量乘 2 直到容量达到 theNumBytes 或更多
-		do { mCapacity <<= 1; } while (mCapacity < theNumBytes);
+    if (mCapacity >= theRequiredCapacity)
+        return;
 
-		// 申请新内存
-		char* aData = new char[mCapacity];
-		// 将原数据迁移至新内存区域中
-		memcpy(aData, mData, mDataLen);
-		// 释放旧有内存区域
-		delete[] mData;
-		mData = aData;
-	}
+    std::size_t aNewCapacity = std::max<std::size_t>(mCapacity, 32);
+    while (aNewCapacity < theRequiredCapacity)
+    {
+        if (aNewCapacity > std::numeric_limits<std::size_t>::max() / 2)
+        {
+            aNewCapacity = theRequiredCapacity;
+            break;
+        }
+        aNewCapacity *= 2;
+    }
+
+    char* aData = new char[aNewCapacity];
+    std::memcpy(aData, mData, mDataLen);
+    delete[] mData;
+    mData = aData;
+    mCapacity = aNewCapacity;
 }
 
-void DataWriter::OpenMemory(unsigned long theReserveAmount)
+void DataWriter::OpenMemory(std::size_t theReserveAmount)
 {
-	if (mFile)
-	{
-		fclose(mFile);
-		mFile = nullptr;
-	}
-	delete[] mData;
-	mData = 0;
-	mDataLen = 0;
-	mCapacity = 0;
+    Close();
+    delete[] mData;
+    mData = nullptr;
+    mDataLen = 0;
+    mCapacity = 0;
 
-	if (theReserveAmount < 32)
-		theReserveAmount = 32;
-	mData = new char[theReserveAmount];
-	mCapacity = theReserveAmount;
+    theReserveAmount = std::max<std::size_t>(theReserveAmount, 32);
+    mData = new char[theReserveAmount];
+    mCapacity = theReserveAmount;
 }
 
-void DataWriter::WriteBytes(const void* theData, unsigned long theDataLen)
+bool DataWriter::WriteToFile(const std::string& theFileName) const
 {
-	if (mData)
-	{
-		EnsureCapacity(mDataLen + theDataLen);
-		memcpy(mData + mDataLen, theData, theDataLen);
-		mDataLen += theDataLen;
-	}
-	else if (mFile)
-	{
-		fwrite(theData, sizeof(unsigned char), theDataLen, mFile);
-	}
+    auto* aFile = std::fopen(theFileName.c_str(), "wb");
+    if (!aFile)
+        return false;
+
+    const auto aWritten =
+        std::fwrite(mData, sizeof(std::uint8_t), mDataLen, aFile);
+    const auto aCloseResult = std::fclose(aFile);
+    return aWritten == mDataLen && aCloseResult == 0;
 }
 
-//0x443770
-void DataWriter::WriteLong(unsigned long theLong)
+void DataWriter::WriteBytes(const void* theData, std::size_t theDataLen)
 {
-	//if (mData)
-	//{
-	//	EnsureCapacity(mDataLen + sizeof(unsigned long));
-	//	*(unsigned long*)(mData + mDataLen) = theLong;
-	//	mDataLen += sizeof(unsigned long);
-	//}
-	//else if (mFile)
-	//{
-	//	fwrite(&theLong, sizeof(char), sizeof(unsigned long) / sizeof(char), mFile);
-	//}
-	WriteBytes(&theLong, sizeof(unsigned long));
+    if (mData)
+    {
+        if (theDataLen >
+            std::numeric_limits<std::size_t>::max() - mDataLen)
+        {
+            throw std::length_error("serialized data is too large");
+        }
+
+        EnsureCapacity(mDataLen + theDataLen);
+        std::memcpy(mData + mDataLen, theData, theDataLen);
+        mDataLen += theDataLen;
+    }
+    else if (mFile)
+    {
+        if (std::fwrite(
+                theData,
+                sizeof(std::uint8_t),
+                theDataLen,
+                mFile) != theDataLen)
+        {
+            throw std::runtime_error("could not write serialized data");
+        }
+    }
 }
 
-//0x4437C0
-void DataWriter::WriteShort(unsigned short theShort)
+void DataWriter::WriteLong(std::uint32_t theValue)
 {
-	//if (mData)
-	//{
-	//	EnsureCapacity(mDataLen + sizeof(short));
-	//	*(short*)(mData + mDataLen) = theShort;
-	//	mDataLen += sizeof(short);
-	//}
-	//else if (mFile)
-	//{
-	//	fwrite(&theShort, sizeof(char), sizeof(short) / sizeof(char), mFile);
-	//}
-	WriteBytes(&theShort, sizeof(unsigned short));
+    const std::array<std::uint8_t, 4> aBytes{
+        static_cast<std::uint8_t>(theValue),
+        static_cast<std::uint8_t>(theValue >> 8),
+        static_cast<std::uint8_t>(theValue >> 16),
+        static_cast<std::uint8_t>(theValue >> 24),
+    };
+    WriteBytes(aBytes.data(), aBytes.size());
 }
 
-void DataWriter::WriteByte(unsigned char theChar)
+void DataWriter::WriteUInt64(std::uint64_t theValue)
 {
-	WriteBytes(&theChar, sizeof(unsigned char));
+    WriteLong(static_cast<std::uint32_t>(theValue));
+    WriteLong(static_cast<std::uint32_t>(theValue >> 32));
 }
 
-void DataWriter::WriteBool(bool theBool)
+void DataWriter::WriteShort(std::uint16_t theValue)
 {
-	WriteBytes(&theBool, sizeof(bool));
+    const std::array<std::uint8_t, 2> aBytes{
+        static_cast<std::uint8_t>(theValue),
+        static_cast<std::uint8_t>(theValue >> 8),
+    };
+    WriteBytes(aBytes.data(), aBytes.size());
 }
 
-void DataWriter::WriteFloat(float theFloat)
+void DataWriter::WriteByte(std::uint8_t theValue)
 {
-	WriteBytes(&theFloat, sizeof(float));
+    WriteBytes(&theValue, sizeof(theValue));
 }
 
-void DataWriter::WriteDouble(double theDouble)
+void DataWriter::WriteBool(bool theValue)
 {
-	WriteBytes(&theDouble, sizeof(double));
+    WriteByte(theValue ? std::uint8_t{1} : std::uint8_t{0});
 }
 
-//0x443810
-void DataWriter::WriteString(const SexyString& theStr)
+void DataWriter::WriteFloat(float theValue)
 {
-	unsigned short aStrLen = (unsigned short)theStr.length();
-	WriteShort(aStrLen);
-	WriteBytes(theStr.c_str(), (unsigned long)aStrLen);
+    WriteLong(std::bit_cast<std::uint32_t>(theValue));
+}
+
+void DataWriter::WriteDouble(double theValue)
+{
+    WriteUInt64(std::bit_cast<std::uint64_t>(theValue));
+}
+
+void DataWriter::WriteString(const std::string& theString)
+{
+    if (theString.size() > std::numeric_limits<std::uint16_t>::max())
+        throw std::length_error("serialized string is too large");
+
+    WriteShort(static_cast<std::uint16_t>(theString.size()));
+    WriteBytes(theString.data(), theString.size());
+}
+
+std::size_t DataWriter::GetPos() const
+{
+    return mDataLen;
+}
+
+void DataWriter::SetLong(
+    std::uint32_t theValue,
+    std::size_t thePosition)
+{
+    if (!mData || thePosition > mDataLen || 4 > mDataLen - thePosition)
+        throw std::out_of_range("serialized position is outside the buffer");
+
+    const auto aSavedPosition = mDataLen;
+    mDataLen = thePosition;
+    WriteLong(theValue);
+    mDataLen = aSavedPosition;
+}
+
+void DataWriter::SetShort(
+    std::uint16_t theValue,
+    std::size_t thePosition)
+{
+    if (!mData || thePosition > mDataLen || 2 > mDataLen - thePosition)
+        throw std::out_of_range("serialized position is outside the buffer");
+
+    const auto aSavedPosition = mDataLen;
+    mDataLen = thePosition;
+    WriteShort(theValue);
+    mDataLen = aSavedPosition;
+}
+
+void DataWriter::SetByte(
+    std::uint8_t theValue,
+    std::size_t thePosition)
+{
+    if (!mData || thePosition >= mDataLen)
+        throw std::out_of_range("serialized position is outside the buffer");
+    mData[thePosition] = static_cast<char>(theValue);
 }

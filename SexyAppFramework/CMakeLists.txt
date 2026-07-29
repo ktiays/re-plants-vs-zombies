@@ -59,6 +59,7 @@ source_group("Lawn\\Common\\Common Source" FILES ${Lawn__Common__Common_Source})
 
 set(Lawn__System__System_Include
     "../Lawn/System/DataSync.h"
+    "../Lawn/System/LegacySaveFormat.h"
     "../Lawn/System/Music.h"
     "../Lawn/System/PlayerInfo.h"
     "../Lawn/System/PoolEffect.h"
@@ -72,8 +73,10 @@ source_group("Lawn\\System\\System Include" FILES ${Lawn__System__System_Include
 
 set(Lawn__System__System_Source
     "../Lawn/System/DataSync.cpp"
+    "../Lawn/System/LegacySaveFormat.cpp"
     "../Lawn/System/Music.cpp"
     "../Lawn/System/PlayerInfo.cpp"
+    "../Lawn/System/PlayerInfoSerialization.cpp"
     "../Lawn/System/PoolEffect.cpp"
     "../Lawn/System/PopDRMComm.cpp"
     "../Lawn/System/ProfileMgr.cpp"

@@ -14,67 +14,97 @@
 #include "../../Sexy.TodLib/Reanimator.h"
 #include "../../Sexy.TodLib/TodParticle.h"
 #include "../../Sexy.TodLib/EffectSystem.h"
+#include "../../Sexy.TodLib/TodList.h"
+#include "misc/Buffer.h"
+
+#include <cstring>
+#include <limits>
 
 static const char* FILE_COMPILE_TIME_STRING = "Feb 16 200923:03:38";
-static const unsigned int SAVE_FILE_MAGIC_NUMBER = 0xFEEDDEAD;
-static const unsigned int SAVE_FILE_VERSION = 2U;
-static unsigned int SAVE_FILE_DATE = crc32(0, (Bytef*)FILE_COMPILE_TIME_STRING, strlen(FILE_COMPILE_TIME_STRING));  //[0x6AA7EC]
+static std::uint32_t SAVE_FILE_DATE = static_cast<std::uint32_t>(
+	crc32(
+		0,
+		(Bytef*)FILE_COMPILE_TIME_STRING,
+		static_cast<uInt>(strlen(FILE_COMPILE_TIME_STRING))));  //[0x6AA7EC]
+
+void SaveGameContext::OpenRead(
+	std::span<const std::byte> theBytes)
+{
+	mReader.Reset(theBytes);
+	mWriter.Reset();
+	mFailed = false;
+	mReading = true;
+}
+
+void SaveGameContext::OpenWrite()
+{
+	mReader.Reset({});
+	mWriter.Reset();
+	mFailed = false;
+	mReading = false;
+}
+
+std::uint64_t SaveGameContext::ByteLeftToRead() const
+{
+	return mReading ? mReader.GetBytesRemaining() : 0;
+}
+
+std::span<const std::byte> SaveGameContext::GetWrittenBytes() const
+{
+	return mWriter.GetBytes();
+}
 
 //0x4813D0
-void SaveGameContext::SyncBytes(void* theDest, int theReadSize)
+void SaveGameContext::SyncBytes(
+	void* theDest,
+	std::int32_t theReadSize)
 {
-	int aReadSize = theReadSize;
-	if (mReading)
+	if (theReadSize < 0 || (theDest == nullptr && theReadSize != 0))
 	{
-		if ((unsigned long)ByteLeftToRead() < 4)
-		{
-			mFailed = true;
-		}
-
-		aReadSize = mFailed ? 0 : mBuffer.ReadLong();
-	}
-	else
-	{
-		mBuffer.WriteLong(theReadSize);
+		mFailed = true;
+		return;
 	}
 
+	const auto aSize = static_cast<std::size_t>(theReadSize);
 	if (mReading)
 	{
-		if (aReadSize != theReadSize || ByteLeftToRead() < theReadSize)
+		auto aBytes = std::span<std::byte>(
+			static_cast<std::byte*>(theDest),
+			aSize);
+		if (!mReader.ReadBlock(aBytes))
 		{
 			mFailed = true;
-		}
-
-		if (mFailed)
-		{
-			memset(theDest, 0, theReadSize);
-		}
-		else
-		{
-			mBuffer.ReadBytes((uchar*)theDest, theReadSize);
+			if (theDest != nullptr)
+			{
+				memset(theDest, 0, aSize);
+			}
 		}
 	}
 	else
 	{
-		mBuffer.WriteBytes((uchar*)theDest, theReadSize);
+		const auto aBytes = std::span<const std::byte>(
+			static_cast<const std::byte*>(theDest),
+			aSize);
+		if (!mWriter.WriteBlock(aBytes))
+			mFailed = true;
 	}
 }
 
 //0x481470
-void SaveGameContext::SyncInt(int& theInt)
+void SaveGameContext::SyncInt(std::int32_t& theInt)
 {
 	if (mReading)
 	{
-		if ((unsigned long)ByteLeftToRead() < 4)
+		if (!mReader.ReadI32(theInt))
 		{
 			mFailed = true;
+			theInt = 0;
 		}
-
-		theInt = mFailed ? 0 : mBuffer.ReadLong();
 	}
 	else
 	{
-		mBuffer.WriteLong(theInt);
+		if (!mWriter.WriteI32(theInt))
+			mFailed = true;
 	}
 }
 
@@ -193,7 +223,9 @@ void SaveGameContext::SyncImage(Image*& theImage)
 	if (mReading)
 	{
 		ResourceId aResID;
-		SyncInt((int&)aResID);
+		std::int32_t aWireResourceId{};
+		SyncInt(aWireResourceId);
+		aResID = static_cast<ResourceId>(aWireResourceId);
 		if (aResID == Sexy::ResourceId::RESOURCE_ID_MAX)
 		{
 			theImage = nullptr;
@@ -214,7 +246,9 @@ void SaveGameContext::SyncImage(Image*& theImage)
 		{
 			aResID = Sexy::ResourceId::RESOURCE_ID_MAX;
 		}
-		SyncInt((int&)aResID);
+		std::int32_t aWireResourceId =
+			static_cast<std::int32_t>(aResID);
+		SyncInt(aWireResourceId);
 	}
 }
 
@@ -237,8 +271,8 @@ void SyncDataIDList(TodList<unsigned int>* theDataIDList, SaveGameContext& theCo
 			theContext.SyncInt(aCount);
 			for (int i = 0; i < aCount; i++)
 			{
-				unsigned int aDataID;
-				theContext.SyncBytes(&aDataID, sizeof(aDataID));
+				std::uint32_t aDataID{};
+				theContext.SyncUint(aDataID);
 				theDataIDList->AddTail(aDataID);
 			}
 		}
@@ -248,8 +282,8 @@ void SyncDataIDList(TodList<unsigned int>* theDataIDList, SaveGameContext& theCo
 			theContext.SyncInt(aCount);
 			for (TodListNode<unsigned int>* aNode = theDataIDList->mHead; aNode != nullptr; aNode = aNode->mNext)
 			{
-				unsigned int aDataID = aNode->mValue;
-				theContext.SyncBytes(&aDataID, sizeof(aDataID));
+				std::uint32_t aDataID = aNode->mValue;
+				theContext.SyncUint(aDataID);
 			}
 		}
 	}
@@ -308,21 +342,47 @@ void SyncParticleSystem(Board* theBoard, TodParticleSystem* theParticleSystem, S
 void SyncReanimation(Board* theBoard, Reanimation* theReanimation, SaveGameContext& theContext)
 {
 	theContext.SyncReanimationDef(theReanimation->mDefinition);
+	if (theContext.mFailed || theReanimation->mDefinition == nullptr)
+	{
+		theContext.mFailed = true;
+		return;
+	}
 	if (theContext.mReading)
 	{
 		theReanimation->mReanimationHolder = theBoard->mApp->mEffectSystem->mReanimationHolder;
 	}
 
-	if (theReanimation->mDefinition->mTracks.count != 0)
+	const int aTrackCount =
+		theReanimation->mDefinition->mTracks.count;
+	if (aTrackCount < 0)
 	{
-		int aSize = theReanimation->mDefinition->mTracks.count * sizeof(ReanimatorTrackInstance);
+		theContext.mFailed = true;
+		return;
+	}
+
+	if (aTrackCount != 0)
+	{
+		const std::uint64_t aByteCount =
+			static_cast<std::uint64_t>(aTrackCount) *
+			static_cast<std::uint64_t>(
+				sizeof(ReanimatorTrackInstance));
+		if (aByteCount >
+			static_cast<std::uint64_t>(
+				std::numeric_limits<std::int32_t>::max()))
+		{
+			theContext.mFailed = true;
+			return;
+		}
+		const auto aSize = static_cast<std::int32_t>(aByteCount);
 		if (theContext.mReading)
 		{
 			theReanimation->mTrackInstances = (ReanimatorTrackInstance*)FindGlobalAllocator(aSize)->Calloc(aSize);
 		}
 		theContext.SyncBytes(theReanimation->mTrackInstances, aSize);
 
-		for (int aTrackIndex = 0; aTrackIndex < theReanimation->mDefinition->mTracks.count; aTrackIndex++)
+		for (int aTrackIndex = 0;
+			 aTrackIndex < aTrackCount;
+			 aTrackIndex++)
 		{
 			ReanimatorTrackInstance& aTrackInstance = theReanimation->mTrackInstances[aTrackIndex];
 			theContext.SyncImage(aTrackInstance.mImageOverride);
@@ -357,15 +417,500 @@ template <typename T> inline static void SyncDataArray(SaveGameContext& theConte
 	theContext.SyncUint(theDataArray.mFreeListHead);
 	theContext.SyncUint(theDataArray.mMaxUsedCount);
 	theContext.SyncUint(theDataArray.mSize);
-	theContext.SyncBytes(theDataArray.mBlock, theDataArray.mMaxUsedCount * sizeof(*theDataArray.mBlock));
+	if (theContext.mFailed ||
+		theDataArray.mMaxUsedCount > theDataArray.mMaxSize ||
+		theDataArray.mSize > theDataArray.mMaxUsedCount ||
+		theDataArray.mFreeListHead > theDataArray.mMaxUsedCount)
+	{
+		theContext.mFailed = true;
+		return;
+	}
+
+	const std::uint64_t aByteCount =
+		static_cast<std::uint64_t>(theDataArray.mMaxUsedCount) *
+		static_cast<std::uint64_t>(sizeof(*theDataArray.mBlock));
+	if (aByteCount >
+		static_cast<std::uint64_t>(
+			std::numeric_limits<std::int32_t>::max()))
+	{
+		theContext.mFailed = true;
+		return;
+	}
+
+	theContext.SyncBytes(
+		theDataArray.mBlock,
+		static_cast<std::int32_t>(aByteCount));
+}
+
+static LegacyGameObjectState CaptureGameObjectState(
+	const GameObject& theObject)
+{
+	return LegacyGameObjectState{
+		.mX = static_cast<std::int32_t>(theObject.mX),
+		.mY = static_cast<std::int32_t>(theObject.mY),
+		.mWidth = static_cast<std::int32_t>(theObject.mWidth),
+		.mHeight = static_cast<std::int32_t>(theObject.mHeight),
+		.mVisible = theObject.mVisible,
+		.mRow = static_cast<std::int32_t>(theObject.mRow),
+		.mRenderOrder =
+			static_cast<std::int32_t>(theObject.mRenderOrder),
+	};
+}
+
+static void ApplyGameObjectState(
+	GameObject& theObject,
+	const LegacyGameObjectState& theState)
+{
+	theObject.mX = static_cast<int>(theState.mX);
+	theObject.mY = static_cast<int>(theState.mY);
+	theObject.mWidth = static_cast<int>(theState.mWidth);
+	theObject.mHeight = static_cast<int>(theState.mHeight);
+	theObject.mVisible = theState.mVisible;
+	theObject.mRow = static_cast<int>(theState.mRow);
+	theObject.mRenderOrder = static_cast<int>(theState.mRenderOrder);
+}
+
+static void SyncCursorObjectRecord(
+	SaveGameContext& theContext,
+	CursorObject& theCursor)
+{
+	if (theContext.mReading)
+	{
+		std::array<std::byte, kLegacyCursorObjectRecordSize> aBytes{};
+		theContext.SyncBytes(
+			aBytes.data(),
+			static_cast<std::int32_t>(aBytes.size()));
+		if (theContext.mFailed)
+			return;
+
+		LegacyCursorObjectState aState;
+		if (!DecodeLegacyCursorObjectState(aBytes, aState))
+		{
+			theContext.mFailed = true;
+			return;
+		}
+
+		ApplyGameObjectState(theCursor, aState.mGameObject);
+		theCursor.mSeedBankIndex =
+			static_cast<int>(aState.mSeedBankIndex);
+		theCursor.mType = static_cast<SeedType>(aState.mType);
+		theCursor.mImitaterType =
+			static_cast<SeedType>(aState.mImitaterType);
+		theCursor.mCursorType =
+			static_cast<CursorType>(aState.mCursorType);
+		theCursor.mCoinID = static_cast<CoinID>(aState.mCoinId);
+		theCursor.mGlovePlantID =
+			static_cast<PlantID>(aState.mGlovePlantId);
+		theCursor.mDuplicatorPlantID =
+			static_cast<PlantID>(aState.mDuplicatorPlantId);
+		theCursor.mCobCannonPlantID =
+			static_cast<PlantID>(aState.mCobCannonPlantId);
+		theCursor.mHammerDownCounter =
+			static_cast<int>(aState.mHammerDownCounter);
+		theCursor.mReanimCursorID =
+			static_cast<ReanimationID>(aState.mReanimCursorId);
+		return;
+	}
+
+	const LegacyCursorObjectState aState{
+		.mGameObject = CaptureGameObjectState(theCursor),
+		.mSeedBankIndex =
+			static_cast<std::int32_t>(theCursor.mSeedBankIndex),
+		.mType = static_cast<std::int32_t>(theCursor.mType),
+		.mImitaterType =
+			static_cast<std::int32_t>(theCursor.mImitaterType),
+		.mCursorType =
+			static_cast<std::int32_t>(theCursor.mCursorType),
+		.mCoinId = static_cast<std::uint32_t>(theCursor.mCoinID),
+		.mGlovePlantId =
+			static_cast<std::uint32_t>(theCursor.mGlovePlantID),
+		.mDuplicatorPlantId =
+			static_cast<std::uint32_t>(theCursor.mDuplicatorPlantID),
+		.mCobCannonPlantId =
+			static_cast<std::uint32_t>(theCursor.mCobCannonPlantID),
+		.mHammerDownCounter =
+			static_cast<std::int32_t>(theCursor.mHammerDownCounter),
+		.mReanimCursorId =
+			static_cast<std::uint32_t>(theCursor.mReanimCursorID),
+	};
+	auto aBytes = EncodeLegacyCursorObjectState(aState);
+	theContext.SyncBytes(
+		aBytes.data(),
+		static_cast<std::int32_t>(aBytes.size()));
+}
+
+static void SyncCursorPreviewRecord(
+	SaveGameContext& theContext,
+	CursorPreview& theCursor)
+{
+	if (theContext.mReading)
+	{
+		std::array<std::byte, kLegacyCursorPreviewRecordSize> aBytes{};
+		theContext.SyncBytes(
+			aBytes.data(),
+			static_cast<std::int32_t>(aBytes.size()));
+		if (theContext.mFailed)
+			return;
+
+		LegacyCursorPreviewState aState;
+		if (!DecodeLegacyCursorPreviewState(aBytes, aState))
+		{
+			theContext.mFailed = true;
+			return;
+		}
+
+		ApplyGameObjectState(theCursor, aState.mGameObject);
+		theCursor.mGridX = static_cast<int>(aState.mGridX);
+		theCursor.mGridY = static_cast<int>(aState.mGridY);
+		return;
+	}
+
+	const LegacyCursorPreviewState aState{
+		.mGameObject = CaptureGameObjectState(theCursor),
+		.mGridX = static_cast<std::int32_t>(theCursor.mGridX),
+		.mGridY = static_cast<std::int32_t>(theCursor.mGridY),
+	};
+	auto aBytes = EncodeLegacyCursorPreviewState(aState);
+	theContext.SyncBytes(
+		aBytes.data(),
+		static_cast<std::int32_t>(aBytes.size()));
+}
+
+static void SyncMusicRecord(
+	SaveGameContext& theContext,
+	Music& theMusic)
+{
+	if (theContext.mReading)
+	{
+		std::array<std::byte, kLegacyMusicRecordSize> aBytes{};
+		theContext.SyncBytes(
+			aBytes.data(),
+			static_cast<std::int32_t>(aBytes.size()));
+		if (theContext.mFailed)
+			return;
+
+		LegacyMusicState aState;
+		if (!DecodeLegacyMusicState(aBytes, aState))
+		{
+			theContext.mFailed = true;
+			return;
+		}
+
+		theMusic.mCurMusicTune =
+			static_cast<MusicTune>(aState.mCurMusicTune);
+		theMusic.mCurMusicFileMain =
+			static_cast<MusicFile>(aState.mCurMusicFileMain);
+		theMusic.mCurMusicFileDrums =
+			static_cast<MusicFile>(aState.mCurMusicFileDrums);
+		theMusic.mCurMusicFileHihats =
+			static_cast<MusicFile>(aState.mCurMusicFileHihats);
+		theMusic.mBurstOverride =
+			static_cast<int>(aState.mBurstOverride);
+		theMusic.mBaseBPM = aState.mBaseBpm;
+		theMusic.mBaseModSpeed = aState.mBaseModSpeed;
+		theMusic.mMusicBurstState =
+			static_cast<MusicBurstState>(aState.mMusicBurstState);
+		theMusic.mBurstStateCounter =
+			static_cast<int>(aState.mBurstStateCounter);
+		theMusic.mMusicDrumsState =
+			static_cast<MusicDrumsState>(aState.mMusicDrumsState);
+		theMusic.mQueuedDrumTrackPackedOrder =
+			static_cast<int>(aState.mQueuedDrumTrackPackedOrder);
+		theMusic.mDrumsStateCounter =
+			static_cast<int>(aState.mDrumsStateCounter);
+		theMusic.mPauseOffset =
+			static_cast<int>(aState.mPauseOffset);
+		theMusic.mPauseOffsetDrums =
+			static_cast<int>(aState.mPauseOffsetDrums);
+		theMusic.mPaused = aState.mPaused;
+		theMusic.mMusicDisabled = aState.mMusicDisabled;
+		theMusic.mFadeOutCounter =
+			static_cast<int>(aState.mFadeOutCounter);
+		theMusic.mFadeOutDuration =
+			static_cast<int>(aState.mFadeOutDuration);
+		return;
+	}
+
+	const LegacyMusicState aState{
+		.mCurMusicTune =
+			static_cast<std::int32_t>(theMusic.mCurMusicTune),
+		.mCurMusicFileMain =
+			static_cast<std::int32_t>(theMusic.mCurMusicFileMain),
+		.mCurMusicFileDrums =
+			static_cast<std::int32_t>(theMusic.mCurMusicFileDrums),
+		.mCurMusicFileHihats =
+			static_cast<std::int32_t>(theMusic.mCurMusicFileHihats),
+		.mBurstOverride =
+			static_cast<std::int32_t>(theMusic.mBurstOverride),
+		.mBaseBpm = theMusic.mBaseBPM,
+		.mBaseModSpeed = theMusic.mBaseModSpeed,
+		.mMusicBurstState =
+			static_cast<std::int32_t>(theMusic.mMusicBurstState),
+		.mBurstStateCounter =
+			static_cast<std::int32_t>(theMusic.mBurstStateCounter),
+		.mMusicDrumsState =
+			static_cast<std::int32_t>(theMusic.mMusicDrumsState),
+		.mQueuedDrumTrackPackedOrder = static_cast<std::int32_t>(
+			theMusic.mQueuedDrumTrackPackedOrder),
+		.mDrumsStateCounter =
+			static_cast<std::int32_t>(theMusic.mDrumsStateCounter),
+		.mPauseOffset =
+			static_cast<std::int32_t>(theMusic.mPauseOffset),
+		.mPauseOffsetDrums =
+			static_cast<std::int32_t>(theMusic.mPauseOffsetDrums),
+		.mPaused = theMusic.mPaused,
+		.mMusicDisabled = theMusic.mMusicDisabled,
+		.mFadeOutCounter =
+			static_cast<std::int32_t>(theMusic.mFadeOutCounter),
+		.mFadeOutDuration =
+			static_cast<std::int32_t>(theMusic.mFadeOutDuration),
+	};
+	auto aBytes = EncodeLegacyMusicState(aState);
+	theContext.SyncBytes(
+		aBytes.data(),
+		static_cast<std::int32_t>(aBytes.size()));
+}
+
+static void SyncMessageRecord(
+	SaveGameContext& theContext,
+	MessageWidget& theMessage)
+{
+	static_assert(
+		MAX_MESSAGE_LENGTH == kLegacyMessageTextLength,
+		"message wire schema must match the runtime array count");
+	static_assert(
+		sizeof(SexyChar) == sizeof(std::uint8_t),
+		"legacy message adapter requires one-byte runtime characters");
+
+	if (theContext.mReading)
+	{
+		std::array<std::byte, kLegacyMessageRecordSize> aBytes{};
+		theContext.SyncBytes(
+			aBytes.data(),
+			static_cast<std::int32_t>(aBytes.size()));
+		if (theContext.mFailed)
+			return;
+
+		LegacyMessageState aState;
+		if (!DecodeLegacyMessageState(aBytes, aState))
+		{
+			theContext.mFailed = true;
+			return;
+		}
+
+		for (std::size_t anIndex = 0;
+			 anIndex < kLegacyMessageTextLength;
+			 ++anIndex)
+		{
+			theMessage.mLabel[anIndex] =
+				static_cast<SexyChar>(aState.mLabel[anIndex]);
+			theMessage.mTextReanimID[anIndex] =
+				static_cast<ReanimationID>(
+					aState.mTextReanimIds[anIndex]);
+			theMessage.mLabelNext[anIndex] =
+				static_cast<SexyChar>(aState.mLabelNext[anIndex]);
+		}
+		theMessage.mDisplayTime =
+			static_cast<int>(aState.mDisplayTime);
+		theMessage.mDuration = static_cast<int>(aState.mDuration);
+		theMessage.mMessageStyle =
+			static_cast<MessageStyle>(aState.mMessageStyle);
+		theMessage.mReanimType =
+			static_cast<ReanimationType>(aState.mReanimType);
+		theMessage.mSlideOffTime =
+			static_cast<int>(aState.mSlideOffTime);
+		theMessage.mMessageStyleNext =
+			static_cast<MessageStyle>(aState.mMessageStyleNext);
+		return;
+	}
+
+	LegacyMessageState aState;
+	for (std::size_t anIndex = 0;
+		 anIndex < kLegacyMessageTextLength;
+		 ++anIndex)
+	{
+		aState.mLabel[anIndex] = static_cast<std::uint8_t>(
+			static_cast<unsigned char>(theMessage.mLabel[anIndex]));
+		aState.mTextReanimIds[anIndex] =
+			static_cast<std::uint32_t>(
+				theMessage.mTextReanimID[anIndex]);
+		aState.mLabelNext[anIndex] = static_cast<std::uint8_t>(
+			static_cast<unsigned char>(
+				theMessage.mLabelNext[anIndex]));
+	}
+	aState.mDisplayTime =
+		static_cast<std::int32_t>(theMessage.mDisplayTime);
+	aState.mDuration =
+		static_cast<std::int32_t>(theMessage.mDuration);
+	aState.mMessageStyle =
+		static_cast<std::int32_t>(theMessage.mMessageStyle);
+	aState.mReanimType =
+		static_cast<std::int32_t>(theMessage.mReanimType);
+	aState.mSlideOffTime =
+		static_cast<std::int32_t>(theMessage.mSlideOffTime);
+	aState.mMessageStyleNext =
+		static_cast<std::int32_t>(theMessage.mMessageStyleNext);
+
+	auto aBytes = EncodeLegacyMessageState(aState);
+	theContext.SyncBytes(
+		aBytes.data(),
+		static_cast<std::int32_t>(aBytes.size()));
+}
+
+static LegacySeedPacketState CaptureSeedPacketState(
+	const SeedPacket& thePacket)
+{
+	return LegacySeedPacketState{
+		.mGameObject = CaptureGameObjectState(thePacket),
+		.mRefreshCounter =
+			static_cast<std::int32_t>(thePacket.mRefreshCounter),
+		.mRefreshTime =
+			static_cast<std::int32_t>(thePacket.mRefreshTime),
+		.mIndex = static_cast<std::int32_t>(thePacket.mIndex),
+		.mOffsetX = static_cast<std::int32_t>(thePacket.mOffsetX),
+		.mPacketType =
+			static_cast<std::int32_t>(thePacket.mPacketType),
+		.mImitaterType =
+			static_cast<std::int32_t>(thePacket.mImitaterType),
+		.mSlotMachineCountDown = static_cast<std::int32_t>(
+			thePacket.mSlotMachineCountDown),
+		.mSlotMachiningNextSeed = static_cast<std::int32_t>(
+			thePacket.mSlotMachiningNextSeed),
+		.mSlotMachiningPosition = thePacket.mSlotMachiningPosition,
+		.mActive = thePacket.mActive,
+		.mRefreshing = thePacket.mRefreshing,
+		.mTimesUsed =
+			static_cast<std::int32_t>(thePacket.mTimesUsed),
+	};
+}
+
+static void ApplySeedPacketState(
+	SeedPacket& thePacket,
+	const LegacySeedPacketState& theState)
+{
+	ApplyGameObjectState(thePacket, theState.mGameObject);
+	thePacket.mRefreshCounter =
+		static_cast<int>(theState.mRefreshCounter);
+	thePacket.mRefreshTime =
+		static_cast<int>(theState.mRefreshTime);
+	thePacket.mIndex = static_cast<int>(theState.mIndex);
+	thePacket.mOffsetX = static_cast<int>(theState.mOffsetX);
+	thePacket.mPacketType =
+		static_cast<SeedType>(theState.mPacketType);
+	thePacket.mImitaterType =
+		static_cast<SeedType>(theState.mImitaterType);
+	thePacket.mSlotMachineCountDown =
+		static_cast<int>(theState.mSlotMachineCountDown);
+	thePacket.mSlotMachiningNextSeed =
+		static_cast<SeedType>(theState.mSlotMachiningNextSeed);
+	thePacket.mSlotMachiningPosition =
+		theState.mSlotMachiningPosition;
+	thePacket.mActive = theState.mActive;
+	thePacket.mRefreshing = theState.mRefreshing;
+	thePacket.mTimesUsed = static_cast<int>(theState.mTimesUsed);
+}
+
+static void SyncSeedBankRecord(
+	SaveGameContext& theContext,
+	SeedBank& theSeedBank)
+{
+	static_assert(
+		SEEDBANK_MAX == kLegacySeedPacketCount,
+		"seed bank wire schema must match the runtime packet count");
+
+	if (theContext.mReading)
+	{
+		std::array<std::byte, kLegacySeedBankRecordSize> aBytes{};
+		theContext.SyncBytes(
+			aBytes.data(),
+			static_cast<std::int32_t>(aBytes.size()));
+		if (theContext.mFailed)
+			return;
+
+		LegacySeedBankState aState;
+		if (!DecodeLegacySeedBankState(aBytes, aState))
+		{
+			theContext.mFailed = true;
+			return;
+		}
+
+		ApplyGameObjectState(theSeedBank, aState.mGameObject);
+		theSeedBank.mNumPackets =
+			static_cast<int>(aState.mNumPackets);
+		for (std::size_t anIndex = 0;
+			 anIndex < kLegacySeedPacketCount;
+			 ++anIndex)
+		{
+			ApplySeedPacketState(
+				theSeedBank.mSeedPackets[anIndex],
+				aState.mSeedPackets[anIndex]);
+		}
+		theSeedBank.mCutSceneDarken =
+			static_cast<int>(aState.mCutSceneDarken);
+		theSeedBank.mConveyorBeltCounter =
+			static_cast<int>(aState.mConveyorBeltCounter);
+		return;
+	}
+
+	LegacySeedBankState aState;
+	aState.mGameObject = CaptureGameObjectState(theSeedBank);
+	aState.mNumPackets =
+		static_cast<std::int32_t>(theSeedBank.mNumPackets);
+	for (std::size_t anIndex = 0;
+		 anIndex < kLegacySeedPacketCount;
+		 ++anIndex)
+	{
+		aState.mSeedPackets[anIndex] =
+			CaptureSeedPacketState(
+				theSeedBank.mSeedPackets[anIndex]);
+	}
+	aState.mCutSceneDarken =
+		static_cast<std::int32_t>(theSeedBank.mCutSceneDarken);
+	aState.mConveyorBeltCounter =
+		static_cast<std::int32_t>(
+			theSeedBank.mConveyorBeltCounter);
+
+	auto aBytes = EncodeLegacySeedBankState(aState);
+	theContext.SyncBytes(
+		aBytes.data(),
+		static_cast<std::int32_t>(aBytes.size()));
+}
+
+static void SyncUnmigratedNativeBlock(
+	SaveGameContext& theContext,
+	void* theData,
+	std::size_t theByteCount)
+{
+	if (theByteCount >
+		static_cast<std::size_t>(
+			std::numeric_limits<std::int32_t>::max()))
+	{
+		theContext.mFailed = true;
+		return;
+	}
+	theContext.SyncBytes(
+		theData,
+		static_cast<std::int32_t>(theByteCount));
 }
 
 //0x4819D0
 void SyncBoard(SaveGameContext& theContext, Board* theBoard)
 {
-	// TODO test if gives sane results
-	size_t offset = size_t(&theBoard->mPaused) - size_t(theBoard);
-	theContext.SyncBytes(&theBoard->mPaused, sizeof(Board) - offset);
+	const auto* aBoardBytes =
+		reinterpret_cast<const std::byte*>(theBoard);
+	const auto* aPausedBytes =
+		reinterpret_cast<const std::byte*>(&theBoard->mPaused);
+	const auto anOffset = aPausedBytes - aBoardBytes;
+	if (anOffset < 0 ||
+		static_cast<std::size_t>(anOffset) > sizeof(Board))
+	{
+		theContext.mFailed = true;
+		return;
+	}
+	SyncUnmigratedNativeBlock(
+		theContext,
+		&theBoard->mPaused,
+		sizeof(Board) - static_cast<std::size_t>(anOffset));
 
 	SyncDataArray(theContext, theBoard->mZombies);													//0x482190
 	SyncDataArray(theContext, theBoard->mPlants);													//0x482280
@@ -402,29 +947,20 @@ void SyncBoard(SaveGameContext& theContext, Board* theBoard)
 		}
 	}
 
-	theContext.SyncBytes(theBoard->mCursorObject, sizeof(CursorObject));
-	theContext.SyncBytes(theBoard->mCursorPreview, sizeof(CursorPreview));
-	theContext.SyncBytes(theBoard->mAdvice, sizeof(MessageWidget));
-	theContext.SyncBytes(theBoard->mSeedBank, sizeof(SeedBank));
-	theContext.SyncBytes(theBoard->mChallenge, sizeof(Challenge));
-	theContext.SyncBytes(theBoard->mApp->mMusic, sizeof(Music));
+	SyncCursorObjectRecord(theContext, *theBoard->mCursorObject);
+	SyncCursorPreviewRecord(theContext, *theBoard->mCursorPreview);
+	SyncMessageRecord(theContext, *theBoard->mAdvice);
+	SyncSeedBankRecord(theContext, *theBoard->mSeedBank);
+	SyncUnmigratedNativeBlock(
+		theContext,
+		theBoard->mChallenge,
+		sizeof(Challenge));
+	SyncMusicRecord(theContext, *theBoard->mApp->mMusic);
 	
-	if (theContext.mReading)
-	{
-		if ((unsigned long)theContext.ByteLeftToRead() < 4)
-		{
-			theContext.mFailed = true;
-		}
-
-		if (theContext.mFailed || (unsigned int)theContext.mBuffer.ReadLong() != SAVE_FILE_MAGIC_NUMBER)
-		{
-			theContext.mFailed = true;
-		}
-	}
-	else
-	{
-		theContext.mBuffer.WriteLong(SAVE_FILE_MAGIC_NUMBER);
-	}
+	std::uint32_t aMarker = kLegacySaveMagic;
+	theContext.SyncUint(aMarker);
+	if (theContext.mReading && aMarker != kLegacySaveMagic)
+		theContext.mFailed = true;
 }
 
 //0x481CE0
@@ -501,17 +1037,32 @@ void FixBoardAfterLoad(Board* theBoard)
 // GOTY @Patoke: 0x48CBC0
 bool LawnLoadGame(Board* theBoard, const std::string& theFilePath)
 {
-	SaveGameContext aContext;
-	aContext.mFailed = false;
-	aContext.mReading = true;
-	if (!gSexyAppBase->ReadBufferFromFile(theFilePath, &aContext.mBuffer, false))
+	Buffer aBuffer;
+	if (!gSexyAppBase->ReadBufferFromFile(theFilePath, &aBuffer, false))
 	{
 		return false;
 	}
 
+	SaveGameContext aContext;
+	const int aBufferSize = aBuffer.GetDataLen();
+	if (aBufferSize < 0)
+	{
+		return false;
+	}
+	aContext.OpenRead(std::span<const std::byte>(
+		reinterpret_cast<const std::byte*>(aBuffer.GetDataPtr()),
+		static_cast<std::size_t>(aBufferSize)));
+
+	std::array<std::byte, kLegacySaveHeaderSize> aHeaderBytes{};
+	aContext.SyncBytes(
+		aHeaderBytes.data(),
+		static_cast<std::int32_t>(aHeaderBytes.size()));
 	SaveFileHeader aHeader;
-	aContext.SyncBytes(&aHeader, sizeof(aHeader));
-	if (aHeader.mMagicNumber != SAVE_FILE_MAGIC_NUMBER || aHeader.mBuildVersion != SAVE_FILE_VERSION || aHeader.mBuildDate != SAVE_FILE_DATE)
+	if (aContext.mFailed ||
+		!DecodeLegacySaveHeader(aHeaderBytes, aHeader) ||
+		aHeader.mMagicNumber != kLegacySaveMagic ||
+		aHeader.mBuildVersion != kLegacySaveVersion ||
+		aHeader.mBuildDate != SAVE_FILE_DATE)
 	{
 		return false;
 	}
@@ -532,15 +1083,27 @@ bool LawnLoadGame(Board* theBoard, const std::string& theFilePath)
 bool LawnSaveGame(Board* theBoard, const std::string& theFilePath)
 {
 	SaveGameContext aContext;
-	aContext.mFailed = false;
-	aContext.mReading = false;
+	aContext.OpenWrite();
 
 	SaveFileHeader aHeader;
-	aHeader.mMagicNumber = SAVE_FILE_MAGIC_NUMBER;
-	aHeader.mBuildVersion = SAVE_FILE_VERSION;
+	aHeader.mMagicNumber = kLegacySaveMagic;
+	aHeader.mBuildVersion = kLegacySaveVersion;
 	aHeader.mBuildDate = SAVE_FILE_DATE;
 
-	aContext.SyncBytes(&aHeader, sizeof(aHeader));
+	auto aHeaderBytes = EncodeLegacySaveHeader(aHeader);
+	aContext.SyncBytes(
+		aHeaderBytes.data(),
+		static_cast<std::int32_t>(aHeaderBytes.size()));
 	SyncBoard(aContext, theBoard);
-	return gSexyAppBase->WriteBufferToFile(theFilePath, &aContext.mBuffer);
+	if (aContext.mFailed)
+		return false;
+
+	const auto aBytes = aContext.GetWrittenBytes();
+	if (aBytes.size() > std::numeric_limits<unsigned long>::max())
+		return false;
+
+	return gSexyAppBase->WriteBytesToFile(
+		theFilePath,
+		aBytes.data(),
+		static_cast<unsigned long>(aBytes.size()));
 }

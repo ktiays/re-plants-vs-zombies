@@ -34,6 +34,49 @@ To play the game using this project you need to have access to the original game
   - [ ] Parse maps from files
   - [ ] Add scripting for custom sequences
 
+## Native portability renovation
+
+The native port is being developed on the `port` branch. Its architecture,
+phases, dependency rules, data-layout policy, and validation gates are defined
+in [docs/PORTING_PLAN.md](docs/PORTING_PLAN.md).
+
+The portable targets are intentionally independent from the reconstructed
+Win32 executable. On Windows, the legacy target remains enabled by default as a
+behavioral reference. On other platforms, only the portable engine, game, tools,
+and tests are enabled.
+
+Configure, build, and test the portable targets:
+
+```sh
+cmake -S . -B out/portable -G Ninja \
+  -DCMAKE_BUILD_TYPE=Debug \
+  -DPVZ_BUILD_PORTABLE_ENGINE=ON \
+  -DPVZ_BUILD_LEGACY_WINDOWS=OFF
+cmake --build out/portable
+ctest --test-dir out/portable --output-on-failure
+```
+
+Run the headless game contract:
+
+```sh
+./out/portable/game/pvz_game_headless
+```
+
+Validate a user-owned PopCap PAK without extracting it:
+
+```sh
+./out/portable/engine/pvz_pak_inspect /path/to/main.pak
+```
+
+Validate every source XML and reanimation definition in the PAK:
+
+```sh
+./out/portable/engine/pvz_pak_inspect \
+  /path/to/main.pak --validate-xml
+```
+
+Original game data is not part of this repository and must not be committed.
+
 ## Installation
 
 ### Visual Studio Community

@@ -1,6 +1,7 @@
 #ifndef __PROFILEMGR_H__
 #define __PROFILEMGR_H__
 
+#include <cstdint>
 #include <map>
 #include <string>
 #include "../../SexyAppFramework/Common.h"
@@ -14,8 +15,8 @@ class ProfileMgr
 {
 protected:
 	ProfileMap			mProfileMap;			//+0x4
-	unsigned long		mNextProfileId;			//+0x10
-	unsigned long		mNextProfileUseSeq;		//+0x14
+	std::uint32_t		mNextProfileId;			//+0x10
+	std::uint32_t		mNextProfileUseSeq;		//+0x14
 
 protected:
 	void				SyncState(DataSync& theSync);

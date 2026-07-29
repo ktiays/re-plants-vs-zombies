@@ -1,67 +1,74 @@
-cmake_minimum_required(VERSION 3.16.0 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.20 FATAL_ERROR)
 
-project(PlantsVsZombies C CXX)
+project(PlantsVsZombies LANGUAGES C CXX)
 
-################################################################################
-# Global configuration types
-################################################################################
-set(CMAKE_CONFIGURATION_TYPES
-    "Debug"
-    "Release"
-    CACHE STRING "List of supported configurations." FORCE
+option(
+    PVZ_BUILD_PORTABLE_ENGINE
+    "Build the platform-neutral engine API, core, and tests."
+    ON
+)
+option(
+    PVZ_BUILD_LEGACY_WINDOWS
+    "Build the reconstructed Win32/Direct3D game used as the parity reference."
+    ${WIN32}
 )
 
-set(CMAKE_CXX_STANDARD 23)
-
-# @Patoke todo: probably add MSVC counterparts?
-if(MSVC)
-    set(universal_compiler_flags "")
-else()
-    #set(universal_compiler_flags "-fsanitize=undefined -fsanitize-trap -pthread -fuse-ld=lld -fno-omit-frame-pointer -fstack-protector-all -fms-extensions -fdiagnostics-color=always -gdwarf-2 -O0")
-    set(universal_compiler_flags "-pthread -fuse-ld=lld -fms-extensions -march=native -fdiagnostics-color=always -O3")
-endif()
-set(universal_cxxflags "${CMAKE_CXX_FLAGS} ${universal_compiler_flags}")
-set(universal_cflags   "${CMAKE_C_FLAGS} ${universal_compiler_flags}")
-
-if(MSVC)
-    set(warn_flags "")
-else()
-    set(warn_flags "-Wall -Wextra -Werror")
+if(PVZ_BUILD_PORTABLE_ENGINE)
+    include(CTest)
+    add_subdirectory(engine)
+    add_subdirectory(game)
 endif()
 
-set(CMAKE_CXX_FLAGS "${universal_cxxflags} ${warn_flags}")
-set(CMAKE_C_FLAGS   "${universal_cflags} ${warn_flags}")
-set(CMAKE_BUILD_TYPE Debug)
-set(CMAKE_EXPORT_COMPILE_COMMANDS 1)
+if(PVZ_BUILD_LEGACY_WINDOWS)
+    if(NOT WIN32)
+        message(
+            FATAL_ERROR
+            "PVZ_BUILD_LEGACY_WINDOWS requires a Windows target toolchain."
+        )
+    endif()
 
-set(CMAKE_RC_COMPILER_INIT windres)
-ENABLE_LANGUAGE(RC)
+    set(
+        CMAKE_CONFIGURATION_TYPES
+        "Debug"
+        "Release"
+        CACHE STRING "List of supported configurations." FORCE
+    )
+    set(CMAKE_CXX_STANDARD 23)
+    set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-################################################################################
-# Nuget packages function stub.
-################################################################################
-function(use_package TARGET PACKAGE VERSION)
-    message(WARNING "No implementation of use_package. Create yours. "
-                    "Package \"${PACKAGE}\" with version \"${VERSION}\" "
-                    "for target \"${TARGET}\" is ignored!")
-endfunction()
+    # Preserve the reconstructed Windows target's current compiler settings while
+    # the legacy implementation is moved behind portable engine interfaces.
+    if(MSVC)
+        set(universal_compiler_flags "")
+        set(warn_flags "")
+    else()
+        set(
+            universal_compiler_flags
+            "-pthread -fuse-ld=lld -fms-extensions -march=native -fdiagnostics-color=always -O3"
+        )
+        set(warn_flags "-Wall -Wextra -Werror")
+    endif()
 
-################################################################################
-# Common utils
-################################################################################
-include(CMake/Utils.cmake)
+    set(universal_cxxflags "${CMAKE_CXX_FLAGS} ${universal_compiler_flags}")
+    set(universal_cflags "${CMAKE_C_FLAGS} ${universal_compiler_flags}")
+    set(CMAKE_CXX_FLAGS "${universal_cxxflags} ${warn_flags}")
+    set(CMAKE_C_FLAGS "${universal_cflags} ${warn_flags}")
+    set(CMAKE_BUILD_TYPE Debug)
+    set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-################################################################################
-# Additional Global Settings(add specific info there)
-################################################################################
-include(CMake/GlobalSettingsInclude.cmake OPTIONAL)
+    enable_language(RC)
 
-################################################################################
-# Use solution folders feature
-################################################################################
-set_property(GLOBAL PROPERTY USE_FOLDERS ON)
+    function(use_package TARGET PACKAGE VERSION)
+        message(
+            WARNING
+            "No implementation of use_package. Package \"${PACKAGE}\" "
+            "version \"${VERSION}\" for target \"${TARGET}\" is ignored."
+        )
+    endfunction()
 
-################################################################################
-# Sub-projects
-################################################################################
-add_subdirectory(SexyAppFramework)
+    include(CMake/Utils.cmake)
+    include(CMake/GlobalSettingsInclude.cmake OPTIONAL)
+    set_property(GLOBAL PROPERTY USE_FOLDERS ON)
+
+    add_subdirectory(SexyAppFramework)
+endif()

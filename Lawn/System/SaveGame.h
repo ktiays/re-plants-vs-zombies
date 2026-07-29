@@ -1,9 +1,11 @@
 #ifndef __SAVEGAMECONTEXT_H__
 #define __SAVEGAMECONTEXT_H__
 
+#include "LegacySaveFormat.h"
+
+#include <bit>
+#include <cstdint>
 #include <string>
-#include "../../Sexy.TodLib/TodList.h"
-#include "misc/Buffer.h"
 
 class Board;
 class Trail;
@@ -14,35 +16,43 @@ class TodParticleEmitter;
 class ReanimatorDefinition;
 class TodParticleDefinition;
 class TrailDefinition;
+struct TodAllocator;
+template <typename T> class TodList;
 namespace Sexy
 {
     class Image;
 }
 using namespace Sexy;
 
-struct SaveFileHeader
-{
-    unsigned int    mMagicNumber;
-    unsigned int    mBuildVersion;
-    unsigned int    mBuildDate;
-};
-
 class SaveGameContext
 {
 public:
-    Buffer          mBuffer;            //+0x0
-    bool            mFailed;            //+0x20
-    bool            mReading;           //+0x21
+    bool            mFailed{};
+    bool            mReading{};
 
 public:
-    inline int      ByteLeftToRead() { return (mBuffer.mDataBitSize - mBuffer.mReadBitPos + 7) / 8; }
-    void            SyncBytes(void* theDest, int theReadSize);
-    void            SyncInt(int& theInt);
-    inline void     SyncUint(unsigned int& theInt) { SyncInt((signed int&)theInt); }
+    void            OpenRead(std::span<const std::byte> theBytes);
+    void            OpenWrite();
+    [[nodiscard]] std::uint64_t ByteLeftToRead() const;
+    [[nodiscard]] std::span<const std::byte> GetWrittenBytes() const;
+    void            SyncBytes(void* theDest, std::int32_t theReadSize);
+    void            SyncInt(std::int32_t& theInt);
+    inline void     SyncUint(std::uint32_t& theInt)
+    {
+        std::int32_t aSignedValue{};
+        if (!mReading)
+            aSignedValue = std::bit_cast<std::int32_t>(theInt);
+        SyncInt(aSignedValue);
+        theInt = std::bit_cast<std::uint32_t>(aSignedValue);
+    }
     void            SyncReanimationDef(ReanimatorDefinition*& theDefinition);
     void            SyncParticleDef(TodParticleDefinition*& theDefinition);
     void            SyncTrailDef(TrailDefinition*& theDefinition);
     void            SyncImage(Image*& theImage);
+
+private:
+    LegacySaveReader mReader;
+    LegacySaveWriter mWriter;
 };
 
 void                SyncDataIDList(TodList<unsigned int>* theDataIDList, SaveGameContext& theContext, TodAllocator* theAllocator);
