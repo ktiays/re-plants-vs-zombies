@@ -17,6 +17,11 @@ option(
     "Build the SDL platform and Metal renderer application for macOS."
     OFF
 )
+option(
+    PVZ_BUILD_IMAGE_CODECS
+    "Build the portable PNG and JPEG image decoder."
+    ${PVZ_BUILD_MACOS_APP}
+)
 
 if(PVZ_BUILD_PORTABLE_ENGINE)
     include(CTest)

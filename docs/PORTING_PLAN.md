@@ -40,6 +40,11 @@ Last updated: 2026-07-30
   112 particle systems, and the trail definition in the supplied retail PAK
 - [x] Source parsing validated against all 261 XML and reanimation definitions
   in the supplied retail PAK: 971,910 nodes
+- [x] Portable PNG, JPEG, and GIF decoding to straight `BGRA8Unorm`,
+  validated against all 2,492 retail images: 56,362,124 pixels
+- [x] Portable `resources.xml` image mapping: extensionless path resolution,
+  fixed-width atlas metadata, shared generational handles, automatic companion
+  alpha images, explicit alpha images/grids, and alpha-only composition
 - [x] Versioned architecture-neutral XML definition document cache, round-trip
   validated against those 261 sources (23,424,177 encoded bytes)
 - [x] Legacy version-12 player profiles use fixed-width, fieldwise encoding
@@ -58,6 +63,9 @@ Last updated: 2026-07-30
   generational private textures, staged updates, a three-frame vertex ring,
   state batching, scissoring, transforms, mirroring, both legacy blend modes,
   and point/linear clamp/repeat sampling
+- [x] First retail visual path: the portable game resolves and renders
+  `IMAGE_TITLESCREEN` and alpha-composited `IMAGE_PVZ_LOGO` through engine
+  protocols when a user-owned PAK is mounted
 - [ ] Windows runtime parity baseline for the reconstructed legacy target
 - [ ] Migration of the remaining gameplay `Board`, `Challenge`, data-array, and
   effect snapshots from raw object blocks to fieldwise fixed-width schemas
@@ -65,9 +73,8 @@ Last updated: 2026-07-30
 - [ ] Existing Windows backend adapters
 - [ ] Complete SDL macOS platform backend (fullscreen, cursor, and lifecycle
   parity remain)
-- [ ] Complete Metal renderer (retail image decoding, untextured geometry,
-  text and pool paths, Direct3D parity tuning, and golden-image validation
-  remain)
+- [ ] Complete Metal renderer (untextured geometry, text and pool paths,
+  Direct3D parity tuning, and golden-image validation remain)
 - [ ] Native audio backend
 - [ ] Full gameplay parity and productization
 
@@ -326,7 +333,10 @@ play, and a Windows save fixture loads. Work proceeds in that dependency order.
 
 ## macOS developer entrypoint
 
-The current native slice requires CMake, Ninja, Xcode's macOS SDK, and SDL2.
+The current native slice requires CMake, Ninja, Xcode's macOS SDK, SDL2,
+libpng, libjpeg-turbo, and giflib. The codec libraries are isolated behind
+`IImageDecoder`; configure portable headless-only builds with
+`PVZ_BUILD_IMAGE_CODECS=OFF` when image decoding is not needed.
 Build and launch the app through the project-local entrypoint:
 
 ```sh
@@ -339,6 +349,11 @@ startup:
 ```sh
 PVZ_PAK_PATH=/path/to/main.pak ./script/build_and_run.sh
 ```
+
+With a retail PAK mounted, the portable game now resolves the title background
+and logo through `IImageResources` and submits them through the renderer
+protocol. The default headless build remains independent of the codec
+libraries and uses the null image-resource implementation.
 
 The procedural renderer validation scene is selected independently of the
 portable game and does not require retail data:

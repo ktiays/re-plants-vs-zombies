@@ -35,6 +35,7 @@ public:
     [[nodiscard]] virtual IResourceStore& GetResources() = 0;
     [[nodiscard]] virtual IXmlDocumentLoader& GetXmlDocuments() = 0;
     [[nodiscard]] virtual IImageStore& GetImages() = 0;
+    [[nodiscard]] virtual IImageResources& GetImageResources() = 0;
 };
 
 } // namespace pvz::engine

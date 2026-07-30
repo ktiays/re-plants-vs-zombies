@@ -11,6 +11,7 @@ add_library(
     STATIC
         core/src/ApplicationRunner.cpp
         core/src/BinaryStateIO.cpp
+        core/src/ImageResourceManager.cpp
         core/src/NullImageStore.cpp
         core/src/PakArchive.cpp
         core/src/PakResourceStore.cpp
@@ -26,6 +27,33 @@ target_include_directories(
 )
 target_link_libraries(pvz_engine_core PUBLIC pvz_engine_api)
 
+if(PVZ_BUILD_IMAGE_CODECS)
+    find_package(PNG REQUIRED)
+    find_package(JPEG REQUIRED)
+    find_package(GIF REQUIRED)
+
+    add_library(
+        pvz_image_codecs
+        STATIC
+            image/src/PortableImageDecoder.cpp
+    )
+    target_compile_features(pvz_image_codecs PUBLIC cxx_std_23)
+    target_include_directories(
+        pvz_image_codecs
+        PUBLIC
+            "${CMAKE_CURRENT_SOURCE_DIR}/image/include"
+    )
+    target_link_libraries(
+        pvz_image_codecs
+        PUBLIC
+            pvz_engine_api
+        PRIVATE
+            PNG::PNG
+            JPEG::JPEG
+            GIF::GIF
+    )
+endif()
+
 if(MSVC)
     target_compile_options(pvz_engine_core PRIVATE /W4 /WX /permissive-)
 else()
@@ -39,6 +67,26 @@ else()
             -Wsign-conversion
             -Werror
     )
+endif()
+
+if(TARGET pvz_image_codecs)
+    if(MSVC)
+        target_compile_options(
+            pvz_image_codecs
+            PRIVATE /W4 /WX /permissive-
+        )
+    else()
+        target_compile_options(
+            pvz_image_codecs
+            PRIVATE
+                -Wall
+                -Wextra
+                -Wpedantic
+                -Wconversion
+                -Wsign-conversion
+                -Werror
+        )
+    endif()
 endif()
 
 add_custom_target(
@@ -58,6 +106,16 @@ add_executable(
 )
 target_compile_features(pvz_pak_inspect PRIVATE cxx_std_23)
 target_link_libraries(pvz_pak_inspect PRIVATE pvz_engine_core)
+if(TARGET pvz_image_codecs)
+    target_compile_definitions(
+        pvz_pak_inspect
+        PRIVATE PVZ_HAS_IMAGE_CODECS=1
+    )
+    target_link_libraries(
+        pvz_pak_inspect
+        PRIVATE pvz_image_codecs
+    )
+endif()
 
 if(BUILD_TESTING)
     add_executable(
@@ -65,6 +123,7 @@ if(BUILD_TESTING)
         tests/BinaryStateIOTests.cpp
         tests/ApplicationRunnerTests.cpp
         tests/EngineApiContractTests.cpp
+        tests/ImageResourceManagerTests.cpp
         tests/PakArchiveTests.cpp
         tests/XmlDocumentTests.cpp
         tests/XmlPullParserTests.cpp
@@ -98,4 +157,44 @@ if(BUILD_TESTING)
             "-DPVZ_SOURCE_ROOT=${PROJECT_SOURCE_DIR}"
             -P "${PROJECT_SOURCE_DIR}/CMake/CheckPortableBoundaries.cmake"
     )
+
+    if(TARGET pvz_image_codecs)
+        add_executable(
+            pvz_image_codec_tests
+            tests/PortableImageDecoderTests.cpp
+        )
+        target_compile_features(
+            pvz_image_codec_tests
+            PRIVATE cxx_std_23
+        )
+        target_link_libraries(
+            pvz_image_codec_tests
+            PRIVATE
+                pvz_image_codecs
+                PNG::PNG
+                JPEG::JPEG
+                GIF::GIF
+        )
+        if(MSVC)
+            target_compile_options(
+                pvz_image_codec_tests
+                PRIVATE /W4 /WX /permissive-
+            )
+        else()
+            target_compile_options(
+                pvz_image_codec_tests
+                PRIVATE
+                    -Wall
+                    -Wextra
+                    -Wpedantic
+                    -Wconversion
+                    -Wsign-conversion
+                    -Werror
+            )
+        endif()
+        add_test(
+            NAME pvz_image_codec_tests
+            COMMAND pvz_image_codec_tests
+        )
+    endif()
 endif()

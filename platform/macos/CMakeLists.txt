@@ -4,6 +4,12 @@ find_library(PVZ_METAL_FRAMEWORK Metal REQUIRED)
 find_library(PVZ_QUARTZ_CORE_FRAMEWORK QuartzCore REQUIRED)
 find_library(PVZ_FOUNDATION_FRAMEWORK Foundation REQUIRED)
 find_program(PVZ_XCRUN_EXECUTABLE xcrun REQUIRED)
+if(NOT TARGET pvz_image_codecs)
+    message(
+        FATAL_ERROR
+        "PVZ_BUILD_MACOS_APP requires PVZ_BUILD_IMAGE_CODECS."
+    )
+endif()
 
 set(PVZ_METAL_LIBRARY "${CMAKE_CURRENT_BINARY_DIR}/PvzShaders.metallib")
 set(
@@ -91,6 +97,7 @@ target_link_libraries(
     PRIVATE
         pvz_game
         pvz_engine_core
+        pvz_image_codecs
         pvz_platform_sdl
         pvz_renderer_metal
         SDL2::SDL2

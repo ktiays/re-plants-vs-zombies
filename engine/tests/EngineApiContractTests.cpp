@@ -17,7 +17,10 @@ static_assert(sizeof(pvz::engine::ImageHandle) == 8);
 static_assert(
     std::is_trivially_copyable_v<pvz::engine::ImageHandle>);
 static_assert(std::has_virtual_destructor_v<pvz::engine::IGame>);
+static_assert(std::has_virtual_destructor_v<pvz::engine::IImageDecoder>);
 static_assert(std::has_virtual_destructor_v<pvz::engine::IImageStore>);
+static_assert(
+    std::has_virtual_destructor_v<pvz::engine::IImageResources>);
 static_assert(std::has_virtual_destructor_v<pvz::engine::IResourceStore>);
 static_assert(std::has_virtual_destructor_v<pvz::engine::IStateReader>);
 static_assert(std::has_virtual_destructor_v<pvz::engine::IStateWriter>);

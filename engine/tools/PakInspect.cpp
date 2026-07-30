@@ -2,10 +2,15 @@
 #include "pvz/engine/core/PakArchive.h"
 #include "pvz/engine/core/XmlDocument.h"
 
+#if defined(PVZ_HAS_IMAGE_CODECS)
+#include "pvz/engine/image/PortableImageDecoder.h"
+#endif
+
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <iostream>
+#include <limits>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -43,6 +48,15 @@ namespace
 {
     return EndsWithAsciiInsensitive(thePath, ".xml") ||
            EndsWithAsciiInsensitive(thePath, ".reanim");
+}
+
+[[nodiscard]] bool IsImageSource(std::string_view thePath)
+{
+    return EndsWithAsciiInsensitive(thePath, ".png") ||
+           EndsWithAsciiInsensitive(thePath, ".jpg") ||
+           EndsWithAsciiInsensitive(thePath, ".jpeg") ||
+           EndsWithAsciiInsensitive(thePath, ".tga") ||
+           EndsWithAsciiInsensitive(thePath, ".gif");
 }
 
 [[nodiscard]] std::string_view GetSourceLine(
@@ -197,6 +211,64 @@ namespace
     return true;
 }
 
+#if defined(PVZ_HAS_IMAGE_CODECS)
+[[nodiscard]] bool ValidateImageSources(
+    const pvz::engine::core::PakArchive& theArchive)
+{
+    pvz::engine::image::PortableImageDecoder aDecoder;
+    std::size_t aDecodedCount{};
+    std::size_t anUnsupportedCount{};
+    std::uint64_t aPixelCount{};
+    std::vector<std::byte> aBytes;
+    for (const auto& anEntry : theArchive.GetEntries())
+    {
+        if (!IsImageSource(anEntry.mPath))
+            continue;
+        if (!theArchive.ReadEntry(anEntry, aBytes))
+        {
+            std::cerr << anEntry.mPath << ": could not read entry\n";
+            return false;
+        }
+
+        pvz::engine::DecodedImage anImage;
+        pvz::engine::ImageDecodeError anError{};
+        if (!aDecoder.Decode(aBytes, anImage, anError))
+        {
+            if (anError ==
+                pvz::engine::ImageDecodeError::UnsupportedFormat)
+            {
+                ++anUnsupportedCount;
+                continue;
+            }
+            std::cerr
+                << anEntry.mPath
+                << ": image decode error "
+                << static_cast<std::uint32_t>(anError)
+                << '\n';
+            return false;
+        }
+        ++aDecodedCount;
+        const auto aPixels =
+            static_cast<std::uint64_t>(
+                anImage.mDescriptor.mSize.mWidth) *
+            anImage.mDescriptor.mSize.mHeight;
+        if (aPixels >
+            std::numeric_limits<std::uint64_t>::max() -
+                aPixelCount)
+        {
+            std::cerr << "decoded image pixel count overflows\n";
+            return false;
+        }
+        aPixelCount += aPixels;
+    }
+
+    std::cout << "decoded-images=" << aDecodedCount
+              << " unsupported-images=" << anUnsupportedCount
+              << " decoded-pixels=" << aPixelCount << '\n';
+    return true;
+}
+#endif
+
 } // namespace
 
 int main(int theArgumentCount, char** theArguments)
@@ -205,13 +277,25 @@ int main(int theArgumentCount, char** theArguments)
     {
         std::cerr
             << "usage: pvz_pak_inspect <path-to-main.pak> "
-               "[--validate-xml]\n";
+               "[--validate-xml|--list-images|"
+               "--print-resource-manifest|--validate-images]\n";
         return 2;
     }
-    const bool shouldValidateXml =
-        theArgumentCount == 3 &&
-        std::string_view(theArguments[2]) == "--validate-xml";
-    if (theArgumentCount == 3 && !shouldValidateXml)
+    const std::string_view anOption =
+        theArgumentCount == 3
+            ? std::string_view(theArguments[2])
+            : std::string_view{};
+    const bool shouldValidateXml = anOption == "--validate-xml";
+    const bool shouldListImages = anOption == "--list-images";
+    const bool shouldPrintResourceManifest =
+        anOption == "--print-resource-manifest";
+    const bool shouldValidateImages =
+        anOption == "--validate-images";
+    if (theArgumentCount == 3 &&
+        !shouldValidateXml &&
+        !shouldListImages &&
+        !shouldPrintResourceManifest &&
+        !shouldValidateImages)
     {
         std::cerr << "unknown option: " << theArguments[2] << '\n';
         return 2;
@@ -239,7 +323,39 @@ int main(int theArgumentCount, char** theArguments)
 
     std::cout << "resources.xml-bytes=" << aResourceManifest->mDataSize
               << '\n';
+    if (shouldListImages)
+    {
+        for (const auto& anEntry : anArchive.GetEntries())
+        {
+            if (IsImageSource(anEntry.mPath))
+                std::cout << anEntry.mPath << '\n';
+        }
+    }
+    if (shouldPrintResourceManifest)
+    {
+        std::vector<std::byte> aManifestBytes;
+        if (!anArchive.ReadEntry(
+                *aResourceManifest,
+                aManifestBytes))
+        {
+            std::cerr << "could not read properties/resources.xml\n";
+            return 1;
+        }
+        std::cout.write(
+            reinterpret_cast<const char*>(aManifestBytes.data()),
+            static_cast<std::streamsize>(aManifestBytes.size()));
+    }
     if (shouldValidateXml && !ValidateXmlSources(anArchive))
         return 1;
+    if (shouldValidateImages)
+    {
+#if defined(PVZ_HAS_IMAGE_CODECS)
+        if (!ValidateImageSources(anArchive))
+            return 1;
+#else
+        std::cerr << "image codecs are not enabled in this build\n";
+        return 1;
+#endif
+    }
     return 0;
 }

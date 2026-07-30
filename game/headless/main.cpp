@@ -48,6 +48,12 @@ public:
         return mImages;
     }
 
+    [[nodiscard]] pvz::engine::IImageResources&
+    GetImageResources() override
+    {
+        return mImageResources;
+    }
+
 private:
     class EmptyResourceStore final : public pvz::engine::IResourceStore
     {
@@ -103,6 +109,7 @@ private:
     EmptyResourceStore mResources;
     EmptyXmlDocumentLoader mXmlDocuments;
     pvz::engine::core::NullImageStore mImages;
+    pvz::engine::core::NullImageResources mImageResources;
 };
 
 class EmptyInputFrame final : public pvz::engine::IInputFrame

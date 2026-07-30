@@ -30,6 +30,8 @@ public:
 
 private:
     engine::IEngineServices* mServices{};
+    engine::ImageResource mTitleScreen;
+    engine::ImageResource mTitleLogo;
     engine::TickIndex mLastTick{};
     std::uint64_t mUpdateCount{};
     bool mInitialized{};

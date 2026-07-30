@@ -298,6 +298,12 @@ public:
         return mImages;
     }
 
+    [[nodiscard]] pvz::engine::IImageResources&
+    GetImageResources() override
+    {
+        return mImageResources;
+    }
+
     [[nodiscard]] const TestLogger& GetTestLogger() const
     {
         return mLogger;
@@ -308,6 +314,7 @@ private:
     EmptyResourceStore mResources;
     EmptyXmlDocumentLoader mDocuments;
     pvz::engine::core::NullImageStore mImages;
+    pvz::engine::core::NullImageResources mImageResources;
 };
 
 class TestGame final : public pvz::engine::IGame

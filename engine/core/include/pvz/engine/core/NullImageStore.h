@@ -1,6 +1,7 @@
 #pragma once
 
 #include "pvz/engine/Render.h"
+#include "pvz/engine/Resources.h"
 
 namespace pvz::engine::core
 {
@@ -20,6 +21,16 @@ public:
     [[nodiscard]] bool GetImageSize(
         ImageHandle theImage,
         SizeI& theSize) const override;
+};
+
+class NullImageResources final : public IImageResources
+{
+public:
+    [[nodiscard]] bool Load(
+        std::string_view theResourceId,
+        ImageResource& theResource,
+        ImageResourceDiagnostic& theDiagnostic) override;
+    void Release(ImageHandle theImage) override;
 };
 
 } // namespace pvz::engine::core

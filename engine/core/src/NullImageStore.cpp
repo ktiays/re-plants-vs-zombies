@@ -39,4 +39,22 @@ bool NullImageStore::GetImageSize(
     return false;
 }
 
+bool NullImageResources::Load(
+    std::string_view theResourceId,
+    ImageResource& theResource,
+    ImageResourceDiagnostic& theDiagnostic)
+{
+    static_cast<void>(theResourceId);
+    theResource = {};
+    theDiagnostic = {
+        .mError = ImageResourceError::ManifestNotLoaded,
+    };
+    return false;
+}
+
+void NullImageResources::Release(ImageHandle theImage)
+{
+    static_cast<void>(theImage);
+}
+
 } // namespace pvz::engine::core

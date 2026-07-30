@@ -1,5 +1,6 @@
 #include "pvz/game/GameModule.h"
 
+#include <array>
 #include <cstdint>
 
 namespace pvz::game
@@ -21,6 +22,25 @@ engine::LifecycleResult GameModule::Initialize(
     mServices = &theServices;
     mInitialized = true;
     mSuspended = false;
+    engine::ImageResourceDiagnostic aDiagnostic;
+    static_cast<void>(
+        mServices->GetImageResources().Load(
+            "IMAGE_TITLESCREEN",
+            mTitleScreen,
+            aDiagnostic));
+    static_cast<void>(
+        mServices->GetImageResources().Load(
+            "IMAGE_PVZ_LOGO",
+            mTitleLogo,
+            aDiagnostic));
+    if (mTitleScreen.mImage.IsValid())
+    {
+        mServices->GetLogger().Log(
+            engine::LogLevel::Information,
+            mTitleLogo.mImage.IsValid()
+                ? "Portable title and alpha-logo resources loaded"
+                : "Portable title resource loaded");
+    }
     mServices->GetLogger().Log(
         engine::LogLevel::Information,
         "Portable game module initialized");
@@ -45,6 +65,54 @@ void GameModule::Render(engine::IRenderFrame& theFrame) const
         return;
 
     theFrame.Clear(engine::ColorRgba8{0, 0, 0, 255});
+    if (!mTitleScreen.mImage.IsValid())
+        return;
+
+    std::array<engine::SpriteDraw, 2> aDraws;
+    std::size_t aDrawCount{};
+    aDraws[aDrawCount++] = {
+        .mImage = mTitleScreen.mImage,
+        .mSource =
+            {
+                .mOrigin = {0, 0},
+                .mSize = mTitleScreen.mSize,
+            },
+        .mDestination =
+            {
+                .mOrigin = {0.0F, 0.0F},
+                .mSize = {800.0F, 600.0F},
+            },
+        .mFilterMode = engine::FilterMode::Linear,
+    };
+    if (mTitleLogo.mImage.IsValid())
+    {
+        const float aLogoWidth =
+            static_cast<float>(mTitleLogo.mSize.mWidth);
+        const float aLogoHeight =
+            static_cast<float>(mTitleLogo.mSize.mHeight);
+        aDraws[aDrawCount++] = {
+            .mImage = mTitleLogo.mImage,
+            .mSource =
+                {
+                    .mOrigin = {0, 0},
+                    .mSize = mTitleLogo.mSize,
+                },
+            .mDestination =
+                {
+                    .mOrigin =
+                        {
+                            (800.0F - aLogoWidth) * 0.5F,
+                            20.0F,
+                        },
+                    .mSize = {aLogoWidth, aLogoHeight},
+                },
+            .mFilterMode = engine::FilterMode::Linear,
+        };
+    }
+    theFrame.SubmitSprites(
+        std::span<const engine::SpriteDraw>(
+            aDraws.data(),
+            aDrawCount));
 }
 
 bool GameModule::LoadState(engine::IStateReader& theReader)
@@ -105,6 +173,12 @@ void GameModule::Shutdown()
     mServices->GetLogger().Log(
         engine::LogLevel::Information,
         "Portable game module shut down");
+    if (mTitleLogo.mImage.IsValid())
+        mServices->GetImageResources().Release(mTitleLogo.mImage);
+    if (mTitleScreen.mImage.IsValid())
+        mServices->GetImageResources().Release(mTitleScreen.mImage);
+    mTitleLogo = {};
+    mTitleScreen = {};
     mServices = nullptr;
     mInitialized = false;
     mSuspended = false;

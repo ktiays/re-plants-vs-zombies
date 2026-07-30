@@ -1,6 +1,8 @@
 #include "pvz/engine/core/ApplicationRunner.h"
+#include "pvz/engine/core/ImageResourceManager.h"
 #include "pvz/engine/core/PakResourceStore.h"
 #include "pvz/engine/core/ResourceXmlDocumentLoader.h"
+#include "pvz/engine/image/PortableImageDecoder.h"
 #include "pvz/game/GameModule.h"
 #include "pvz/platform/macos/MetalRenderDevice.h"
 #include "pvz/platform/macos/RendererSmokeGame.h"
@@ -50,11 +52,13 @@ public:
         pvz::engine::ILogger& theLogger,
         pvz::engine::IResourceStore& theResources,
         pvz::engine::IXmlDocumentLoader& theDocuments,
-        pvz::engine::IImageStore& theImages)
+        pvz::engine::IImageStore& theImages,
+        pvz::engine::IImageResources& theImageResources)
         : mLogger(theLogger),
           mResources(theResources),
           mDocuments(theDocuments),
-          mImages(theImages)
+          mImages(theImages),
+          mImageResources(theImageResources)
     {
     }
 
@@ -79,11 +83,18 @@ public:
         return mImages;
     }
 
+    [[nodiscard]] pvz::engine::IImageResources&
+    GetImageResources() override
+    {
+        return mImageResources;
+    }
+
 private:
     pvz::engine::ILogger& mLogger;
     pvz::engine::IResourceStore& mResources;
     pvz::engine::IXmlDocumentLoader& mDocuments;
     pvz::engine::IImageStore& mImages;
+    pvz::engine::IImageResources& mImageResources;
 };
 
 } // namespace
@@ -146,11 +157,30 @@ int main(int theArgumentCount, char** theArguments)
         MacLogger aLogger;
         pvz::engine::core::ResourceXmlDocumentLoader aDocuments(
             aResources);
+        pvz::engine::image::PortableImageDecoder anImageDecoder;
+        pvz::engine::core::ImageResourceManager anImageResources(
+            aResources,
+            aDocuments,
+            anImageDecoder,
+            aRenderer);
+        if (aPakPath.has_value() &&
+            !anImageResources.LoadManifest(
+                "properties/resources.xml"))
+        {
+            std::cerr
+                << pvz::engine::core::GetImageManifestErrorMessage(
+                       anImageResources.GetManifestError())
+                << " at line "
+                << anImageResources.GetManifestErrorLine()
+                << '\n';
+            return 1;
+        }
         MacEngineServices aServices(
             aLogger,
             aResources,
             aDocuments,
-            aRenderer);
+            aRenderer,
+            anImageResources);
         pvz::game::GameModule aGame;
         pvz::platform::macos::RendererSmokeGame
             aRendererSmokeGame;
