@@ -21,6 +21,8 @@
 #include "os.h"
 #include "os_types.h"
 
+#include <stdlib.h>
+
 #include "asm_arm.h"
   
 #ifndef _V_WIDE_MATH
@@ -236,7 +238,5 @@ STIN ogg_int32_t VFLOAT_ADD(ogg_int32_t a,ogg_int32_t ap,
 }
 
 #endif
-
-
 
 

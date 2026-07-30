@@ -13,8 +13,10 @@ The game may depend only on the public engine API. It must not know whether an
 application uses SDL, Win32, Metal, Direct3D, BASS, or another backend.
 
 The existing Windows executable remains available as a parity reference while
-the boundary is extracted. The native macOS application will initially compose
-an SDL platform backend, a Metal renderer, and a native BASS audio backend.
+the boundary is extracted. The native macOS application initially composes an
+SDL platform backend, a Metal renderer, and a callback-driven SDL audio
+backend. Encoded formats remain isolated behind decoder interfaces so the
+backend can be replaced without changing game code.
 
 ## Current execution status
 
@@ -73,6 +75,22 @@ Last updated: 2026-07-30
   `IMAGE_TITLESCREEN` and alpha-composited `IMAGE_PVZ_LOGO` through engine
   protocols when a user-owned PAK is mounted, then lays out the loader label
   through `IFontResources` for the same Metal sprite path
+- [x] Fixed-width audio firewall: decoded PCM descriptors, sound and voice
+  handles, playback parameters, resource diagnostics, decoder/device
+  protocols, and the game-facing sound service expose no backend or
+  architecture-dependent integer types
+- [x] PAK-backed OGG sound effects through the bundled Tremor decoder, confined
+  behind a fixed-width adapter and validated against all 167 shipped OGG files:
+  88 mono, 79 stereo, and 428,871,145 microseconds of decoded audio
+- [x] Portable sound-manifest mapping, extensionless path resolution,
+  generational caching, reference counting, and headless behavior; the retail
+  manifest declares 168 sounds, of which 166 are loadable, while
+  `SOUND_DIAMOND` and `SOUND_TAPGLASS` reference files absent from the PAK
+- [x] Native macOS sound-effect playback: SDL float-stereo output, load-time
+  resampling, a bounded 32-voice callback mixer, volume, panning, pitch,
+  looping, master volume, and stale-handle rejection
+- [x] First retail audio path: the portable game loads and plays
+  `SOUND_LOADINGBAR_FLOWER` solely through `ISoundResources`
 - [ ] Windows runtime parity baseline for the reconstructed legacy target
 - [ ] Migration of the remaining gameplay `Board`, `Challenge`, data-array, and
   effect snapshots from raw object blocks to fieldwise fixed-width schemas
@@ -83,7 +101,7 @@ Last updated: 2026-07-30
 - [ ] Complete Metal renderer (untextured geometry, pool paths, Direct3D parity
   tuning, and golden-image validation remain; bitmap text now uses the shared
   sprite path)
-- [ ] Native audio backend
+- [x] Native sound-effect audio backend (MO3 module music remains)
 - [ ] Full gameplay parity and productization
 
 ## Non-negotiable architecture rules
@@ -111,9 +129,9 @@ convention.
 ```text
 pvz_app_macos ──┬── pvz_game
                 ├── pvz_engine_core
+                ├── pvz_audio_codecs
                 ├── pvz_platform_sdl
-                ├── pvz_renderer_metal
-                └── pvz_audio_bass
+                └── pvz_renderer_metal
 
 pvz_game ──────────> pvz_engine_api
 pvz_engine_core ───> pvz_engine_api
@@ -288,7 +306,8 @@ Exit gate:
 
 Deliverables:
 
-- Native macOS BASS integration or an approved open-source replacement.
+- Retain the open-source SDL/Tremor effect path and add an approved MO3 module
+  decoder, or isolate BASS behind the same fixed-width protocols.
 - PAK-backed OGG effects and MO3 music.
 - Pattern/order jumps, tempo, layered-track muting, focus, pause, volume, and
   panning parity.
@@ -300,6 +319,14 @@ Exit gate:
 
 - The content matrix passes on the supported macOS versions.
 - Long-running and repeated transition tests show no resource or audio leaks.
+
+Current partial result:
+
+- OGG effects are decoded through a fixed-width adapter and mixed by SDL.
+- MO3 music is intentionally not treated as an ordinary sound effect. The next
+  audio milestone must select or implement a module decoder that supports the
+  legacy order jumps and layered-track muting used by `mainmusic.mo3` and
+  `mainmusic_hihats.mo3`.
 
 ### Phase 7 — Productization
 
@@ -337,14 +364,17 @@ Every completed phase updates the following evidence:
 The first vertical slice is complete when the portable engine contracts and
 state codec build on macOS, the real PAK can be enumerated, XML definitions can
 load, a Metal window renders the title screen, one effect and one MO3 transition
-play, and a Windows save fixture loads. Work proceeds in that dependency order.
+play, and a Windows save fixture loads. The effect portion is now complete;
+MO3 transition playback and a verified Windows save fixture remain.
 
 ## macOS developer entrypoint
 
 The current native slice requires CMake, Ninja, Xcode's macOS SDK, SDL2,
-libpng, libjpeg-turbo, and giflib. The codec libraries are isolated behind
-`IImageDecoder`; configure portable headless-only builds with
-`PVZ_BUILD_IMAGE_CODECS=OFF` when image decoding is not needed.
+libpng, libjpeg-turbo, and giflib. Image and audio codecs are isolated behind
+`IImageDecoder` and `IAudioDecoder`; OGG decoding uses the repository's
+BSD-licensed Tremor source and adds no package dependency. Configure portable
+headless-only builds with `PVZ_BUILD_IMAGE_CODECS=OFF` and
+`PVZ_BUILD_AUDIO_CODECS=OFF` when those decoders are not needed.
 Build and launch the app through the project-local entrypoint:
 
 ```sh
@@ -364,7 +394,13 @@ logo through `IImageResources`, loads `FONT_BRIANNETOD16` through
 the renderer protocol. Font layout uses `char32_t` text and fixed-width
 metrics; it does not expose host `wchar_t` or native font APIs. The default
 headless build remains independent of the codec libraries and uses null image
-and font-resource implementations.
+font-, and sound-resource implementations.
+
+The same startup path resolves `SOUND_LOADINGBAR_FLOWER` through
+`ISoundResources`, decodes it through `IAudioDecoder`, uploads fixed-width
+signed 16-bit PCM through `IAudioDevice`, and queues it in the SDL callback
+mixer. Neither the game module nor the public engine API includes SDL or
+Tremor types.
 
 The PAK inspection tool can validate all shipped bitmap-font descriptors and
 their decoded atlases without extracting them:
@@ -372,6 +408,13 @@ their decoded atlases without extracting them:
 ```sh
 ./build/macos/engine/pvz_pak_inspect \
   /path/to/main.pak --validate-fonts
+```
+
+It can also audit every sound declaration and decode every shipped OGG file:
+
+```sh
+./build/macos/engine/pvz_pak_inspect \
+  /path/to/main.pak --validate-sounds
 ```
 
 The procedural renderer validation scene is selected independently of the

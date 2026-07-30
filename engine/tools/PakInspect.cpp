@@ -2,6 +2,12 @@
 #include "pvz/engine/core/PakArchive.h"
 #include "pvz/engine/core/XmlDocument.h"
 
+#if defined(PVZ_HAS_AUDIO_CODECS)
+#include "pvz/engine/audio/PortableAudioDecoder.h"
+#include "pvz/engine/core/ResourceXmlDocumentLoader.h"
+#include "pvz/engine/core/SoundResourceManager.h"
+#endif
+
 #if defined(PVZ_HAS_IMAGE_CODECS)
 #include "pvz/engine/core/BitmapFontResourceManager.h"
 #include "pvz/engine/core/ImageResourceManager.h"
@@ -62,6 +68,275 @@ namespace
            EndsWithAsciiInsensitive(thePath, ".tga") ||
            EndsWithAsciiInsensitive(thePath, ".gif");
 }
+
+[[nodiscard]] bool IsAudioSource(std::string_view thePath)
+{
+    return EndsWithAsciiInsensitive(thePath, ".wav") ||
+           EndsWithAsciiInsensitive(thePath, ".ogg") ||
+           EndsWithAsciiInsensitive(thePath, ".mo3") ||
+           EndsWithAsciiInsensitive(thePath, ".mp3");
+}
+
+#if defined(PVZ_HAS_AUDIO_CODECS)
+class AudioArchiveResourceStore final
+    : public pvz::engine::IResourceStore
+{
+public:
+    explicit AudioArchiveResourceStore(
+        const pvz::engine::core::PakArchive& theArchive)
+        : mArchive(theArchive)
+    {
+    }
+
+    [[nodiscard]] bool Contains(
+        std::string_view thePath) const override
+    {
+        return mArchive.FindEntry(thePath) != nullptr;
+    }
+
+    [[nodiscard]] bool GetSize(
+        std::string_view thePath,
+        std::uint64_t& theSize) const override
+    {
+        const auto* anEntry = mArchive.FindEntry(thePath);
+        if (anEntry == nullptr)
+            return false;
+        theSize = anEntry->mDataSize;
+        return true;
+    }
+
+    [[nodiscard]] bool ReadAll(
+        std::string_view thePath,
+        std::vector<std::byte>& theBytes) const override
+    {
+        return mArchive.ReadEntry(thePath, theBytes);
+    }
+
+private:
+    const pvz::engine::core::PakArchive& mArchive;
+};
+
+class ValidationAudioDevice final : public pvz::engine::IAudioDevice
+{
+public:
+    [[nodiscard]] bool CreateSound(
+        const pvz::engine::SoundDescriptor& theDescriptor,
+        std::span<const std::int16_t> theInterleavedSamples,
+        pvz::engine::SoundHandle& theSound) override
+    {
+        if (theDescriptor.mSampleRate == 0 ||
+            (theDescriptor.mChannelCount != 1 &&
+             theDescriptor.mChannelCount != 2) ||
+            theDescriptor.mFrameCount == 0 ||
+            theDescriptor.mFrameCount >
+                std::numeric_limits<std::uint64_t>::max() /
+                    theDescriptor.mChannelCount)
+        {
+            return false;
+        }
+        const auto aSampleCount =
+            theDescriptor.mFrameCount *
+            theDescriptor.mChannelCount;
+        if (aSampleCount != theInterleavedSamples.size() ||
+            mNextIndex ==
+                std::numeric_limits<std::uint32_t>::max())
+        {
+            return false;
+        }
+        theSound = {
+            .mIndex = mNextIndex++,
+            .mGeneration = 1,
+        };
+        return true;
+    }
+
+    void DestroySound(
+        pvz::engine::SoundHandle theSound) override
+    {
+        static_cast<void>(theSound);
+    }
+
+    [[nodiscard]] bool Play(
+        pvz::engine::SoundHandle theSound,
+        const pvz::engine::SoundPlayback& thePlayback,
+        pvz::engine::VoiceHandle& theVoice) override
+    {
+        static_cast<void>(theSound);
+        static_cast<void>(thePlayback);
+        theVoice = {};
+        return false;
+    }
+
+    void Stop(pvz::engine::VoiceHandle theVoice) override
+    {
+        static_cast<void>(theVoice);
+    }
+
+    void StopAll() override
+    {
+    }
+
+    [[nodiscard]] bool IsPlaying(
+        pvz::engine::VoiceHandle theVoice) const override
+    {
+        static_cast<void>(theVoice);
+        return false;
+    }
+
+    void SetMasterVolume(float theVolume) override
+    {
+        static_cast<void>(theVolume);
+    }
+
+private:
+    std::uint32_t mNextIndex{1};
+};
+
+[[nodiscard]] bool ValidateSoundSources(
+    const pvz::engine::core::PakArchive& theArchive)
+{
+    pvz::engine::audio::PortableAudioDecoder aDecoder;
+    AudioArchiveResourceStore aResources(theArchive);
+    pvz::engine::core::ResourceXmlDocumentLoader aDocuments(
+        aResources);
+    ValidationAudioDevice anAudioDevice;
+    pvz::engine::core::SoundResourceManager aSounds(
+        aResources,
+        aDocuments,
+        aDecoder,
+        anAudioDevice);
+    if (!aSounds.LoadManifest("properties/resources.xml"))
+    {
+        std::cerr
+            << pvz::engine::core::GetSoundManifestErrorMessage(
+                   aSounds.GetManifestError())
+            << " at line "
+            << aSounds.GetManifestErrorLine()
+            << '\n';
+        return false;
+    }
+
+    std::vector<pvz::engine::SoundResource> aLoadedSounds;
+    std::uint64_t aMissingResourceCount{};
+    const auto anIds = aSounds.GetDefinitionIds();
+    aLoadedSounds.reserve(anIds.size());
+    for (const auto& anId : anIds)
+    {
+        pvz::engine::SoundResource aSound;
+        pvz::engine::SoundResourceDiagnostic aDiagnostic;
+        if (!aSounds.Load(anId, aSound, aDiagnostic))
+        {
+            if (aDiagnostic.mError ==
+                pvz::engine::SoundResourceError::SourceNotFound)
+            {
+                ++aMissingResourceCount;
+                std::cerr
+                    << anId << ": manifest source is missing: "
+                    << aDiagnostic.mPath << '\n';
+                continue;
+            }
+            std::cerr
+                << anId << ": "
+                << pvz::engine::core::GetSoundResourceErrorMessage(
+                       aDiagnostic.mError);
+            if (aDiagnostic.mDecodeError !=
+                pvz::engine::SoundDecodeError::None)
+            {
+                std::cerr
+                    << ": "
+                    << pvz::engine::core::GetSoundDecodeErrorMessage(
+                           aDiagnostic.mDecodeError);
+            }
+            if (!aDiagnostic.mPath.empty())
+                std::cerr << ": " << aDiagnostic.mPath;
+            std::cerr << '\n';
+            return false;
+        }
+        aLoadedSounds.push_back(aSound);
+    }
+    for (const auto& aSound : aLoadedSounds)
+        aSounds.Release(aSound.mSound);
+
+    std::uint64_t aDecodedCount{};
+    std::uint64_t aFrameCount{};
+    std::uint64_t aDurationMicroseconds{};
+    std::uint64_t aMonoCount{};
+    std::uint64_t aStereoCount{};
+    std::vector<std::byte> aBytes;
+    for (const auto& anEntry : theArchive.GetEntries())
+    {
+        if (!EndsWithAsciiInsensitive(anEntry.mPath, ".ogg"))
+            continue;
+        if (!theArchive.ReadEntry(anEntry, aBytes))
+        {
+            std::cerr << anEntry.mPath << ": could not read entry\n";
+            return false;
+        }
+
+        pvz::engine::DecodedSound aSound;
+        pvz::engine::SoundDecodeError anError{};
+        if (!aDecoder.Decode(aBytes, aSound, anError))
+        {
+            std::cerr
+                << anEntry.mPath
+                << ": sound decode error "
+                << static_cast<std::uint32_t>(anError)
+                << '\n';
+            return false;
+        }
+        const auto& aDescriptor = aSound.mDescriptor;
+        if (aDescriptor.mFrameCount >
+                std::numeric_limits<std::uint64_t>::max() -
+                    aFrameCount ||
+            aDescriptor.mFrameCount >
+                std::numeric_limits<std::uint64_t>::max() /
+                    1'000'000)
+        {
+            std::cerr << "decoded sound duration overflows\n";
+            return false;
+        }
+        const auto aDuration =
+            aDescriptor.mFrameCount * 1'000'000 /
+            aDescriptor.mSampleRate;
+        if (aDuration >
+            std::numeric_limits<std::uint64_t>::max() -
+                aDurationMicroseconds)
+        {
+            std::cerr << "decoded sound duration overflows\n";
+            return false;
+        }
+
+        ++aDecodedCount;
+        aFrameCount += aDescriptor.mFrameCount;
+        aDurationMicroseconds += aDuration;
+        if (aDescriptor.mChannelCount == 1)
+            ++aMonoCount;
+        else if (aDescriptor.mChannelCount == 2)
+            ++aStereoCount;
+        else
+        {
+            std::cerr
+                << anEntry.mPath
+                << ": decoded unsupported channel count\n";
+            return false;
+        }
+    }
+
+    std::cout
+        << "sound-resources=" << anIds.size()
+        << " loadable-sound-resources="
+        << aLoadedSounds.size()
+        << " missing-sound-resources="
+        << aMissingResourceCount
+        << " decoded-sounds=" << aDecodedCount
+        << " mono=" << aMonoCount
+        << " stereo=" << aStereoCount
+        << " decoded-frames=" << aFrameCount
+        << " duration-microseconds=" << aDurationMicroseconds
+        << '\n';
+    return true;
+}
+#endif
 
 [[nodiscard]] std::string_view GetSourceLine(
     std::string_view theText,
@@ -483,8 +758,9 @@ int main(int theArgumentCount, char** theArguments)
         std::cerr
             << "usage: pvz_pak_inspect <path-to-main.pak> "
                "[--validate-xml|--list-images|"
+               "--list-audio|"
                "--print-resource-manifest|--validate-images|"
-               "--validate-fonts|"
+               "--validate-fonts|--validate-sounds|"
                "--print-entry <entry-path>]\n";
         return 2;
     }
@@ -494,12 +770,15 @@ int main(int theArgumentCount, char** theArguments)
             : std::string_view{};
     const bool shouldValidateXml = anOption == "--validate-xml";
     const bool shouldListImages = anOption == "--list-images";
+    const bool shouldListAudio = anOption == "--list-audio";
     const bool shouldPrintResourceManifest =
         anOption == "--print-resource-manifest";
     const bool shouldValidateImages =
         anOption == "--validate-images";
     const bool shouldValidateFonts =
         anOption == "--validate-fonts";
+    const bool shouldValidateSounds =
+        anOption == "--validate-sounds";
     const bool shouldPrintEntry =
         anOption == "--print-entry";
     if ((shouldPrintEntry && theArgumentCount != 4) ||
@@ -507,9 +786,11 @@ int main(int theArgumentCount, char** theArguments)
         (theArgumentCount >= 3 &&
         !shouldValidateXml &&
         !shouldListImages &&
+        !shouldListAudio &&
         !shouldPrintResourceManifest &&
         !shouldValidateImages &&
         !shouldValidateFonts &&
+        !shouldValidateSounds &&
         !shouldPrintEntry))
     {
         std::cerr << "invalid option or arguments";
@@ -563,6 +844,14 @@ int main(int theArgumentCount, char** theArguments)
                 std::cout << anEntry.mPath << '\n';
         }
     }
+    if (shouldListAudio)
+    {
+        for (const auto& anEntry : anArchive.GetEntries())
+        {
+            if (IsAudioSource(anEntry.mPath))
+                std::cout << anEntry.mPath << '\n';
+        }
+    }
     if (shouldPrintResourceManifest)
     {
         std::vector<std::byte> aManifestBytes;
@@ -596,6 +885,16 @@ int main(int theArgumentCount, char** theArguments)
             return 1;
 #else
         std::cerr << "image codecs are not enabled in this build\n";
+        return 1;
+#endif
+    }
+    if (shouldValidateSounds)
+    {
+#if defined(PVZ_HAS_AUDIO_CODECS)
+        if (!ValidateSoundSources(anArchive))
+            return 1;
+#else
+        std::cerr << "audio codecs are not enabled in this build\n";
         return 1;
 #endif
     }

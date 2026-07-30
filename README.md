@@ -84,6 +84,13 @@ Validate every encoded retail image or every bitmap-font descriptor and atlas:
   /path/to/main.pak --validate-fonts
 ```
 
+Validate the portable sound manifest and decode every shipped OGG effect:
+
+```sh
+./out/portable/engine/pvz_pak_inspect \
+  /path/to/main.pak --validate-sounds
+```
+
 Original game data is not part of this repository and must not be committed.
 
 ## Installation

@@ -79,6 +79,20 @@ engine::LifecycleResult GameModule::Initialize(
                 ? "Portable title and alpha-logo resources loaded"
                 : "Portable title resource loaded");
     }
+    engine::SoundResourceDiagnostic aSoundDiagnostic;
+    if (mServices->GetSoundResources().Load(
+            "SOUND_LOADINGBAR_FLOWER",
+            mLoadingSound,
+            aSoundDiagnostic) &&
+        mServices->GetSoundResources().Play(
+            mLoadingSound.mSound,
+            engine::SoundPlayback{},
+            mLoadingVoice))
+    {
+        mServices->GetLogger().Log(
+            engine::LogLevel::Information,
+            "Portable loading sound decoded and queued");
+    }
     mServices->GetLogger().Log(
         engine::LogLevel::Information,
         "Portable game module initialized");
@@ -219,8 +233,15 @@ void GameModule::Shutdown()
         mServices->GetImageResources().Release(mTitleScreen.mImage);
     if (mLoadingFont.mFont.IsValid())
         mServices->GetFontResources().Release(mLoadingFont.mFont);
+    if (mLoadingVoice.IsValid())
+        mServices->GetSoundResources().Stop(mLoadingVoice);
+    if (mLoadingSound.mSound.IsValid())
+        mServices->GetSoundResources().Release(
+            mLoadingSound.mSound);
     mLoadingTextSprites.clear();
     mLoadingFont = {};
+    mLoadingVoice = {};
+    mLoadingSound = {};
     mTitleLogo = {};
     mTitleScreen = {};
     mServices = nullptr;

@@ -3,10 +3,13 @@
 #include "pvz/engine/core/ImageResourceManager.h"
 #include "pvz/engine/core/PakResourceStore.h"
 #include "pvz/engine/core/ResourceXmlDocumentLoader.h"
+#include "pvz/engine/core/SoundResourceManager.h"
+#include "pvz/engine/audio/PortableAudioDecoder.h"
 #include "pvz/engine/image/PortableImageDecoder.h"
 #include "pvz/game/GameModule.h"
 #include "pvz/platform/macos/MetalRenderDevice.h"
 #include "pvz/platform/macos/RendererSmokeGame.h"
+#include "pvz/platform/macos/SdlAudioDevice.h"
 #include "pvz/platform/macos/SdlPlatform.h"
 
 #import <Foundation/Foundation.h>
@@ -55,13 +58,15 @@ public:
         pvz::engine::IXmlDocumentLoader& theDocuments,
         pvz::engine::IImageStore& theImages,
         pvz::engine::IImageResources& theImageResources,
-        pvz::engine::IFontResources& theFontResources)
+        pvz::engine::IFontResources& theFontResources,
+        pvz::engine::ISoundResources& theSoundResources)
         : mLogger(theLogger),
           mResources(theResources),
           mDocuments(theDocuments),
           mImages(theImages),
           mImageResources(theImageResources),
-          mFontResources(theFontResources)
+          mFontResources(theFontResources),
+          mSoundResources(theSoundResources)
     {
     }
 
@@ -98,6 +103,12 @@ public:
         return mFontResources;
     }
 
+    [[nodiscard]] pvz::engine::ISoundResources&
+    GetSoundResources() override
+    {
+        return mSoundResources;
+    }
+
 private:
     pvz::engine::ILogger& mLogger;
     pvz::engine::IResourceStore& mResources;
@@ -105,6 +116,7 @@ private:
     pvz::engine::IImageStore& mImages;
     pvz::engine::IImageResources& mImageResources;
     pvz::engine::IFontResources& mFontResources;
+    pvz::engine::ISoundResources& mSoundResources;
 };
 
 } // namespace
@@ -157,6 +169,13 @@ int main(int theArgumentCount, char** theArguments)
             return 1;
         }
 
+        pvz::platform::macos::SdlAudioDevice anAudioDevice;
+        if (!anAudioDevice.Initialize())
+        {
+            std::cerr << anAudioDevice.GetLastError() << '\n';
+            return 1;
+        }
+
         pvz::platform::macos::MetalRenderDevice aRenderer;
         if (!aRenderer.Initialize(aPlatform.GetMetalLayer()))
         {
@@ -168,6 +187,7 @@ int main(int theArgumentCount, char** theArguments)
         pvz::engine::core::ResourceXmlDocumentLoader aDocuments(
             aResources);
         pvz::engine::image::PortableImageDecoder anImageDecoder;
+        pvz::engine::audio::PortableAudioDecoder anAudioDecoder;
         pvz::engine::core::ImageResourceManager anImageResources(
             aResources,
             aDocuments,
@@ -202,13 +222,32 @@ int main(int theArgumentCount, char** theArguments)
                 << '\n';
             return 1;
         }
+        pvz::engine::core::SoundResourceManager
+            aSoundResources(
+                aResources,
+                aDocuments,
+                anAudioDecoder,
+                anAudioDevice);
+        if (aPakPath.has_value() &&
+            !aSoundResources.LoadManifest(
+                "properties/resources.xml"))
+        {
+            std::cerr
+                << pvz::engine::core::GetSoundManifestErrorMessage(
+                       aSoundResources.GetManifestError())
+                << " at line "
+                << aSoundResources.GetManifestErrorLine()
+                << '\n';
+            return 1;
+        }
         MacEngineServices aServices(
             aLogger,
             aResources,
             aDocuments,
             aRenderer,
             anImageResources,
-            aFontResources);
+            aFontResources,
+            aSoundResources);
         pvz::game::GameModule aGame;
         pvz::platform::macos::RendererSmokeGame
             aRendererSmokeGame;

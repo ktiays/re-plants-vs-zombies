@@ -45,6 +45,77 @@ private:
     std::uint32_t mMessageCount{};
 };
 
+class TestSoundResources final : public pvz::engine::ISoundResources
+{
+public:
+    [[nodiscard]] bool Load(
+        std::string_view theResourceId,
+        pvz::engine::SoundResource& theResource,
+        pvz::engine::SoundResourceDiagnostic& theDiagnostic) override
+    {
+        if (theResourceId != "SOUND_LOADINGBAR_FLOWER")
+            return false;
+        ++mLoadCount;
+        theResource = {
+            .mSound = {.mIndex = 9, .mGeneration = 1},
+            .mDescriptor =
+                {
+                    .mSampleRate = 44'100,
+                    .mChannelCount = 2,
+                    .mFrameCount = 100,
+                },
+        };
+        theDiagnostic = {};
+        return true;
+    }
+
+    void Release(pvz::engine::SoundHandle theSound) override
+    {
+        if (theSound.mIndex == 9 && theSound.mGeneration == 1)
+            ++mReleaseCount;
+    }
+
+    [[nodiscard]] bool Play(
+        pvz::engine::SoundHandle theSound,
+        const pvz::engine::SoundPlayback& thePlayback,
+        pvz::engine::VoiceHandle& theVoice) override
+    {
+        static_cast<void>(thePlayback);
+        if (theSound.mIndex != 9 || theSound.mGeneration != 1)
+            return false;
+        ++mPlayCount;
+        theVoice = {.mIndex = 4, .mGeneration = 2};
+        return true;
+    }
+
+    void Stop(pvz::engine::VoiceHandle theVoice) override
+    {
+        if (theVoice.mIndex == 4 && theVoice.mGeneration == 2)
+            ++mStopCount;
+    }
+
+    void StopAll() override
+    {
+    }
+
+    [[nodiscard]] bool IsPlaying(
+        pvz::engine::VoiceHandle theVoice) const override
+    {
+        static_cast<void>(theVoice);
+        return false;
+    }
+
+    void SetMasterVolume(float theVolume) override
+    {
+        static_cast<void>(theVolume);
+    }
+
+    std::uint32_t mLoadCount{};
+    std::uint32_t mPlayCount{};
+    std::uint32_t mStopCount{};
+    std::uint32_t mReleaseCount{};
+};
+
 class TestServices final : public pvz::engine::IEngineServices
 {
 public:
@@ -81,9 +152,20 @@ public:
         return mFontResources;
     }
 
+    [[nodiscard]] pvz::engine::ISoundResources&
+    GetSoundResources() override
+    {
+        return mSoundResources;
+    }
+
     [[nodiscard]] TestLogger& GetTestLogger()
     {
         return mLogger;
+    }
+
+    [[nodiscard]] TestSoundResources& GetTestSoundResources()
+    {
+        return mSoundResources;
     }
 
 private:
@@ -143,6 +225,7 @@ private:
     pvz::engine::core::NullImageStore mImages;
     pvz::engine::core::NullImageResources mImageResources;
     pvz::engine::core::NullFontResources mFontResources;
+    TestSoundResources mSoundResources;
 };
 
 class EmptyInputFrame final : public pvz::engine::IInputFrame
@@ -236,6 +319,10 @@ void TestLifecycleAndState()
         aGame.Initialize(aServices) == pvz::engine::LifecycleResult::Success,
         "game initializes");
     Expect(
+        aServices.GetTestSoundResources().mLoadCount == 1 &&
+            aServices.GetTestSoundResources().mPlayCount == 1,
+        "game loads and plays sound through engine protocol");
+    Expect(
         aGame.Initialize(aServices) == pvz::engine::LifecycleResult::Failure,
         "game rejects duplicate initialization");
 
@@ -283,8 +370,12 @@ void TestLifecycleAndState()
     aGame.Shutdown();
     Expect(!aGame.IsInitialized(), "shutdown clears initialized state");
     Expect(
-        aServices.GetTestLogger().GetMessageCount() == 2,
+        aServices.GetTestLogger().GetMessageCount() == 3,
         "lifecycle messages use engine logger");
+    Expect(
+        aServices.GetTestSoundResources().mStopCount == 1 &&
+            aServices.GetTestSoundResources().mReleaseCount == 1,
+        "game releases sound through engine protocol");
 
     pvz::engine::core::BinaryStateWriter anUninitializedWriter;
     Expect(
@@ -313,6 +404,7 @@ void TestInvalidSchemaIsTransactional()
     Expect(
         aGame.GetUpdateCount() == 0,
         "invalid schema does not modify update count");
+    aGame.Shutdown();
 }
 
 } // namespace

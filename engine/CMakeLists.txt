@@ -16,9 +16,11 @@ add_library(
         core/src/ImageResourceManager.cpp
         core/src/NullFontResources.cpp
         core/src/NullImageStore.cpp
+        core/src/NullSoundResources.cpp
         core/src/PakArchive.cpp
         core/src/PakResourceStore.cpp
         core/src/ResourceXmlDocumentLoader.cpp
+        core/src/SoundResourceManager.cpp
         core/src/XmlDocument.cpp
         core/src/XmlPullParser.cpp
 )
@@ -57,6 +59,57 @@ if(PVZ_BUILD_IMAGE_CODECS)
     )
 endif()
 
+if(PVZ_BUILD_AUDIO_CODECS)
+    # The legacy Tremor ABI is confined to pvz_tremor. Only the fixed-width
+    # adapter and engine audio protocol are visible to portable consumers.
+    add_library(
+        pvz_tremor
+        STATIC
+            "${PROJECT_SOURCE_DIR}/SexyAppFramework/ogg/bitwise.c"
+            "${PROJECT_SOURCE_DIR}/SexyAppFramework/ogg/block.c"
+            "${PROJECT_SOURCE_DIR}/SexyAppFramework/ogg/codebook.c"
+            "${PROJECT_SOURCE_DIR}/SexyAppFramework/ogg/floor0.c"
+            "${PROJECT_SOURCE_DIR}/SexyAppFramework/ogg/floor1.c"
+            "${PROJECT_SOURCE_DIR}/SexyAppFramework/ogg/framing.c"
+            "${PROJECT_SOURCE_DIR}/SexyAppFramework/ogg/info.c"
+            "${PROJECT_SOURCE_DIR}/SexyAppFramework/ogg/mapping0.c"
+            "${PROJECT_SOURCE_DIR}/SexyAppFramework/ogg/mdct.c"
+            "${PROJECT_SOURCE_DIR}/SexyAppFramework/ogg/registry.c"
+            "${PROJECT_SOURCE_DIR}/SexyAppFramework/ogg/res012.c"
+            "${PROJECT_SOURCE_DIR}/SexyAppFramework/ogg/sharedbook.c"
+            "${PROJECT_SOURCE_DIR}/SexyAppFramework/ogg/synthesis.c"
+            "${PROJECT_SOURCE_DIR}/SexyAppFramework/ogg/vorbisfile.c"
+            "${PROJECT_SOURCE_DIR}/SexyAppFramework/ogg/window.c"
+            "${PROJECT_SOURCE_DIR}/third_party/tremor_adapter/pvz_tremor_adapter.c"
+    )
+    target_include_directories(
+        pvz_tremor
+        PUBLIC
+            "${PROJECT_SOURCE_DIR}/third_party/tremor_adapter"
+        PRIVATE
+            "${PROJECT_SOURCE_DIR}/SexyAppFramework/ogg"
+    )
+
+    add_library(
+        pvz_audio_codecs
+        STATIC
+            audio/src/PortableAudioDecoder.cpp
+    )
+    target_compile_features(pvz_audio_codecs PUBLIC cxx_std_23)
+    target_include_directories(
+        pvz_audio_codecs
+        PUBLIC
+            "${CMAKE_CURRENT_SOURCE_DIR}/audio/include"
+    )
+    target_link_libraries(
+        pvz_audio_codecs
+        PUBLIC
+            pvz_engine_api
+        PRIVATE
+            pvz_tremor
+    )
+endif()
+
 if(MSVC)
     target_compile_options(pvz_engine_core PRIVATE /W4 /WX /permissive-)
 else()
@@ -81,6 +134,26 @@ if(TARGET pvz_image_codecs)
     else()
         target_compile_options(
             pvz_image_codecs
+            PRIVATE
+                -Wall
+                -Wextra
+                -Wpedantic
+                -Wconversion
+                -Wsign-conversion
+                -Werror
+        )
+    endif()
+endif()
+
+if(TARGET pvz_audio_codecs)
+    if(MSVC)
+        target_compile_options(
+            pvz_audio_codecs
+            PRIVATE /W4 /WX /permissive-
+        )
+    else()
+        target_compile_options(
+            pvz_audio_codecs
             PRIVATE
                 -Wall
                 -Wextra
@@ -119,6 +192,16 @@ if(TARGET pvz_image_codecs)
         PRIVATE pvz_image_codecs
     )
 endif()
+if(TARGET pvz_audio_codecs)
+    target_compile_definitions(
+        pvz_pak_inspect
+        PRIVATE PVZ_HAS_AUDIO_CODECS=1
+    )
+    target_link_libraries(
+        pvz_pak_inspect
+        PRIVATE pvz_audio_codecs
+    )
+endif()
 
 if(BUILD_TESTING)
     add_executable(
@@ -129,6 +212,7 @@ if(BUILD_TESTING)
         tests/EngineApiContractTests.cpp
         tests/ImageResourceManagerTests.cpp
         tests/PakArchiveTests.cpp
+        tests/SoundResourceManagerTests.cpp
         tests/XmlDocumentTests.cpp
         tests/XmlPullParserTests.cpp
     )
@@ -199,6 +283,42 @@ if(BUILD_TESTING)
         add_test(
             NAME pvz_image_codec_tests
             COMMAND pvz_image_codec_tests
+        )
+    endif()
+
+    if(TARGET pvz_audio_codecs)
+        add_executable(
+            pvz_audio_codec_tests
+            tests/PortableAudioDecoderTests.cpp
+        )
+        target_compile_features(
+            pvz_audio_codec_tests
+            PRIVATE cxx_std_23
+        )
+        target_link_libraries(
+            pvz_audio_codec_tests
+            PRIVATE pvz_audio_codecs
+        )
+        if(MSVC)
+            target_compile_options(
+                pvz_audio_codec_tests
+                PRIVATE /W4 /WX /permissive-
+            )
+        else()
+            target_compile_options(
+                pvz_audio_codec_tests
+                PRIVATE
+                    -Wall
+                    -Wextra
+                    -Wpedantic
+                    -Wconversion
+                    -Wsign-conversion
+                    -Werror
+            )
+        endif()
+        add_test(
+            NAME pvz_audio_codec_tests
+            COMMAND pvz_audio_codec_tests
         )
     endif()
 endif()

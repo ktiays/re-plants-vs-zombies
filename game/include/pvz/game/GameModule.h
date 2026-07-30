@@ -34,6 +34,8 @@ private:
     engine::ImageResource mTitleScreen;
     engine::ImageResource mTitleLogo;
     engine::FontResource mLoadingFont;
+    engine::SoundResource mLoadingSound;
+    engine::VoiceHandle mLoadingVoice;
     std::vector<engine::SpriteDraw> mLoadingTextSprites;
     engine::TickIndex mLastTick{};
     std::uint64_t mUpdateCount{};

@@ -22,6 +22,11 @@ option(
     "Build the portable PNG and JPEG image decoder."
     ${PVZ_BUILD_MACOS_APP}
 )
+option(
+    PVZ_BUILD_AUDIO_CODECS
+    "Build the portable Ogg Vorbis sound decoder."
+    ${PVZ_BUILD_MACOS_APP}
+)
 
 if(PVZ_BUILD_PORTABLE_ENGINE)
     include(CTest)

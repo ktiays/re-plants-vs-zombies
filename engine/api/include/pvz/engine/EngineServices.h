@@ -1,5 +1,6 @@
 #pragma once
 
+#include "pvz/engine/Audio.h"
 #include "pvz/engine/Font.h"
 #include "pvz/engine/Render.h"
 #include "pvz/engine/Resources.h"
@@ -38,6 +39,7 @@ public:
     [[nodiscard]] virtual IImageStore& GetImages() = 0;
     [[nodiscard]] virtual IImageResources& GetImageResources() = 0;
     [[nodiscard]] virtual IFontResources& GetFontResources() = 0;
+    [[nodiscard]] virtual ISoundResources& GetSoundResources() = 0;
 };
 
 } // namespace pvz::engine

@@ -10,6 +10,12 @@ if(NOT TARGET pvz_image_codecs)
         "PVZ_BUILD_MACOS_APP requires PVZ_BUILD_IMAGE_CODECS."
     )
 endif()
+if(NOT TARGET pvz_audio_codecs)
+    message(
+        FATAL_ERROR
+        "PVZ_BUILD_MACOS_APP requires PVZ_BUILD_AUDIO_CODECS."
+    )
+endif()
 
 set(PVZ_METAL_LIBRARY "${CMAKE_CURRENT_BINARY_DIR}/PvzShaders.metallib")
 set(
@@ -37,6 +43,7 @@ add_custom_target(pvz_metal_shaders DEPENDS "${PVZ_METAL_LIBRARY}")
 add_library(
     pvz_platform_sdl
     STATIC
+        src/SdlAudioDevice.cpp
         src/SdlPlatform.cpp
 )
 target_compile_features(pvz_platform_sdl PUBLIC cxx_std_23)
@@ -96,6 +103,7 @@ target_link_libraries(
     pvz_app_macos
     PRIVATE
         pvz_game
+        pvz_audio_codecs
         pvz_engine_core
         pvz_image_codecs
         pvz_platform_sdl
