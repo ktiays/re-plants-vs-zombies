@@ -3,6 +3,7 @@
 #include "pvz/engine/core/NullImageStore.h"
 #include "pvz/game/GameModule.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
@@ -378,6 +379,16 @@ private:
 class EmptyInputFrame final : public pvz::engine::IInputFrame
 {
 public:
+    void PressKey(pvz::engine::KeyCode theKey)
+    {
+        mPressedKeys[static_cast<std::size_t>(theKey)] = true;
+    }
+
+    void Clear()
+    {
+        mPressedKeys.fill(false);
+    }
+
     [[nodiscard]] bool IsKeyDown(
         pvz::engine::KeyCode theKey) const override
     {
@@ -388,8 +399,7 @@ public:
     [[nodiscard]] bool WasKeyPressed(
         pvz::engine::KeyCode theKey) const override
     {
-        static_cast<void>(theKey);
-        return false;
+        return mPressedKeys[static_cast<std::size_t>(theKey)];
     }
 
     [[nodiscard]] bool IsPointerButtonDown(
@@ -416,6 +426,12 @@ public:
     {
         return {};
     }
+
+private:
+    std::array<
+        bool,
+        static_cast<std::size_t>(pvz::engine::KeyCode::Count)>
+        mPressedKeys{};
 };
 
 class TestRenderFrame final : public pvz::engine::IRenderFrame
@@ -513,7 +529,7 @@ void TestLifecycleAndState()
 
     pvz::engine::core::BinaryStateWriter aWriter;
     Expect(aGame.SaveState(aWriter), "initialized game saves state");
-    Expect(aWriter.GetBytesWritten() == 23, "state schema has stable size");
+    Expect(aWriter.GetBytesWritten() == 39, "state schema has stable size");
 
     TestServices aRestoredServices;
     pvz::game::GameModule aRestoredGame;
@@ -529,6 +545,9 @@ void TestLifecycleAndState()
     Expect(
         aRestoredGame.GetUpdateCount() == aGame.GetUpdateCount(),
         "update count round-trips");
+    Expect(
+        aRestoredGame.GetScene() == pvz::game::GameScene::Title,
+        "portable game flow state round-trips");
 
     aGame.Shutdown();
     Expect(!aGame.IsInitialized(), "shutdown clears initialized state");
@@ -574,11 +593,88 @@ void TestInvalidSchemaIsTransactional()
     aGame.Shutdown();
 }
 
+void TestSceneMusicTransitions()
+{
+    TestServices aServices;
+    EmptyInputFrame anInput;
+    pvz::game::GameModule aGame;
+    Expect(
+        aGame.Initialize(aServices) ==
+            pvz::engine::LifecycleResult::Success,
+        "scene music game initializes");
+
+    anInput.PressKey(pvz::engine::KeyCode::Enter);
+    aGame.Update(pvz::engine::GameTick{0}, anInput);
+    anInput.Clear();
+    Expect(
+        aGame.GetScene() == pvz::game::GameScene::MainMenu &&
+            aServices.GetTestMusicResources().mPlayCount == 1,
+        "title music continues into main menu");
+
+    anInput.PressKey(pvz::engine::KeyCode::Enter);
+    aGame.Update(pvz::engine::GameTick{1}, anInput);
+    anInput.Clear();
+    Expect(
+        aGame.GetScene() ==
+                pvz::game::GameScene::StartingAdventure &&
+            aServices.GetTestMusicResources().mStopCount == 1,
+        "adventure transition stops title music");
+
+    for (pvz::engine::TickIndex aTick = 2; aTick < 62; ++aTick)
+        aGame.Update(pvz::engine::GameTick{aTick}, anInput);
+    Expect(
+        aGame.GetScene() == pvz::game::GameScene::AdventureDay &&
+            aServices.GetTestMusicResources().mPlayCount == 2 &&
+            aServices.GetTestMusicResources()
+                    .mPlayback.mPosition.mOrder == 0,
+        "day board starts adventure music order");
+
+    anInput.PressKey(pvz::engine::KeyCode::Space);
+    aGame.Update(pvz::engine::GameTick{62}, anInput);
+    anInput.Clear();
+    pvz::engine::core::BinaryStateWriter aWriter;
+    Expect(
+        aGame.SaveState(aWriter),
+        "interactive board state saves");
+
+    TestServices aRestoredServices;
+    pvz::game::GameModule aRestoredGame;
+    Expect(
+        aRestoredGame.Initialize(aRestoredServices) ==
+            pvz::engine::LifecycleResult::Success,
+        "interactive state restore game initializes");
+    pvz::engine::core::BinaryStateReader aReader(aWriter.GetBytes());
+    Expect(
+        aRestoredGame.LoadState(aReader) &&
+            aRestoredGame.GetScene() ==
+                pvz::game::GameScene::AdventureDay &&
+            aRestoredGame.GetFlowState().mOccupiedCells == 1,
+        "versioned module state restores board flow");
+    Expect(
+        aRestoredServices.GetTestMusicResources()
+                .mPlayback.mPosition.mOrder == 0,
+        "state restore synchronizes adventure music");
+
+    anInput.PressKey(pvz::engine::KeyCode::Escape);
+    aGame.Update(pvz::engine::GameTick{63}, anInput);
+    anInput.Clear();
+    Expect(
+        aGame.GetScene() == pvz::game::GameScene::MainMenu &&
+            aServices.GetTestMusicResources().mPlayCount == 3 &&
+            aServices.GetTestMusicResources()
+                    .mPlayback.mPosition.mOrder == 0x98,
+        "escape restores title music in main menu");
+
+    aRestoredGame.Shutdown();
+    aGame.Shutdown();
+}
+
 } // namespace
 
 void RunLegacyDataSyncTests();
 void RunLegacySaveFormatTests();
 void RunDefinitionLoaderTests();
+void RunGameFlowTests();
 void RunPlayerInfoSerializationTests();
 void RunReanimationDefinitionTests();
 void RunParameterTrackTests();
@@ -589,6 +685,8 @@ int main()
 {
     TestLifecycleAndState();
     TestInvalidSchemaIsTransactional();
+    TestSceneMusicTransitions();
+    RunGameFlowTests();
     RunLegacyDataSyncTests();
     RunLegacySaveFormatTests();
     RunDefinitionLoaderTests();

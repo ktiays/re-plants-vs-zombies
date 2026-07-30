@@ -109,6 +109,21 @@ looping, and float-stereo rendering:
 
 Original game data is not part of this repository and must not be committed.
 
+### Current native interaction slice
+
+The macOS application now provides a portable, input-driven path from the
+title screen to a main menu and then to the first daytime lawn scene. Adventure
+is the currently enabled mode; Minigames, Puzzle, and Survival remain visible
+but report that their gameplay is still being ported. This is an engine and
+game-flow milestone, not yet a complete playable Plants vs. Zombies level.
+
+- Press Enter, Space, or click to leave the title screen.
+- Use the arrow keys or pointer to select a menu item.
+- Select Adventure to enter the daytime lawn.
+- Click a lawn cell, or use the arrow keys and Enter/Space, to toggle the
+  current placeholder placement marker.
+- Press Escape on the lawn to return to the menu.
+
 ## Installation
 
 ### Visual Studio Community

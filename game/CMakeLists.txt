@@ -36,6 +36,7 @@ add_library(
     STATIC
         ../Lawn/System/LegacySaveFormat.cpp
         src/DefinitionLoader.cpp
+        src/GameFlow.cpp
         src/GameModule.cpp
         src/ParameterTrack.cpp
         src/ParticleDefinition.cpp
@@ -117,6 +118,7 @@ if(BUILD_TESTING)
         pvz_game_tests
         tests/GameModuleTests.cpp
         tests/DefinitionLoaderTests.cpp
+        tests/GameFlowTests.cpp
         tests/LegacyDataSyncTests.cpp
         tests/LegacySaveFormatTests.cpp
         tests/ParameterTrackTests.cpp

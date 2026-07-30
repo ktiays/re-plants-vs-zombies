@@ -1,8 +1,11 @@
 #pragma once
 
 #include "pvz/engine/Game.h"
+#include "pvz/game/GameFlow.h"
 
+#include <array>
 #include <cstdint>
+#include <string_view>
 #include <vector>
 
 namespace pvz::game
@@ -28,16 +31,40 @@ public:
     [[nodiscard]] bool IsSuspended() const;
     [[nodiscard]] engine::TickIndex GetLastTick() const;
     [[nodiscard]] std::uint64_t GetUpdateCount() const;
+    [[nodiscard]] GameScene GetScene() const;
+    [[nodiscard]] GameFlowState GetFlowState() const;
 
 private:
+    void RebuildUiText();
+    void AppendCenteredText(
+        std::u32string_view theText,
+        float theBaseline,
+        engine::ColorRgba8 theColor);
+    void HandleSceneChange(
+        GameScene thePreviousScene,
+        GameScene theCurrentScene);
+    [[nodiscard]] bool PlayMusicAt(std::uint32_t theOrder);
+    void SynchronizeMusic();
+    void RenderTitle(engine::IRenderFrame& theFrame) const;
+    void RenderMenu(
+        engine::IRenderFrame& theFrame,
+        bool theStartingAdventure) const;
+    void RenderAdventureDay(engine::IRenderFrame& theFrame) const;
+
     engine::IEngineServices* mServices{};
+    GameFlow mFlow;
     engine::ImageResource mTitleScreen;
     engine::ImageResource mTitleLogo;
-    engine::FontResource mLoadingFont;
+    engine::ImageResource mDayBackground;
+    engine::ImageResource mSeedBank;
+    std::array<engine::ImageResource, 4> mMenuButtons;
+    std::array<engine::ImageResource, 4> mMenuButtonHighlights;
+    engine::ImageHandle mWhitePixel;
+    engine::FontResource mUiFont;
     engine::SoundResource mLoadingSound;
     engine::VoiceHandle mLoadingVoice;
     engine::MusicResource mTitleMusic;
-    std::vector<engine::SpriteDraw> mLoadingTextSprites;
+    std::vector<engine::SpriteDraw> mUiTextSprites;
     engine::TickIndex mLastTick{};
     std::uint64_t mUpdateCount{};
     bool mInitialized{};

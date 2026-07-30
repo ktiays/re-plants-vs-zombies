@@ -73,8 +73,17 @@ Last updated: 2026-07-30
   and point/linear clamp/repeat sampling
 - [x] First retail visual path: the portable game resolves and renders
   `IMAGE_TITLESCREEN` and alpha-composited `IMAGE_PVZ_LOGO` through engine
-  protocols when a user-owned PAK is mounted, then lays out the loader label
-  through `IFontResources` for the same Metal sprite path
+  protocols when a user-owned PAK is mounted, then lays out title and
+  interaction labels through `IFontResources` for the same Metal sprite path
+- [x] Portable input-driven game flow: title activation, keyboard/pointer menu
+  selection, unavailable-mode feedback, a fixed-duration Adventure transition,
+  and an interactive 9-by-5 daytime lawn scaffold use only engine protocols
+- [x] Retail menu and lawn rendering through Metal: static selector button
+  layers, `IMAGE_BACKGROUND1`, `IMAGE_SEEDBANK`, tinted placement markers, and
+  selection outlines are expressed solely as ordinary engine sprite draws
+- [x] Version-2 portable game state persists scene, menu, transition, notice,
+  grid selection, and the 45-cell occupancy bitset through explicit
+  fixed-width fields; version-1 state remains readable
 - [x] Fixed-width audio firewall: decoded PCM descriptors, sound and voice
   handles, playback parameters, resource diagnostics, decoder/device
   protocols, and the game-facing sound service expose no backend or
@@ -103,8 +112,9 @@ Last updated: 2026-07-30
   interactive channel controls, seek correctly, and render finite non-silent
   48 kHz stereo samples
 - [x] First retail music transition: the portable game starts
-  `mainmusic.mo3` at the legacy title-theme order `0x98`, then pauses, resumes,
-  stops, and releases it solely through `IMusicResources`
+  `mainmusic.mo3` at the legacy title-theme order `0x98`, stops it during the
+  Adventure transition, starts the daytime music at order zero, and restores
+  the title music when returning to the menu solely through `IMusicResources`
 - [ ] Windows runtime parity baseline for the reconstructed legacy target
 - [ ] Migration of the remaining gameplay `Board`, `Challenge`, data-array, and
   effect snapshots from raw object blocks to fieldwise fixed-width schemas
@@ -411,10 +421,21 @@ PVZ_PAK_PATH=/path/to/main.pak ./script/build_and_run.sh
 With a retail PAK mounted, the portable game resolves the title background and
 logo through `IImageResources`, loads `FONT_BRIANNETOD16` through
 `IFontResources`, and submits both images and generated glyph sprites through
-the renderer protocol. Font layout uses `char32_t` text and fixed-width
+the renderer protocol. The same game module advances to a selector menu using
+the shipped static button layers and then to the daytime lawn using
+`IMAGE_BACKGROUND1` and `IMAGE_SEEDBANK`. Selection and placeholder placement
+overlays use an engine-created one-pixel texture, so the game remains unaware
+of Metal texture objects. Font layout uses `char32_t` text and fixed-width
 metrics; it does not expose host `wchar_t` or native font APIs. The default
 headless build remains independent of the codec libraries and uses null image-,
 font-, sound-, and music-resource implementations.
+
+The current controls are Enter, Space, or primary click on the title; arrow
+keys or pointer selection in the menu; and pointer or arrow-key selection plus
+Enter/Space on the lawn. Escape returns from the lawn to the menu. Adventure is
+the only enabled mode in this slice. The lawn cell markers validate portable
+input, state, resource, and rendering ownership; plants, zombies, sun economy,
+waves, and win/loss rules remain later gameplay-porting work.
 
 The same startup path resolves `SOUND_LOADINGBAR_FLOWER` through
 `ISoundResources`, decodes it through `IAudioDecoder`, uploads fixed-width
