@@ -1,5 +1,7 @@
 #include "pvz/game/GameFlow.h"
 
+#include "pvz/game/BoardGeometry.h"
+
 #include <array>
 #include <cstddef>
 
@@ -217,19 +219,10 @@ engine::RectI GameFlow::GetGridCellRect(
     std::uint8_t theColumn,
     std::uint8_t theRow)
 {
-    if (theColumn >= kBoardColumnCount ||
-        theRow >= kBoardRowCount)
-    {
-        return {};
-    }
-    return {
-        .mOrigin =
-            {
-                40 + static_cast<std::int32_t>(theColumn) * 80,
-                80 + static_cast<std::int32_t>(theRow) * 85,
-            },
-        .mSize = {80, 85},
-    };
+    return BoardGeometry::GetCellRect(
+        BoardStageLayout::Day,
+        theColumn,
+        theRow);
 }
 
 void GameFlow::UpdateTitle(
@@ -359,17 +352,16 @@ void GameFlow::SelectGridCell(
     engine::PointI thePosition,
     bool theToggle)
 {
-    if (thePosition.mX < 40 ||
-        thePosition.mX >= 760 ||
-        thePosition.mY < 80 ||
-        thePosition.mY >= 505)
+    GridCoordinate aCoordinate;
+    if (!BoardGeometry::TryPixelToGrid(
+            BoardStageLayout::Day,
+            thePosition,
+            aCoordinate))
     {
         return;
     }
-    mState.mGridColumn = static_cast<std::uint8_t>(
-        (thePosition.mX - 40) / 80);
-    mState.mGridRow = static_cast<std::uint8_t>(
-        (thePosition.mY - 80) / 85);
+    mState.mGridColumn = aCoordinate.mColumn;
+    mState.mGridRow = aCoordinate.mRow;
     if (theToggle)
         ToggleSelectedGridCell();
 }

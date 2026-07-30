@@ -79,6 +79,9 @@ Last updated: 2026-07-30
 - [x] Portable input-driven game flow: title activation, keyboard/pointer menu
   selection, unavailable-mode feedback, a fixed-duration Adventure transition,
   and an interactive 9-by-5 daytime lawn scaffold use only engine protocols
+- [x] Local reference-first parity harness: independent, revisioned legacy
+  board fixtures exhaustively cover day, pool, and roof geometry, pointer
+  mapping, background cropping, and engine-neutral selection render commands
 - [x] Retail menu and lawn rendering through Metal: static selector button
   layers, `IMAGE_BACKGROUND1`, `IMAGE_SEEDBANK`, animated Peashooters, fallback
   placement markers, and selection outlines are expressed solely as ordinary
@@ -391,8 +394,8 @@ Every completed phase updates the following evidence:
 | --- | --- |
 | Dependency boundary | Automated source scan and target link graph |
 | Data formats | Golden byte fixtures on Windows and macOS |
-| Gameplay | Headless replay and state hashes |
-| Rendering | Golden screenshots plus Metal frame validation |
+| Gameplay | Independent legacy fixtures, differential tests, headless replay, and state hashes |
+| Rendering | Engine-neutral command snapshots, golden screenshots, and Metal frame validation |
 | Audio | Transition/order fixtures and audible reference checks |
 | Resources | Full manifest enumeration and malformed-input tests |
 | Saves | Cross-platform load and round-trip fixtures |

@@ -62,6 +62,16 @@ Run the headless game contract:
 ./out/portable/game/pvz_game_headless
 ```
 
+Validate migrated game behavior against independent legacy reference fixtures:
+
+```sh
+./script/validate_parity.sh
+```
+
+Fixture provenance, evidence layers, and the reference-first update policy are
+documented in
+[docs/PARITY_VALIDATION.md](docs/PARITY_VALIDATION.md).
+
 Validate a user-owned PopCap PAK without extracting it:
 
 ```sh
