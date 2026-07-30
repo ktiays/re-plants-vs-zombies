@@ -41,6 +41,7 @@ add_library(
         src/ParameterTrack.cpp
         src/ParticleDefinition.cpp
         src/ReanimationDefinition.cpp
+        src/ReanimationPlayer.cpp
         src/TrailDefinition.cpp
 )
 target_compile_features(pvz_game PUBLIC cxx_std_23)
@@ -125,6 +126,7 @@ if(BUILD_TESTING)
         tests/ParticleDefinitionTests.cpp
         tests/PlayerInfoSerializationTests.cpp
         tests/ReanimationDefinitionTests.cpp
+        tests/ReanimationPlayerTests.cpp
         tests/TrailDefinitionTests.cpp
     )
     target_compile_features(pvz_game_tests PRIVATE cxx_std_23)

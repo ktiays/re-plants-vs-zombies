@@ -529,7 +529,7 @@ void TestLifecycleAndState()
 
     pvz::engine::core::BinaryStateWriter aWriter;
     Expect(aGame.SaveState(aWriter), "initialized game saves state");
-    Expect(aWriter.GetBytesWritten() == 39, "state schema has stable size");
+    Expect(aWriter.GetBytesWritten() == 47, "state schema has stable size");
 
     TestServices aRestoredServices;
     pvz::game::GameModule aRestoredGame;
@@ -548,6 +548,10 @@ void TestLifecycleAndState()
     Expect(
         aRestoredGame.GetScene() == pvz::game::GameScene::Title,
         "portable game flow state round-trips");
+    Expect(
+        aRestoredGame.GetReanimationTick() ==
+            aGame.GetReanimationTick(),
+        "portable reanimation tick round-trips");
 
     aGame.Shutdown();
     Expect(!aGame.IsInitialized(), "shutdown clears initialized state");
@@ -590,6 +594,69 @@ void TestInvalidSchemaIsTransactional()
     Expect(
         aGame.GetUpdateCount() == 0,
         "invalid schema does not modify update count");
+    aGame.Shutdown();
+}
+
+void TestPreviousStateSchemasRemainReadable()
+{
+    TestServices aServices;
+    pvz::game::GameModule aGame;
+    Expect(
+        aGame.Initialize(aServices) ==
+            pvz::engine::LifecycleResult::Success,
+        "compatibility state game initializes");
+
+    pvz::engine::core::BinaryStateWriter aVersionOneWriter;
+    Expect(
+        aVersionOneWriter.WriteU32(0x475A5650) &&
+            aVersionOneWriter.WriteU16(1) &&
+            aVersionOneWriter.WriteU64(25) &&
+            aVersionOneWriter.WriteU64(50) &&
+            aVersionOneWriter.WriteBool(false),
+        "version-one state fixture writes");
+    pvz::engine::core::BinaryStateReader aVersionOneReader(
+        aVersionOneWriter.GetBytes());
+    Expect(
+        aGame.LoadState(aVersionOneReader) &&
+            aGame.GetLastTick() == 25 &&
+            aGame.GetUpdateCount() == 50 &&
+            aGame.GetScene() == pvz::game::GameScene::Title &&
+            aGame.GetReanimationTick() == 0,
+        "version-one state defaults newer portable fields");
+
+    pvz::engine::core::BinaryStateWriter aVersionTwoWriter;
+    Expect(
+        aVersionTwoWriter.WriteU32(0x475A5650) &&
+            aVersionTwoWriter.WriteU16(2) &&
+            aVersionTwoWriter.WriteU64(75) &&
+            aVersionTwoWriter.WriteU64(100) &&
+            aVersionTwoWriter.WriteBool(false) &&
+            aVersionTwoWriter.WriteU8(
+                static_cast<std::uint8_t>(
+                    pvz::game::GameScene::AdventureDay)) &&
+            aVersionTwoWriter.WriteU8(
+                static_cast<std::uint8_t>(
+                    pvz::game::MainMenuItem::Adventure)) &&
+            aVersionTwoWriter.WriteU16(0) &&
+            aVersionTwoWriter.WriteU16(0) &&
+            aVersionTwoWriter.WriteU8(2) &&
+            aVersionTwoWriter.WriteU8(3) &&
+            aVersionTwoWriter.WriteU64(1),
+        "version-two state fixture writes");
+    pvz::engine::core::BinaryStateReader aVersionTwoReader(
+        aVersionTwoWriter.GetBytes());
+    Expect(
+        aGame.LoadState(aVersionTwoReader) &&
+            aGame.GetLastTick() == 75 &&
+            aGame.GetUpdateCount() == 100 &&
+            aGame.GetScene() ==
+                pvz::game::GameScene::AdventureDay &&
+            aGame.GetFlowState().mGridColumn == 2 &&
+            aGame.GetFlowState().mGridRow == 3 &&
+            aGame.GetFlowState().mOccupiedCells == 1 &&
+            aGame.GetReanimationTick() == 0,
+        "version-two flow state defaults reanimation tick");
+
     aGame.Shutdown();
 }
 
@@ -677,6 +744,7 @@ void RunDefinitionLoaderTests();
 void RunGameFlowTests();
 void RunPlayerInfoSerializationTests();
 void RunReanimationDefinitionTests();
+void RunReanimationPlayerTests();
 void RunParameterTrackTests();
 void RunParticleDefinitionTests();
 void RunTrailDefinitionTests();
@@ -685,6 +753,7 @@ int main()
 {
     TestLifecycleAndState();
     TestInvalidSchemaIsTransactional();
+    TestPreviousStateSchemasRemainReadable();
     TestSceneMusicTransitions();
     RunGameFlowTests();
     RunLegacyDataSyncTests();
@@ -692,6 +761,7 @@ int main()
     RunDefinitionLoaderTests();
     RunPlayerInfoSerializationTests();
     RunReanimationDefinitionTests();
+    RunReanimationPlayerTests();
     RunParameterTrackTests();
     RunParticleDefinitionTests();
     RunTrailDefinitionTests();

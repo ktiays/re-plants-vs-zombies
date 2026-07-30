@@ -121,7 +121,9 @@ game-flow milestone, not yet a complete playable Plants vs. Zombies level.
 - Use the arrow keys or pointer to select a menu item.
 - Select Adventure to enter the daytime lawn.
 - Click a lawn cell, or use the arrow keys and Enter/Space, to toggle the
-  current placeholder placement marker.
+  current placement. With retail data mounted, occupied cells render animated
+  Peashooters from `PeaShooterSingle.reanim`; headless or incomplete resource
+  sets retain the colored fallback marker.
 - Press Escape on the lawn to return to the menu.
 
 ## Installation

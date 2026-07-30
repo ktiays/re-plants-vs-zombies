@@ -69,8 +69,9 @@ Last updated: 2026-07-30
   buffer per frame, drawable-unavailable handling, and clear/present validation
 - [x] Metal sprite foundation: fixed 800×600 target, aspect-fit presentation,
   generational private textures, staged updates, a three-frame vertex ring,
-  state batching, scissoring, transforms, mirroring, both legacy blend modes,
-  and point/linear clamp/repeat sampling
+  state batching, scissoring, rectangle and portable affine-quad geometry,
+  transforms, mirroring, both legacy blend modes, and point/linear
+  clamp/repeat sampling
 - [x] First retail visual path: the portable game resolves and renders
   `IMAGE_TITLESCREEN` and alpha-composited `IMAGE_PVZ_LOGO` through engine
   protocols when a user-owned PAK is mounted, then lays out title and
@@ -79,11 +80,18 @@ Last updated: 2026-07-30
   selection, unavailable-mode feedback, a fixed-duration Adventure transition,
   and an interactive 9-by-5 daytime lawn scaffold use only engine protocols
 - [x] Retail menu and lawn rendering through Metal: static selector button
-  layers, `IMAGE_BACKGROUND1`, `IMAGE_SEEDBANK`, tinted placement markers, and
-  selection outlines are expressed solely as ordinary engine sprite draws
-- [x] Version-2 portable game state persists scene, menu, transition, notice,
-  grid selection, and the 45-cell occupancy bitset through explicit
-  fixed-width fields; version-1 state remains readable
+  layers, `IMAGE_BACKGROUND1`, `IMAGE_SEEDBANK`, animated Peashooters, fallback
+  placement markers, and selection outlines are expressed solely as ordinary
+  engine sprite draws
+- [x] Portable retail reanimation playback: source definitions and referenced
+  images load through engine protocols; named-layer bounds, 100 Hz looping,
+  transform interpolation, disappearing-frame truncation, atlas-cell
+  selection, alpha, and independent x/y skew produce backend-neutral affine
+  sprite quads consumed directly by Metal
+- [x] Version-3 portable game state persists scene, menu, transition, notice,
+  grid selection, the 45-cell occupancy bitset, and the fixed-width
+  reanimation tick through explicit fields; version-1 and version-2 states
+  remain readable
 - [x] Fixed-width audio firewall: decoded PCM descriptors, sound and voice
   handles, playback parameters, resource diagnostics, decoder/device
   protocols, and the game-facing sound service expose no backend or
@@ -125,6 +133,9 @@ Last updated: 2026-07-30
 - [ ] Complete Metal renderer (untextured geometry, pool paths, Direct3D parity
   tuning, and golden-image validation remain; bitmap text now uses the shared
   sprite path)
+- [ ] Complete reanimation parity (attachments, base-pose matrices, track
+  overrides and groups, transition blending, text/fullscreen tracks, atlasing,
+  and filter overlays remain)
 - [x] Native sound-effect and MO3 module-music audio backend
 - [ ] Full gameplay parity and productization
 
@@ -423,19 +434,23 @@ logo through `IImageResources`, loads `FONT_BRIANNETOD16` through
 `IFontResources`, and submits both images and generated glyph sprites through
 the renderer protocol. The same game module advances to a selector menu using
 the shipped static button layers and then to the daytime lawn using
-`IMAGE_BACKGROUND1` and `IMAGE_SEEDBANK`. Selection and placeholder placement
-overlays use an engine-created one-pixel texture, so the game remains unaware
-of Metal texture objects. Font layout uses `char32_t` text and fixed-width
-metrics; it does not expose host `wchar_t` or native font APIs. The default
-headless build remains independent of the codec libraries and uses null image-,
-font-, sound-, and music-resource implementations.
+`IMAGE_BACKGROUND1` and `IMAGE_SEEDBANK`. Occupied cells render the shipped
+`reanim\PeaShooterSingle.reanim` `anim_full_idle` layer. The portable player
+turns the legacy transform model, including independent x/y skew, into ordinary
+engine affine sprite quads; only the macOS renderer knows that Metal consumes
+those draws. Selection and fallback placement overlays use an engine-created
+one-pixel texture. Font layout uses `char32_t` text and fixed-width metrics; it
+does not expose host `wchar_t` or native font APIs. The default headless build
+remains independent of the codec libraries and uses null image-, font-, sound-,
+and music-resource implementations.
 
 The current controls are Enter, Space, or primary click on the title; arrow
 keys or pointer selection in the menu; and pointer or arrow-key selection plus
 Enter/Space on the lawn. Escape returns from the lawn to the menu. Adventure is
-the only enabled mode in this slice. The lawn cell markers validate portable
-input, state, resource, and rendering ownership; plants, zombies, sun economy,
-waves, and win/loss rules remain later gameplay-porting work.
+the only enabled mode in this slice. The animated Peashooter validates portable
+definition evaluation, image ownership, fixed-tick state, and affine rendering;
+plant behavior, zombies, sun economy, waves, and win/loss rules remain later
+gameplay-porting work.
 
 The same startup path resolves `SOUND_LOADINGBAR_FLOWER` through
 `ISoundResources`, decodes it through `IAudioDecoder`, uploads fixed-width

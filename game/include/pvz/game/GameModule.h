@@ -2,6 +2,7 @@
 
 #include "pvz/engine/Game.h"
 #include "pvz/game/GameFlow.h"
+#include "pvz/game/ReanimationPlayer.h"
 
 #include <array>
 #include <cstdint>
@@ -33,6 +34,7 @@ public:
     [[nodiscard]] std::uint64_t GetUpdateCount() const;
     [[nodiscard]] GameScene GetScene() const;
     [[nodiscard]] GameFlowState GetFlowState() const;
+    [[nodiscard]] std::uint64_t GetReanimationTick() const;
 
 private:
     void RebuildUiText();
@@ -64,7 +66,10 @@ private:
     engine::SoundResource mLoadingSound;
     engine::VoiceHandle mLoadingVoice;
     engine::MusicResource mTitleMusic;
+    ReanimationClip mPeashooterClip;
+    ReanimationPlayer mPeashooterPlayer;
     std::vector<engine::SpriteDraw> mUiTextSprites;
+    mutable std::vector<engine::SpriteDraw> mReanimationSprites;
     engine::TickIndex mLastTick{};
     std::uint64_t mUpdateCount{};
     bool mInitialized{};

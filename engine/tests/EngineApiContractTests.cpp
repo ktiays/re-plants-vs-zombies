@@ -26,8 +26,12 @@ static_assert(sizeof(pvz::engine::ModuleDescriptor) == 8);
 static_assert(sizeof(pvz::engine::MusicPlayback) == 16);
 static_assert(sizeof(pvz::engine::FontMetrics) == 20);
 static_assert(sizeof(pvz::engine::TextMetrics) == 4);
+static_assert(sizeof(pvz::engine::SpriteQuad) == 32);
+static_assert(sizeof(pvz::engine::SpriteGeometryMode) == 1);
 static_assert(
     std::is_trivially_copyable_v<pvz::engine::ImageHandle>);
+static_assert(
+    std::is_trivially_copyable_v<pvz::engine::SpriteQuad>);
 static_assert(
     std::is_trivially_copyable_v<pvz::engine::FontHandle>);
 static_assert(

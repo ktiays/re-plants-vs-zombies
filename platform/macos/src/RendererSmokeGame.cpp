@@ -131,7 +131,7 @@ void RendererSmokeGame::Render(engine::IRenderFrame& theFrame) const
         .mOrigin = {0, 0},
         .mSize = {kTextureWidth, kTextureHeight},
     };
-    const std::array<engine::SpriteDraw, 7> aDraws{
+    const std::array<engine::SpriteDraw, 8> aDraws{
         engine::SpriteDraw{
             .mImage = mCheckerboard,
             .mSource = aFullSource,
@@ -182,6 +182,21 @@ void RendererSmokeGame::Render(engine::IRenderFrame& theFrame) const
             .mSource = aFullSource,
             .mDestination = {{690.0F, 500.0F}, {80.0F, 80.0F}},
             .mMirrorMode = engine::MirrorMode::Both,
+        },
+        engine::SpriteDraw{
+            .mImage = mCheckerboard,
+            .mSource = aFullSource,
+            .mDestinationQuad =
+                {
+                    .mTopLeft = {585.0F, 360.0F},
+                    .mTopRight = {745.0F, 330.0F},
+                    .mBottomLeft = {610.0F, 470.0F},
+                    .mBottomRight = {770.0F, 505.0F},
+                },
+            .mGeometryMode =
+                engine::SpriteGeometryMode::DestinationQuad,
+            .mColor = {205, 235, 255, 235},
+            .mFilterMode = engine::FilterMode::Linear,
         },
     };
     theFrame.SubmitSprites(aDraws);

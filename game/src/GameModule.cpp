@@ -14,7 +14,8 @@ namespace
 
 inline constexpr std::uint32_t kStateMagic = 0x475A5650;
 inline constexpr std::uint16_t kLegacyStateVersion = 1;
-inline constexpr std::uint16_t kStateVersion = 2;
+inline constexpr std::uint16_t kFlowStateVersion = 2;
+inline constexpr std::uint16_t kStateVersion = 3;
 inline constexpr std::uint32_t kTitleMusicOrder = 0x98;
 inline constexpr std::uint32_t kAdventureMusicOrder = 0;
 inline constexpr float kLogicalWidth = 800.0F;
@@ -132,6 +133,33 @@ engine::LifecycleResult GameModule::Initialize(
             mMenuButtonHighlights[anIndex]);
     }
 
+    ReanimationClipDiagnostic aReanimationDiagnostic;
+    if (mPeashooterClip.Load(
+            mServices->GetXmlDocuments(),
+            mServices->GetImageResources(),
+            "reanim\\PeaShooterSingle.reanim",
+            aReanimationDiagnostic))
+    {
+        if (mPeashooterPlayer.Bind(
+                mPeashooterClip,
+                "anim_full_idle"))
+        {
+            constexpr std::size_t kBoardCellCount = 45;
+            mReanimationSprites.reserve(
+                static_cast<std::size_t>(
+                    mPeashooterClip.GetTrackCount()) *
+                kBoardCellCount);
+            mServices->GetLogger().Log(
+                engine::LogLevel::Information,
+                "Portable Peashooter reanimation loaded");
+        }
+        else
+        {
+            mPeashooterClip.Release(
+                mServices->GetImageResources());
+        }
+    }
+
     constexpr std::array<std::byte, 4> kWhitePixel{
         std::byte{255},
         std::byte{255},
@@ -223,6 +251,8 @@ void GameModule::Update(
     mFlow.Update(theInput);
     mLastTick = theTick.mIndex;
     ++mUpdateCount;
+    if (mFlow.GetScene() == GameScene::AdventureDay)
+        mPeashooterPlayer.Update();
 
     if (aPreviousScene != mFlow.GetScene())
         HandleSceneChange(aPreviousScene, mFlow.GetScene());
@@ -271,6 +301,7 @@ bool GameModule::LoadState(engine::IStateReader& theReader)
     engine::TickIndex aLastTick{};
     std::uint64_t anUpdateCount{};
     bool aSuspended{};
+    std::uint64_t aReanimationTick{};
 
     if (!theReader.ReadU32(aMagic) ||
         !theReader.ReadU16(aVersion) ||
@@ -283,13 +314,15 @@ bool GameModule::LoadState(engine::IStateReader& theReader)
 
     if (aMagic != kStateMagic ||
         (aVersion != kLegacyStateVersion &&
+         aVersion != kFlowStateVersion &&
          aVersion != kStateVersion))
     {
         return false;
     }
 
     GameFlow aFlow;
-    if (aVersion == kStateVersion)
+    if (aVersion == kFlowStateVersion ||
+        aVersion == kStateVersion)
     {
         std::uint8_t aScene{};
         std::uint8_t aMenuItem{};
@@ -309,11 +342,17 @@ bool GameModule::LoadState(engine::IStateReader& theReader)
         if (!aFlow.RestoreState(aState))
             return false;
     }
+    if (aVersion == kStateVersion &&
+        !theReader.ReadU64(aReanimationTick))
+    {
+        return false;
+    }
 
     mLastTick = aLastTick;
     mUpdateCount = anUpdateCount;
     mSuspended = aSuspended;
     mFlow = aFlow;
+    mPeashooterPlayer.RestoreTick(aReanimationTick);
     RebuildUiText();
     SynchronizeMusic();
     return true;
@@ -339,7 +378,8 @@ bool GameModule::SaveState(engine::IStateWriter& theWriter) const
         theWriter.WriteU16(aState.mNoticeTicks) &&
         theWriter.WriteU8(aState.mGridColumn) &&
         theWriter.WriteU8(aState.mGridRow) &&
-        theWriter.WriteU64(aState.mOccupiedCells);
+        theWriter.WriteU64(aState.mOccupiedCells) &&
+        theWriter.WriteU64(mPeashooterPlayer.GetTick());
 }
 
 void GameModule::Suspend()
@@ -379,6 +419,9 @@ void GameModule::Shutdown()
         engine::LogLevel::Information,
         "Portable game module shut down");
 
+    mPeashooterPlayer.Reset();
+    mPeashooterClip.Release(
+        mServices->GetImageResources());
     for (auto& aResource : mMenuButtonHighlights)
     {
         if (aResource.mImage.IsValid())
@@ -419,6 +462,7 @@ void GameModule::Shutdown()
     }
 
     mUiTextSprites.clear();
+    mReanimationSprites.clear();
     mFlow.Reset();
     mUiFont = {};
     mLoadingVoice = {};
@@ -462,6 +506,11 @@ GameScene GameModule::GetScene() const
 GameFlowState GameModule::GetFlowState() const
 {
     return mFlow.GetState();
+}
+
+std::uint64_t GameModule::GetReanimationTick() const
+{
+    return mPeashooterPlayer.GetTick();
 }
 
 void GameModule::RebuildUiText()
@@ -746,8 +795,41 @@ void GameModule::RenderAdventureDay(
                 },
             });
     }
+    if (aDrawCount > 0)
+    {
+        theFrame.SubmitSprites(
+            std::span<const engine::SpriteDraw>(
+                aDraws.data(),
+                aDrawCount));
+        aDrawCount = 0;
+    }
 
-    if (mWhitePixel.IsValid())
+    mReanimationSprites.clear();
+    if (mPeashooterPlayer.IsBound())
+    {
+        for (std::uint8_t aRow = 0; aRow < 5; ++aRow)
+        {
+            for (std::uint8_t aColumn = 0;
+                 aColumn < 9;
+                 ++aColumn)
+            {
+                if (!mFlow.IsGridCellOccupied(aColumn, aRow))
+                    continue;
+                const auto aCell =
+                    GameFlow::GetGridCellRect(aColumn, aRow);
+                mPeashooterPlayer.AppendSprites(
+                    {
+                        static_cast<float>(aCell.mOrigin.mX),
+                        static_cast<float>(aCell.mOrigin.mY),
+                    },
+                    {255, 255, 255, 255},
+                    mReanimationSprites);
+            }
+        }
+        if (!mReanimationSprites.empty())
+            theFrame.SubmitSprites(mReanimationSprites);
+    }
+    else if (mWhitePixel.IsValid())
     {
         for (std::uint8_t aRow = 0; aRow < 5; ++aRow)
         {
@@ -778,7 +860,10 @@ void GameModule::RenderAdventureDay(
                     {80, 235, 70, 125});
             }
         }
+    }
 
+    if (mWhitePixel.IsValid())
+    {
         const auto aColumn = mFlow.GetGridColumn();
         const auto aRow = mFlow.GetGridRow();
         const auto aCell =

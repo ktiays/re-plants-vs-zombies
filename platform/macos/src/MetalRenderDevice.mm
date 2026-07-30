@@ -469,11 +469,15 @@ struct MetalRenderDevice::Implementation
         for (const auto& aDraw : theDraws)
         {
             const auto* aTextureSlot = FindTexture(aDraw.mImage);
+            const bool usesDestinationRect =
+                aDraw.mGeometryMode ==
+                engine::SpriteGeometryMode::DestinationRect;
             if (aTextureSlot == nullptr ||
                 aDraw.mSource.mSize.mWidth == 0 ||
                 aDraw.mSource.mSize.mHeight == 0 ||
-                aDraw.mDestination.mSize.mWidth <= 0.0F ||
-                aDraw.mDestination.mSize.mHeight <= 0.0F)
+                (usesDestinationRect &&
+                 (aDraw.mDestination.mSize.mWidth <= 0.0F ||
+                  aDraw.mDestination.mSize.mHeight <= 0.0F)))
             {
                 continue;
             }
@@ -528,36 +532,67 @@ struct MetalRenderDevice::Implementation
             const float aCosine = std::cos(aDraw.mRotationRadians);
             const float aSine = std::sin(aDraw.mRotationRadians);
 
-            const std::array<simd_float2, 4> aPositions{
-                RotatePoint(
-                    aLeft,
-                    aTop,
-                    aPivotX,
-                    aPivotY,
-                    aCosine,
-                    aSine),
-                RotatePoint(
-                    aRight,
-                    aTop,
-                    aPivotX,
-                    aPivotY,
-                    aCosine,
-                    aSine),
-                RotatePoint(
-                    aLeft,
-                    aBottom,
-                    aPivotX,
-                    aPivotY,
-                    aCosine,
-                    aSine),
-                RotatePoint(
-                    aRight,
-                    aBottom,
-                    aPivotX,
-                    aPivotY,
-                    aCosine,
-                    aSine),
-            };
+            std::array<simd_float2, 4> aPositions;
+            if (usesDestinationRect)
+            {
+                aPositions = {
+                    RotatePoint(
+                        aLeft,
+                        aTop,
+                        aPivotX,
+                        aPivotY,
+                        aCosine,
+                        aSine),
+                    RotatePoint(
+                        aRight,
+                        aTop,
+                        aPivotX,
+                        aPivotY,
+                        aCosine,
+                        aSine),
+                    RotatePoint(
+                        aLeft,
+                        aBottom,
+                        aPivotX,
+                        aPivotY,
+                        aCosine,
+                        aSine),
+                    RotatePoint(
+                        aRight,
+                        aBottom,
+                        aPivotX,
+                        aPivotY,
+                        aCosine,
+                        aSine),
+                };
+            }
+            else
+            {
+                aPositions = {
+                    simd_make_float2(
+                        aDraw.mDestinationQuad.mTopLeft.mX,
+                        aDraw.mDestinationQuad.mTopLeft.mY),
+                    simd_make_float2(
+                        aDraw.mDestinationQuad.mTopRight.mX,
+                        aDraw.mDestinationQuad.mTopRight.mY),
+                    simd_make_float2(
+                        aDraw.mDestinationQuad.mBottomLeft.mX,
+                        aDraw.mDestinationQuad.mBottomLeft.mY),
+                    simd_make_float2(
+                        aDraw.mDestinationQuad.mBottomRight.mX,
+                        aDraw.mDestinationQuad.mBottomRight.mY),
+                };
+            }
+            const bool hasInvalidPosition = std::any_of(
+                aPositions.begin(),
+                aPositions.end(),
+                [](const simd_float2& thePosition)
+                {
+                    return !std::isfinite(thePosition.x) ||
+                           !std::isfinite(thePosition.y);
+                });
+            if (hasInvalidPosition)
+                continue;
             const std::array<simd_float2, 4> aTextureCoordinates{
                 simd_make_float2(aLeftTexture, aTopTexture),
                 simd_make_float2(aRightTexture, aTopTexture),

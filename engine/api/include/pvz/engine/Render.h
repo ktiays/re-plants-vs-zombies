@@ -41,11 +41,28 @@ enum class ClipMode : std::uint8_t
     Enabled,
 };
 
+enum class SpriteGeometryMode : std::uint8_t
+{
+    DestinationRect,
+    DestinationQuad,
+};
+
+struct SpriteQuad
+{
+    PointF mTopLeft{};
+    PointF mTopRight{};
+    PointF mBottomLeft{};
+    PointF mBottomRight{};
+};
+
 struct SpriteDraw
 {
     ImageHandle mImage{};
     RectI mSource{};
     RectF mDestination{};
+    SpriteQuad mDestinationQuad{};
+    SpriteGeometryMode mGeometryMode{
+        SpriteGeometryMode::DestinationRect};
     RectI mClip{};
     ColorRgba8 mColor{255, 255, 255, 255};
     PointF mRotationCenter{};
