@@ -5,11 +5,15 @@
 #include "pvz/engine/core/NullImageStore.h"
 #include "pvz/engine/core/NullMusicResources.h"
 #include "pvz/engine/core/NullSoundResources.h"
+#include "pvz/engine/core/ReplaySession.h"
 #include "pvz/game/GameModule.h"
 
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <optional>
 #include <span>
 #include <string_view>
 #include <utility>
@@ -228,11 +232,29 @@ private:
 
 } // namespace
 
-int main()
+int main(int theArgumentCount, char** theArguments)
 {
+    std::optional<std::filesystem::path> aSessionOutputPath;
+    if (theArgumentCount == 3 &&
+        std::string_view(theArguments[1]) ==
+            "--write-session")
+    {
+        aSessionOutputPath =
+            std::filesystem::path(theArguments[2]);
+    }
+    else if (theArgumentCount != 1)
+    {
+        std::cerr
+            << "usage: pvz_game_headless "
+               "[--write-session capture.pvzc]\n";
+        return 2;
+    }
+
     HeadlessServices aServices;
     HeadlessRenderFrame aFrame;
     pvz::game::GameModule aGame;
+    pvz::engine::core::ReplayRecordingGame
+        aRecordingGame(aGame);
     pvz::engine::core::InputReplay aReplay;
 
     if (!BuildAdventureReplay(aReplay))
@@ -248,41 +270,40 @@ int main()
     if (!aLoadedReplay.Load(aReplayReader, aReplayError))
         return 1;
 
-    if (aGame.Initialize(aServices) !=
+    if (aRecordingGame.Initialize(aServices) !=
         pvz::engine::LifecycleResult::Success)
     {
         return 1;
     }
 
-    auto aTranscriptHash =
-        pvz::engine::core::kFnv1a64Offset;
     for (const auto& aRecordedFrame :
          aLoadedReplay.GetFrames())
     {
         const pvz::engine::core::ReplayInputFrame anInput(
             aRecordedFrame);
-        aGame.Update(
+        aRecordingGame.Update(
             pvz::engine::GameTick{aRecordedFrame.mTick},
             anInput);
-
-        pvz::engine::core::BinaryStateWriter aTickWriter;
-        if (!aGame.SaveState(aTickWriter))
-            return 1;
-        aTranscriptHash =
-            pvz::engine::core::CalculateFnv1a64(
-                aTickWriter.GetBytes(),
-                aTranscriptHash);
+    }
+    if (aRecordingGame.GetRecordingError() !=
+        pvz::engine::core::ReplayRecordingError::None)
+    {
+        return 1;
     }
 
-    aGame.Render(aFrame);
+    aRecordingGame.Render(aFrame);
 
     pvz::engine::core::BinaryStateWriter aWriter;
-    if (!aGame.SaveState(aWriter))
+    if (!aRecordingGame.SaveState(aWriter))
         return 1;
 
     const auto aFinalHash =
         pvz::engine::core::CalculateFnv1a64(
             aWriter.GetBytes());
+    const auto& aRecordedSession =
+        aRecordingGame.GetSession();
+    const auto aTranscriptHash =
+        aRecordedSession.GetTranscriptHash();
     const auto aFlowState = aGame.GetFlowState();
     const bool hasExpectedState =
         aGame.GetScene() ==
@@ -297,14 +318,51 @@ int main()
         aFinalHash == 14'239'196'991'121'916'159ULL &&
         aTranscriptHash == 5'816'442'757'865'445'562ULL;
 
+    pvz::engine::core::BinaryStateWriter aSessionWriter;
+    pvz::engine::core::ReplaySessionError aSessionError{};
+    if (!aRecordedSession.Save(
+            aSessionWriter,
+            aSessionError))
+    {
+        return 1;
+    }
+    pvz::engine::core::BinaryStateReader aSessionReader(
+        aSessionWriter.GetBytes());
+    pvz::engine::core::ReplaySession aLoadedSession;
+    if (!aLoadedSession.Load(
+            aSessionReader,
+            aSessionError) ||
+        aLoadedSession.GetFinalStateHash() != aFinalHash ||
+        aLoadedSession.GetTranscriptHash() !=
+            aTranscriptHash)
+    {
+        return 1;
+    }
+    if (aSessionOutputPath.has_value())
+    {
+        std::ofstream aStream(
+            *aSessionOutputPath,
+            std::ios::binary | std::ios::trunc);
+        const auto aBytes = aSessionWriter.GetBytes();
+        if (!aStream)
+            return 1;
+        aStream.write(
+            reinterpret_cast<const char*>(aBytes.data()),
+            static_cast<std::streamsize>(aBytes.size()));
+        if (!aStream)
+            return 1;
+    }
+
     std::cout << "replay-frames="
               << aLoadedReplay.GetFrames().size()
               << " replay-bytes="
               << aReplayWriter.GetBytesWritten()
               << " state-bytes=" << aWriter.GetBytesWritten()
+              << " session-bytes="
+              << aSessionWriter.GetBytesWritten()
               << " state-fnv1a=" << aFinalHash
               << " transcript-fnv1a=" << aTranscriptHash
               << '\n';
-    aGame.Shutdown();
+    aRecordingGame.Shutdown();
     return hasExpectedState ? 0 : 1;
 }

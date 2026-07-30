@@ -65,6 +65,20 @@ Run the deterministic headless Adventure replay and state-hash contract:
 The versioned replay format and transcript-hash policy are documented in
 [docs/REPLAY_FORMAT.md](docs/REPLAY_FORMAT.md).
 
+Record a gameplay session from the macOS application:
+
+```sh
+PVZ_RECORD_SESSION_PATH=/absolute/path/session.pvzc \
+  ./script/build_and_run.sh
+```
+
+After quitting the game, inspect one capture or compare two captures:
+
+```sh
+./build/macos/engine/pvz_replay_inspect session.pvzc
+./build/macos/engine/pvz_replay_inspect mac.pvzc windows.pvzc
+```
+
 Validate migrated game behavior against independent legacy reference fixtures:
 
 ```sh

@@ -139,6 +139,39 @@ void SetMaskBit(
 
 } // namespace
 
+std::string_view GetInputReplayErrorMessage(
+    InputReplayError theError)
+{
+    switch (theError)
+    {
+    case InputReplayError::None:
+        return "no input replay error";
+    case InputReplayError::IoError:
+        return "input replay I/O failed";
+    case InputReplayError::InvalidMagic:
+        return "input replay magic is invalid";
+    case InputReplayError::UnsupportedVersion:
+        return "input replay version is unsupported";
+    case InputReplayError::InvalidTickFrequency:
+        return "input replay frequency is not 100 Hz";
+    case InputReplayError::TooManyFrames:
+        return "input replay has too many frames";
+    case InputReplayError::NonSequentialTick:
+        return "input replay ticks are not sequential";
+    case InputReplayError::InvalidKeyMask:
+        return "input replay key mask is invalid";
+    case InputReplayError::InvalidPointerMask:
+        return "input replay pointer mask is invalid";
+    case InputReplayError::TooMuchText:
+        return "input replay frame has too much text";
+    case InputReplayError::InvalidText:
+        return "input replay text is invalid";
+    case InputReplayError::TrailingData:
+        return "input replay has trailing data";
+    }
+    return "unknown input replay error";
+}
+
 void RecordedInputFrame::SetKeyDown(
     KeyCode theKey,
     bool theDown)

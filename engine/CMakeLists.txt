@@ -23,6 +23,7 @@ add_library(
         core/src/NullSoundResources.cpp
         core/src/PakArchive.cpp
         core/src/PakResourceStore.cpp
+        core/src/ReplaySession.cpp
         core/src/ResourceXmlDocumentLoader.cpp
         core/src/SoundResourceManager.cpp
         core/src/XmlDocument.cpp
@@ -185,6 +186,36 @@ add_executable(
 )
 target_compile_features(pvz_pak_inspect PRIVATE cxx_std_23)
 target_link_libraries(pvz_pak_inspect PRIVATE pvz_engine_core)
+
+add_executable(
+    pvz_replay_inspect
+    tools/ReplayInspect.cpp
+)
+target_compile_features(
+    pvz_replay_inspect
+    PRIVATE cxx_std_23
+)
+target_link_libraries(
+    pvz_replay_inspect
+    PRIVATE pvz_engine_core
+)
+if(MSVC)
+    target_compile_options(
+        pvz_replay_inspect
+        PRIVATE /W4 /WX /permissive-
+    )
+else()
+    target_compile_options(
+        pvz_replay_inspect
+        PRIVATE
+            -Wall
+            -Wextra
+            -Wpedantic
+            -Wconversion
+            -Wsign-conversion
+            -Werror
+    )
+endif()
 if(TARGET pvz_image_codecs)
     target_compile_definitions(
         pvz_pak_inspect

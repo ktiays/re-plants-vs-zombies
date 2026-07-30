@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <span>
+#include <string_view>
 #include <vector>
 
 namespace pvz::engine::core
@@ -25,6 +26,9 @@ enum class InputReplayError : std::uint8_t
     InvalidText,
     TrailingData,
 };
+
+[[nodiscard]] std::string_view GetInputReplayErrorMessage(
+    InputReplayError theError);
 
 struct RecordedInputFrame
 {

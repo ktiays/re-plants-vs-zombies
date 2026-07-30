@@ -16,6 +16,9 @@ fi
 if [[ -n "${PVZ_PAK_PATH:-}" ]]; then
   APP_ARGS+=("$PVZ_PAK_PATH")
 fi
+if [[ -n "${PVZ_RECORD_SESSION_PATH:-}" ]]; then
+  APP_ARGS+=("--record-session" "$PVZ_RECORD_SESSION_PATH")
+fi
 
 pkill -x "$APP_NAME" >/dev/null 2>&1 || true
 
@@ -27,7 +30,10 @@ cmake \
   -DPVZ_BUILD_LEGACY_WINDOWS=OFF \
   -DPVZ_BUILD_MACOS_APP=ON \
   -DBUILD_TESTING=ON
-cmake --build "$BUILD_DIR" --target pvz_app_macos --parallel
+cmake \
+  --build "$BUILD_DIR" \
+  --target pvz_app_macos pvz_replay_inspect \
+  --parallel
 
 open_app() {
   if [[ "${#APP_ARGS[@]}" -eq 0 ]]; then

@@ -34,6 +34,12 @@ Last updated: 2026-07-30
 - [x] Deterministic headless Adventure replay: 65 ticks cover title, menu,
   transition, pointer placement, and keyboard placement while final-state and
   rolling per-tick transcript hashes provide a cross-platform comparison gate
+- [x] Engine-neutral runtime recording decorator and versioned `.pvzc` session
+  files combine exact logical-tick input, per-tick state hashes, and transcript
+  hashes; malformed sessions fail transactionally
+- [x] Opt-in macOS session recording writes captures atomically after shutdown,
+  and the portable inspector reports the first input or state divergence
+  between macOS, headless, and future Windows captures
 - [x] Engine-owned rendering, input, logging, state, and resource protocols
 - [x] Portable PAK indexing, normalization, validation, and resource reads
 - [x] Validation against the supplied retail PAK: 3,198 entries and

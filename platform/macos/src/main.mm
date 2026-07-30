@@ -1,9 +1,11 @@
 #include "pvz/engine/core/ApplicationRunner.h"
+#include "pvz/engine/core/BinaryStateIO.h"
 #include "pvz/engine/core/BitmapFontResourceManager.h"
 #include "pvz/engine/core/ImageResourceManager.h"
 #include "pvz/engine/core/ModuleMusicResourceManager.h"
 #include "pvz/engine/core/PakResourceStore.h"
 #include "pvz/engine/core/ResourceXmlDocumentLoader.h"
+#include "pvz/engine/core/ReplaySession.h"
 #include "pvz/engine/core/SoundResourceManager.h"
 #include "pvz/engine/audio/PortableAudioDecoder.h"
 #include "pvz/engine/image/PortableImageDecoder.h"
@@ -18,6 +20,7 @@
 #include <filesystem>
 #include <iostream>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 
@@ -129,6 +132,50 @@ private:
     pvz::engine::IMusicResources& mMusicResources;
 };
 
+void PrintUsage()
+{
+    std::cerr
+        << "usage: PlantsVsZombies "
+           "[--renderer-smoke] "
+           "[--record-session path-to-capture.pvzc] "
+           "[path-to-main.pak]\n";
+}
+
+[[nodiscard]] bool WriteBytesAtomically(
+    const std::filesystem::path& thePath,
+    std::span<const std::byte> theBytes,
+    std::string& theError)
+{
+    const auto aPath = thePath.string();
+    NSString* aPathString =
+        [NSString stringWithUTF8String:aPath.c_str()];
+    if (aPathString == nil)
+    {
+        theError = "capture path is not valid UTF-8";
+        return false;
+    }
+    NSData* aData = [NSData
+        dataWithBytes:theBytes.data()
+               length:static_cast<NSUInteger>(theBytes.size())];
+    NSError* anError = nil;
+    if (![aData writeToFile:aPathString
+                    options:NSDataWritingAtomic
+                      error:&anError])
+    {
+        if (anError != nil)
+        {
+            const char* aDescription =
+                [[anError localizedDescription] UTF8String];
+            if (aDescription != nullptr)
+                theError = aDescription;
+        }
+        if (theError.empty())
+            theError = "atomic capture write failed";
+        return false;
+    }
+    return true;
+}
+
 } // namespace
 
 int main(int theArgumentCount, char** theArguments)
@@ -137,6 +184,8 @@ int main(int theArgumentCount, char** theArguments)
     {
         bool aUseRendererSmokeGame = false;
         std::optional<std::filesystem::path> aPakPath;
+        std::optional<std::filesystem::path>
+            aSessionCapturePath;
         for (int anArgumentIndex = 1;
              anArgumentIndex < theArgumentCount;
              ++anArgumentIndex)
@@ -147,17 +196,41 @@ int main(int theArgumentCount, char** theArguments)
             {
                 aUseRendererSmokeGame = true;
             }
+            else if (anArgument == "--record-session")
+            {
+                if (aSessionCapturePath.has_value() ||
+                    anArgumentIndex + 1 >= theArgumentCount)
+                {
+                    PrintUsage();
+                    return 2;
+                }
+                ++anArgumentIndex;
+                aSessionCapturePath =
+                    std::filesystem::path(
+                        theArguments[anArgumentIndex]);
+            }
+            else if (anArgument.starts_with("--"))
+            {
+                PrintUsage();
+                return 2;
+            }
             else if (!aPakPath.has_value())
             {
                 aPakPath = std::filesystem::path(anArgument);
             }
             else
             {
-                std::cerr
-                    << "usage: PlantsVsZombies "
-                       "[--renderer-smoke] [path-to-main.pak]\n";
+                PrintUsage();
                 return 2;
             }
+        }
+        if (aUseRendererSmokeGame &&
+            aSessionCapturePath.has_value())
+        {
+            std::cerr
+                << "--record-session captures gameplay and cannot "
+                   "be combined with --renderer-smoke\n";
+            return 2;
         }
 
         pvz::engine::core::PakResourceStore aResources;
@@ -266,14 +339,22 @@ int main(int theArgumentCount, char** theArguments)
         pvz::game::GameModule aGame;
         pvz::platform::macos::RendererSmokeGame
             aRendererSmokeGame;
-        pvz::engine::IGame& aSelectedGame =
+        pvz::engine::IGame* aSelectedGame =
             aUseRendererSmokeGame
-                ? static_cast<pvz::engine::IGame&>(
-                      aRendererSmokeGame)
-                : static_cast<pvz::engine::IGame&>(aGame);
+                ? static_cast<pvz::engine::IGame*>(
+                      &aRendererSmokeGame)
+                : static_cast<pvz::engine::IGame*>(&aGame);
+        std::optional<
+            pvz::engine::core::ReplayRecordingGame>
+            aRecordingGame;
+        if (aSessionCapturePath.has_value())
+        {
+            aRecordingGame.emplace(*aSelectedGame);
+            aSelectedGame = &*aRecordingGame;
+        }
         const pvz::engine::core::ApplicationRunner aRunner;
         const auto aResult = aRunner.Run(
-            aSelectedGame,
+            *aSelectedGame,
             aServices,
             aPlatform,
             aPlatform,
@@ -284,6 +365,72 @@ int main(int theArgumentCount, char** theArguments)
         {
             std::cerr << aRenderer.GetLastError() << '\n';
             return 1;
+        }
+        if (aRecordingGame.has_value())
+        {
+            const auto aRecordingError =
+                aRecordingGame->GetRecordingError();
+            if (aRecordingError !=
+                pvz::engine::core::ReplayRecordingError::None)
+            {
+                std::cerr
+                    << pvz::engine::core::
+                           GetReplayRecordingErrorMessage(
+                               aRecordingError);
+                if (aRecordingError ==
+                    pvz::engine::core::ReplayRecordingError::
+                        InputCaptureFailed)
+                {
+                    std::cerr
+                        << ": "
+                        << pvz::engine::core::
+                               GetInputReplayErrorMessage(
+                                   aRecordingGame->
+                                       GetInputReplayError());
+                }
+                std::cerr << '\n';
+                return 1;
+            }
+
+            pvz::engine::core::BinaryStateWriter aCaptureWriter;
+            pvz::engine::core::ReplaySessionError
+                aSessionError{};
+            const auto& aSession =
+                aRecordingGame->GetSession();
+            if (!aSession.Save(
+                    aCaptureWriter,
+                    aSessionError))
+            {
+                std::cerr
+                    << pvz::engine::core::
+                           GetReplaySessionErrorMessage(
+                               aSessionError)
+                    << '\n';
+                return 1;
+            }
+
+            std::string aWriteError;
+            if (!WriteBytesAtomically(
+                    *aSessionCapturePath,
+                    aCaptureWriter.GetBytes(),
+                    aWriteError))
+            {
+                std::cerr
+                    << "could not write replay capture: "
+                    << aWriteError
+                    << '\n';
+                return 1;
+            }
+            std::cout
+                << "replay-session="
+                << aSessionCapturePath->string()
+                << " frames="
+                << aSession.GetStateHashes().size()
+                << " final-state-fnv1a="
+                << aSession.GetFinalStateHash()
+                << " transcript-fnv1a="
+                << aSession.GetTranscriptHash()
+                << '\n';
         }
         return 0;
     }

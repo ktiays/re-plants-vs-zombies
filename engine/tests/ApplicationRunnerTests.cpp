@@ -1,8 +1,10 @@
 #include "pvz/engine/core/ApplicationRunner.h"
+#include "pvz/engine/core/DeterministicHash.h"
 #include "pvz/engine/core/NullFontResources.h"
 #include "pvz/engine/core/NullImageStore.h"
 #include "pvz/engine/core/NullMusicResources.h"
 #include "pvz/engine/core/NullSoundResources.h"
+#include "pvz/engine/core/ReplaySession.h"
 
 #include "pvz/engine/core/BinaryStateIO.h"
 
@@ -378,8 +380,11 @@ public:
     [[nodiscard]] bool SaveState(
         pvz::engine::IStateWriter& theWriter) const override
     {
-        static_cast<void>(theWriter);
-        return true;
+        if (mFailStateSave)
+            return false;
+        return
+            theWriter.WriteU64(mLastTick) &&
+            theWriter.WriteU64(mUpdateCount);
     }
 
     void Suspend() override
@@ -408,10 +413,16 @@ public:
         return mLastTick;
     }
 
+    void SetFailStateSave(bool theFailStateSave)
+    {
+        mFailStateSave = theFailStateSave;
+    }
+
 private:
     pvz::engine::IEngineServices* mServices{};
     pvz::engine::TickIndex mLastTick{};
     std::uint64_t mUpdateCount{};
+    bool mFailStateSave{};
 };
 
 void TestFixedStepScheduler()
@@ -476,10 +487,228 @@ void TestApplicationRunner()
         "runner owns game initialization and shutdown");
 }
 
+[[nodiscard]] std::vector<std::byte> MakeRecordedSession()
+{
+    TestServices aServices;
+    TestInputFrame anInput;
+    TestGame aGame;
+    pvz::engine::core::ReplayRecordingGame aRecordingGame(aGame);
+    Expect(
+        aRecordingGame.Initialize(aServices) ==
+            pvz::engine::LifecycleResult::Success,
+        "recording decorator initializes wrapped game");
+    aRecordingGame.Update({0}, anInput);
+    aRecordingGame.Update({1}, anInput);
+
+    const auto& aSession = aRecordingGame.GetSession();
+    Expect(
+        aRecordingGame.GetRecordingError() ==
+                pvz::engine::core::ReplayRecordingError::None &&
+            aSession.GetInputReplay().GetFrames().size() == 2 &&
+            aSession.GetStateHashes().size() == 2,
+        "recording decorator captures input and state per tick");
+
+    pvz::engine::core::BinaryStateWriter aFirstState;
+    Expect(
+        aFirstState.WriteU64(0) &&
+            aFirstState.WriteU64(1),
+        "first recording state fixture writes");
+    pvz::engine::core::BinaryStateWriter aSecondState;
+    Expect(
+        aSecondState.WriteU64(1) &&
+            aSecondState.WriteU64(2),
+        "second recording state fixture writes");
+    const auto aFirstHash =
+        pvz::engine::core::CalculateFnv1a64(
+            aFirstState.GetBytes());
+    const auto aSecondHash =
+        pvz::engine::core::CalculateFnv1a64(
+            aSecondState.GetBytes());
+    const auto aTranscriptHash =
+        pvz::engine::core::CalculateFnv1a64(
+            aSecondState.GetBytes(),
+            pvz::engine::core::CalculateFnv1a64(
+                aFirstState.GetBytes()));
+    Expect(
+        aSession.GetStateHashes()[0] == aFirstHash &&
+            aSession.GetStateHashes()[1] == aSecondHash &&
+            aSession.GetFinalStateHash() == aSecondHash &&
+            aSession.GetTranscriptHash() == aTranscriptHash,
+        "recording decorator hashes each state and full transcript");
+
+    pvz::engine::core::BinaryStateWriter aSessionWriter;
+    pvz::engine::core::ReplaySessionError aSessionError{};
+    Expect(
+        aSession.Save(aSessionWriter, aSessionError),
+        "recorded session serializes");
+    aRecordingGame.Shutdown();
+    const auto aBytes = aSessionWriter.GetBytes();
+    return {aBytes.begin(), aBytes.end()};
+}
+
+void TestReplaySessionRoundTrip()
+{
+    const auto aBytes = MakeRecordedSession();
+    pvz::engine::core::BinaryStateReader aReader(aBytes);
+    pvz::engine::core::ReplaySession aSession;
+    pvz::engine::core::ReplaySessionError anError{};
+    Expect(
+        aSession.Load(aReader, anError),
+        "recorded session round-trips");
+    Expect(
+        aSession.GetInputReplay().GetFrames().size() == 2 &&
+            aSession.GetStateHashes().size() == 2 &&
+            aSession.GetFinalStateHash() ==
+                aSession.GetStateHashes()[1],
+        "recorded session restores replay and hashes");
+}
+
+void ExpectSessionLoadError(
+    std::vector<std::byte> theBytes,
+    pvz::engine::core::ReplaySessionError theExpectedError,
+    const char* theMessage)
+{
+    pvz::engine::core::ReplaySession aSession;
+    pvz::engine::core::ReplaySessionError anError{};
+    const auto aValidBytes = MakeRecordedSession();
+    pvz::engine::core::BinaryStateReader aValidReader(
+        aValidBytes);
+    Expect(
+        aSession.Load(aValidReader, anError),
+        "prepare transactional replay session");
+
+    pvz::engine::core::BinaryStateReader aReader(theBytes);
+    Expect(
+        !aSession.Load(aReader, anError) &&
+            anError == theExpectedError,
+        theMessage);
+    Expect(
+        aSession.GetStateHashes().size() == 2,
+        "failed session load is transactional");
+}
+
+void TestMalformedReplaySessions()
+{
+    auto aBytes = MakeRecordedSession();
+    aBytes[0] = std::byte{0};
+    ExpectSessionLoadError(
+        aBytes,
+        pvz::engine::core::ReplaySessionError::InvalidMagic,
+        "invalid session magic is rejected");
+
+    aBytes = MakeRecordedSession();
+    aBytes[4] = std::byte{2};
+    ExpectSessionLoadError(
+        aBytes,
+        pvz::engine::core::ReplaySessionError::UnsupportedVersion,
+        "unsupported session version is rejected");
+
+    aBytes = MakeRecordedSession();
+    aBytes[6] = std::byte{60};
+    ExpectSessionLoadError(
+        aBytes,
+        pvz::engine::core::ReplaySessionError::InvalidTickFrequency,
+        "invalid session tick frequency is rejected");
+
+    aBytes = MakeRecordedSession();
+    aBytes[10] = std::byte{0x01};
+    aBytes[11] = std::byte{0x00};
+    aBytes[12] = std::byte{0x00};
+    aBytes[13] = std::byte{0x10};
+    ExpectSessionLoadError(
+        aBytes,
+        pvz::engine::core::ReplaySessionError::ReplayTooLarge,
+        "oversized nested replay is rejected before allocation");
+
+    aBytes = MakeRecordedSession();
+    aBytes[14] = std::byte{0};
+    ExpectSessionLoadError(
+        aBytes,
+        pvz::engine::core::ReplaySessionError::InvalidReplay,
+        "invalid nested replay is rejected");
+
+    aBytes = MakeRecordedSession();
+    constexpr std::size_t kHashCountOffset = 84;
+    aBytes[kHashCountOffset] = std::byte{1};
+    ExpectSessionLoadError(
+        aBytes,
+        pvz::engine::core::ReplaySessionError::HashCountMismatch,
+        "session hash count mismatch is rejected");
+
+    aBytes = MakeRecordedSession();
+    aBytes[kHashCountOffset] = std::byte{0x41};
+    aBytes[kHashCountOffset + 1] = std::byte{0x42};
+    aBytes[kHashCountOffset + 2] = std::byte{0x0F};
+    aBytes[kHashCountOffset + 3] = std::byte{0x00};
+    ExpectSessionLoadError(
+        aBytes,
+        pvz::engine::core::ReplaySessionError::TooManyHashes,
+        "oversized session hash count is rejected");
+
+    aBytes = MakeRecordedSession();
+    aBytes.push_back(std::byte{0});
+    ExpectSessionLoadError(
+        aBytes,
+        pvz::engine::core::ReplaySessionError::TrailingData,
+        "session trailing data is rejected");
+
+    aBytes = MakeRecordedSession();
+    aBytes.pop_back();
+    ExpectSessionLoadError(
+        aBytes,
+        pvz::engine::core::ReplaySessionError::IoError,
+        "truncated session is rejected");
+}
+
+void TestReplayRecordingErrors()
+{
+    TestServices aServices;
+    TestInputFrame anInput;
+
+    TestGame aNonSequentialGame;
+    pvz::engine::core::ReplayRecordingGame
+        aNonSequentialRecording(aNonSequentialGame);
+    Expect(
+        aNonSequentialRecording.Initialize(aServices) ==
+            pvz::engine::LifecycleResult::Success,
+        "non-sequential recording initializes");
+    aNonSequentialRecording.Update({1}, anInput);
+    Expect(
+        aNonSequentialRecording.GetRecordingError() ==
+                pvz::engine::core::ReplayRecordingError::
+                    InputCaptureFailed &&
+            aNonSequentialRecording.GetInputReplayError() ==
+                pvz::engine::core::InputReplayError::
+                    NonSequentialTick &&
+            aNonSequentialGame.GetUpdateCount() == 1,
+        "recording reports bad tick without blocking game update");
+    aNonSequentialRecording.Shutdown();
+
+    TestGame aFailingGame;
+    aFailingGame.SetFailStateSave(true);
+    pvz::engine::core::ReplayRecordingGame
+        aFailingRecording(aFailingGame);
+    Expect(
+        aFailingRecording.Initialize(aServices) ==
+            pvz::engine::LifecycleResult::Success,
+        "state-failure recording initializes");
+    aFailingRecording.Update({0}, anInput);
+    Expect(
+        aFailingRecording.GetRecordingError() ==
+                pvz::engine::core::ReplayRecordingError::
+                    StateSaveFailed &&
+            aFailingGame.GetUpdateCount() == 1,
+        "recording reports state failure without blocking update");
+    aFailingRecording.Shutdown();
+}
+
 } // namespace
 
 void RunApplicationRunnerTests()
 {
     TestFixedStepScheduler();
     TestApplicationRunner();
+    TestReplaySessionRoundTrip();
+    TestMalformedReplaySessions();
+    TestReplayRecordingErrors();
 }

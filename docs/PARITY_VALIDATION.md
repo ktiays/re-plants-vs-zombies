@@ -93,7 +93,8 @@ The board gate covers deterministic geometry and render-command alignment. The
 remaining cross-runtime infrastructure is:
 
 - a Windows reference capture tool for behavior and render-command fixtures;
-- logical-tick capture hooks in the Windows and macOS applications;
+- a logical-tick capture hook in the Windows reference application; the macOS
+  application and headless runner now emit comparable `.pvzc` sessions;
 - a local image normalizer and difference reporter for user-owned golden
   screenshots;
 - a parity manifest that records coverage and approved deviations per scene.

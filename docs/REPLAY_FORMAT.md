@@ -82,3 +82,58 @@ Run it directly:
 ```sh
 ./out/portable/game/pvz_game_headless
 ```
+
+Write the verified headless session to a local capture:
+
+```sh
+./out/portable/game/pvz_game_headless \
+  --write-session /absolute/path/headless.pvzc
+```
+
+## Version 1 session capture
+
+A `.pvzc` session combines the input replay with the state hash produced after
+every update:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| Magic | `uint32` | `0x435A5650` (`PVZC`) |
+| Version | `uint16` | `1` |
+| Simulation frequency | `uint32` | `100` |
+| Replay byte count | `uint32` | At most 256 MiB |
+| Replay bytes | byte array | Complete versioned `PVZR` stream |
+| State hash count | `uint32` | Must equal the replay frame count |
+| Transcript hash | `uint64` | Rolling hash over serialized tick states |
+| State hashes | repeated `uint64` | Final serialized-state hash per tick |
+
+The macOS composition target enables capture only when explicitly requested.
+It wraps the selected portable game at the `IGame` boundary, records the exact
+logical input passed by `ApplicationRunner`, and saves state immediately after
+each update. SDL events and Metal objects never enter the capture.
+
+Record a macOS session:
+
+```sh
+PVZ_RECORD_SESSION_PATH=/absolute/path/mac-session.pvzc \
+  ./script/build_and_run.sh
+```
+
+The capture is written atomically when the application exits normally.
+Generated `.pvzc` files are ignored by Git.
+
+Inspect one capture:
+
+```sh
+./build/macos/engine/pvz_replay_inspect mac-session.pvzc
+```
+
+Compare two captures:
+
+```sh
+./build/macos/engine/pvz_replay_inspect \
+  mac-session.pvzc windows-session.pvzc
+```
+
+The comparator reports the first differing input tick and first differing
+state-hash tick. A comparison returns success only when input frames, all state
+hashes, and the transcript hash match.
