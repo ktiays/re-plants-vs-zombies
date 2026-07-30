@@ -10,6 +10,9 @@ BUILD_DIR="$ROOT_DIR/build/macos"
 APP_BUNDLE="$BUILD_DIR/platform/macos/PlantsVsZombies.app"
 APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 APP_ARGS=()
+if [[ "${PVZ_RENDERER_SMOKE:-0}" == "1" ]]; then
+  APP_ARGS+=("--renderer-smoke")
+fi
 if [[ -n "${PVZ_PAK_PATH:-}" ]]; then
   APP_ARGS+=("$PVZ_PAK_PATH")
 fi

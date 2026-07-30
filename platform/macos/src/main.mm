@@ -3,12 +3,15 @@
 #include "pvz/engine/core/ResourceXmlDocumentLoader.h"
 #include "pvz/game/GameModule.h"
 #include "pvz/platform/macos/MetalRenderDevice.h"
+#include "pvz/platform/macos/RendererSmokeGame.h"
 #include "pvz/platform/macos/SdlPlatform.h"
 
 #import <Foundation/Foundation.h>
 
 #include <filesystem>
 #include <iostream>
+#include <optional>
+#include <string>
 #include <string_view>
 
 namespace
@@ -46,10 +49,12 @@ public:
     MacEngineServices(
         pvz::engine::ILogger& theLogger,
         pvz::engine::IResourceStore& theResources,
-        pvz::engine::IXmlDocumentLoader& theDocuments)
+        pvz::engine::IXmlDocumentLoader& theDocuments,
+        pvz::engine::IImageStore& theImages)
         : mLogger(theLogger),
           mResources(theResources),
-          mDocuments(theDocuments)
+          mDocuments(theDocuments),
+          mImages(theImages)
     {
     }
 
@@ -69,10 +74,16 @@ public:
         return mDocuments;
     }
 
+    [[nodiscard]] pvz::engine::IImageStore& GetImages() override
+    {
+        return mImages;
+    }
+
 private:
     pvz::engine::ILogger& mLogger;
     pvz::engine::IResourceStore& mResources;
     pvz::engine::IXmlDocumentLoader& mDocuments;
+    pvz::engine::IImageStore& mImages;
 };
 
 } // namespace
@@ -81,16 +92,35 @@ int main(int theArgumentCount, char** theArguments)
 {
     @autoreleasepool
     {
-        pvz::engine::core::PakResourceStore aResources;
-        if (theArgumentCount > 2)
+        bool aUseRendererSmokeGame = false;
+        std::optional<std::filesystem::path> aPakPath;
+        for (int anArgumentIndex = 1;
+             anArgumentIndex < theArgumentCount;
+             ++anArgumentIndex)
         {
-            std::cerr
-                << "usage: PlantsVsZombies [path-to-main.pak]\n";
-            return 2;
+            const std::string_view anArgument(
+                theArguments[anArgumentIndex]);
+            if (anArgument == "--renderer-smoke")
+            {
+                aUseRendererSmokeGame = true;
+            }
+            else if (!aPakPath.has_value())
+            {
+                aPakPath = std::filesystem::path(anArgument);
+            }
+            else
+            {
+                std::cerr
+                    << "usage: PlantsVsZombies "
+                       "[--renderer-smoke] [path-to-main.pak]\n";
+                return 2;
+            }
         }
-        if (theArgumentCount == 2 &&
+
+        pvz::engine::core::PakResourceStore aResources;
+        if (aPakPath.has_value() &&
             !aResources.LoadFromFile(
-                std::filesystem::path(theArguments[1])))
+                *aPakPath))
         {
             std::cerr
                 << pvz::engine::core::GetPakErrorMessage(
@@ -119,11 +149,19 @@ int main(int theArgumentCount, char** theArguments)
         MacEngineServices aServices(
             aLogger,
             aResources,
-            aDocuments);
+            aDocuments,
+            aRenderer);
         pvz::game::GameModule aGame;
+        pvz::platform::macos::RendererSmokeGame
+            aRendererSmokeGame;
+        pvz::engine::IGame& aSelectedGame =
+            aUseRendererSmokeGame
+                ? static_cast<pvz::engine::IGame&>(
+                      aRendererSmokeGame)
+                : static_cast<pvz::engine::IGame&>(aGame);
         const pvz::engine::core::ApplicationRunner aRunner;
         const auto aResult = aRunner.Run(
-            aGame,
+            aSelectedGame,
             aServices,
             aPlatform,
             aPlatform,

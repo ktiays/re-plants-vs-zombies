@@ -1,4 +1,5 @@
 #include "pvz/engine/core/ApplicationRunner.h"
+#include "pvz/engine/core/NullImageStore.h"
 
 #include "pvz/engine/core/BinaryStateIO.h"
 
@@ -292,6 +293,11 @@ public:
         return mDocuments;
     }
 
+    [[nodiscard]] pvz::engine::IImageStore& GetImages() override
+    {
+        return mImages;
+    }
+
     [[nodiscard]] const TestLogger& GetTestLogger() const
     {
         return mLogger;
@@ -301,6 +307,7 @@ private:
     TestLogger mLogger;
     EmptyResourceStore mResources;
     EmptyXmlDocumentLoader mDocuments;
+    pvz::engine::core::NullImageStore mImages;
 };
 
 class TestGame final : public pvz::engine::IGame

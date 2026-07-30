@@ -54,6 +54,10 @@ Last updated: 2026-07-30
   event/input translation, monotonic timing, and logical pointer coordinates
 - [x] Metal presentation foundation: `CAMetalLayer`, `BGRA8Unorm`, one command
   buffer per frame, drawable-unavailable handling, and clear/present validation
+- [x] Metal sprite foundation: fixed 800×600 target, aspect-fit presentation,
+  generational private textures, staged updates, a three-frame vertex ring,
+  state batching, scissoring, transforms, mirroring, both legacy blend modes,
+  and point/linear clamp/repeat sampling
 - [ ] Windows runtime parity baseline for the reconstructed legacy target
 - [ ] Migration of the remaining gameplay `Board`, `Challenge`, data-array, and
   effect snapshots from raw object blocks to fieldwise fixed-width schemas
@@ -61,8 +65,9 @@ Last updated: 2026-07-30
 - [ ] Existing Windows backend adapters
 - [ ] Complete SDL macOS platform backend (fullscreen, cursor, and lifecycle
   parity remain)
-- [ ] Complete Metal renderer (logical target, textures, sprite pipelines,
-  batching, clipping, transforms, and golden-image validation remain)
+- [ ] Complete Metal renderer (retail image decoding, untextured geometry,
+  text and pool paths, Direct3D parity tuning, and golden-image validation
+  remain)
 - [ ] Native audio backend
 - [ ] Full gameplay parity and productization
 
@@ -333,6 +338,13 @@ startup:
 
 ```sh
 PVZ_PAK_PATH=/path/to/main.pak ./script/build_and_run.sh
+```
+
+The procedural renderer validation scene is selected independently of the
+portable game and does not require retail data:
+
+```sh
+PVZ_RENDERER_SMOKE=1 ./script/build_and_run.sh --verify
 ```
 
 The Run action in Codex uses the same script. `--verify`, `--debug`, `--logs`,

@@ -1,4 +1,5 @@
 #include "pvz/engine/core/BinaryStateIO.h"
+#include "pvz/engine/core/NullImageStore.h"
 #include "pvz/game/GameModule.h"
 
 #include <cstddef>
@@ -40,6 +41,11 @@ public:
     GetXmlDocuments() override
     {
         return mXmlDocuments;
+    }
+
+    [[nodiscard]] pvz::engine::IImageStore& GetImages() override
+    {
+        return mImages;
     }
 
 private:
@@ -96,6 +102,7 @@ private:
     HeadlessLogger mLogger;
     EmptyResourceStore mResources;
     EmptyXmlDocumentLoader mXmlDocuments;
+    pvz::engine::core::NullImageStore mImages;
 };
 
 class EmptyInputFrame final : public pvz::engine::IInputFrame

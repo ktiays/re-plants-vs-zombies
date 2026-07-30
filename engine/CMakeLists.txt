@@ -11,6 +11,7 @@ add_library(
     STATIC
         core/src/ApplicationRunner.cpp
         core/src/BinaryStateIO.cpp
+        core/src/NullImageStore.cpp
         core/src/PakArchive.cpp
         core/src/PakResourceStore.cpp
         core/src/ResourceXmlDocumentLoader.cpp

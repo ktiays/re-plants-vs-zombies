@@ -3,6 +3,30 @@ find_package(SDL2 CONFIG REQUIRED)
 find_library(PVZ_METAL_FRAMEWORK Metal REQUIRED)
 find_library(PVZ_QUARTZ_CORE_FRAMEWORK QuartzCore REQUIRED)
 find_library(PVZ_FOUNDATION_FRAMEWORK Foundation REQUIRED)
+find_program(PVZ_XCRUN_EXECUTABLE xcrun REQUIRED)
+
+set(PVZ_METAL_LIBRARY "${CMAKE_CURRENT_BINARY_DIR}/PvzShaders.metallib")
+set(
+    PVZ_METAL_MODULE_CACHE
+    "${CMAKE_CURRENT_BINARY_DIR}/metal-module-cache"
+)
+add_custom_command(
+    OUTPUT "${PVZ_METAL_LIBRARY}"
+    COMMAND
+        "${CMAKE_COMMAND}"
+        -E env
+        "CLANG_MODULE_CACHE_PATH=${PVZ_METAL_MODULE_CACHE}"
+        "${PVZ_XCRUN_EXECUTABLE}"
+        -sdk macosx
+        metal
+        "-fmodules-cache-path=${PVZ_METAL_MODULE_CACHE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/shaders/PvzShaders.metal"
+        -o "${PVZ_METAL_LIBRARY}"
+    DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/shaders/PvzShaders.metal"
+    VERBATIM
+)
+add_custom_target(pvz_metal_shaders DEPENDS "${PVZ_METAL_LIBRARY}")
 
 add_library(
     pvz_platform_sdl
@@ -49,7 +73,16 @@ add_executable(
     pvz_app_macos
     MACOSX_BUNDLE
         src/main.mm
+        src/RendererSmokeGame.cpp
+        "${PVZ_METAL_LIBRARY}"
 )
+set_source_files_properties(
+    "${PVZ_METAL_LIBRARY}"
+    PROPERTIES
+        GENERATED TRUE
+        MACOSX_PACKAGE_LOCATION Resources
+)
+add_dependencies(pvz_app_macos pvz_metal_shaders)
 target_compile_features(pvz_app_macos PRIVATE cxx_std_23)
 target_compile_definitions(pvz_app_macos PRIVATE SDL_MAIN_HANDLED)
 target_compile_options(pvz_app_macos PRIVATE -fobjc-arc)
