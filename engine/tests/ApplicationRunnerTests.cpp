@@ -1,6 +1,7 @@
 #include "pvz/engine/core/ApplicationRunner.h"
 #include "pvz/engine/core/NullFontResources.h"
 #include "pvz/engine/core/NullImageStore.h"
+#include "pvz/engine/core/NullMusicResources.h"
 #include "pvz/engine/core/NullSoundResources.h"
 
 #include "pvz/engine/core/BinaryStateIO.h"
@@ -318,6 +319,12 @@ public:
         return mSoundResources;
     }
 
+    [[nodiscard]] pvz::engine::IMusicResources&
+    GetMusicResources() override
+    {
+        return mMusicResources;
+    }
+
     [[nodiscard]] const TestLogger& GetTestLogger() const
     {
         return mLogger;
@@ -331,6 +338,7 @@ private:
     pvz::engine::core::NullImageResources mImageResources;
     pvz::engine::core::NullFontResources mFontResources;
     pvz::engine::core::NullSoundResources mSoundResources;
+    pvz::engine::core::NullMusicResources mMusicResources;
 };
 
 class TestGame final : public pvz::engine::IGame

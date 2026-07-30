@@ -1,6 +1,7 @@
 #include "pvz/platform/macos/SdlAudioDevice.h"
 
 #include <SDL.h>
+#include <libopenmpt/libopenmpt_ext.h>
 
 #include <algorithm>
 #include <array>
@@ -22,6 +23,7 @@ namespace
 inline constexpr std::uint32_t kOutputSampleRate = 48'000;
 inline constexpr std::uint32_t kOutputChannelCount = 2;
 inline constexpr std::size_t kMaximumVoiceCount = 32;
+inline constexpr std::size_t kModuleRenderChunkFrames = 1'024;
 inline constexpr float kSampleScale = 1.0F / 32768.0F;
 
 [[nodiscard]] std::uint32_t NextGeneration(
@@ -89,6 +91,40 @@ struct SdlAudioDevice::Implementation
         bool mOccupied{};
     };
 
+    struct ModuleSlot
+    {
+        ~ModuleSlot()
+        {
+            Reset();
+        }
+
+        ModuleSlot() = default;
+        ModuleSlot(const ModuleSlot&) = delete;
+        ModuleSlot& operator=(const ModuleSlot&) = delete;
+
+        void Reset()
+        {
+            if (mModule != nullptr)
+                openmpt_module_ext_destroy(mModule);
+            mModule = nullptr;
+            mInteractive = {};
+            mDescriptor = {};
+            mVolume = 1.0F;
+            mOccupied = false;
+            mPlaying = false;
+            mPaused = false;
+        }
+
+        openmpt_module_ext* mModule{};
+        openmpt_module_ext_interface_interactive mInteractive{};
+        engine::ModuleDescriptor mDescriptor;
+        std::uint32_t mGeneration{1};
+        float mVolume{1.0F};
+        bool mOccupied{};
+        bool mPlaying{};
+        bool mPaused{};
+    };
+
     ~Implementation()
     {
         if (mDevice != 0)
@@ -127,6 +163,51 @@ struct SdlAudioDevice::Implementation
                 static_cast<std::size_t>(theVoice.mIndex - 1)];
         return aVoice.mOccupied &&
                aVoice.mGeneration == theVoice.mGeneration;
+    }
+
+    [[nodiscard]] bool IsModuleValid(
+        engine::ModuleHandle theModule) const
+    {
+        if (!theModule.IsValid() || theModule.mIndex == 0)
+            return false;
+        const auto anIndex =
+            static_cast<std::size_t>(theModule.mIndex - 1);
+        return anIndex < mModules.size() &&
+               mModules[anIndex] != nullptr &&
+               mModules[anIndex]->mOccupied &&
+               mModules[anIndex]->mGeneration ==
+                   theModule.mGeneration;
+    }
+
+    [[nodiscard]] static bool SetPosition(
+        ModuleSlot& theSlot,
+        engine::MusicPosition thePosition)
+    {
+        if (thePosition.mOrder >=
+                theSlot.mDescriptor.mOrderCount ||
+            thePosition.mOrder >
+                static_cast<std::uint32_t>(
+                    std::numeric_limits<std::int32_t>::max()) ||
+            thePosition.mRow >
+                static_cast<std::uint32_t>(
+                    std::numeric_limits<std::int32_t>::max()))
+        {
+            return false;
+        }
+        auto* const aModule =
+            openmpt_module_ext_get_module(theSlot.mModule);
+        if (aModule == nullptr)
+            return false;
+        static_cast<void>(
+            openmpt_module_set_position_order_row(
+                aModule,
+                static_cast<std::int32_t>(thePosition.mOrder),
+                static_cast<std::int32_t>(thePosition.mRow)));
+        return
+            openmpt_module_get_current_order(aModule) ==
+                static_cast<std::int32_t>(thePosition.mOrder) &&
+            openmpt_module_get_current_row(aModule) ==
+                static_cast<std::int32_t>(thePosition.mRow);
     }
 
     void RetireVoice(VoiceSlot& theVoice)
@@ -227,6 +308,70 @@ struct SdlAudioDevice::Implementation
             }
         }
 
+        for (const auto& aModuleSlot : mModules)
+        {
+            if (aModuleSlot == nullptr ||
+                !aModuleSlot->mOccupied ||
+                !aModuleSlot->mPlaying ||
+                aModuleSlot->mPaused)
+            {
+                continue;
+            }
+            auto* const aModule =
+                openmpt_module_ext_get_module(
+                    aModuleSlot->mModule);
+            if (aModule == nullptr)
+            {
+                aModuleSlot->mPlaying = false;
+                continue;
+            }
+
+            std::size_t anOutputFrame{};
+            while (anOutputFrame < theFrameCount)
+            {
+                const auto aRequestedFrameCount =
+                    std::min(
+                        kModuleRenderChunkFrames,
+                        theFrameCount - anOutputFrame);
+                const auto aRenderedFrameCount =
+                    openmpt_module_read_interleaved_float_stereo(
+                        aModule,
+                        static_cast<std::int32_t>(
+                            mOutputSampleRate),
+                        aRequestedFrameCount,
+                        mModuleScratch.data());
+                if (aRenderedFrameCount == 0)
+                {
+                    aModuleSlot->mPlaying = false;
+                    break;
+                }
+
+                const float aGain =
+                    aModuleSlot->mVolume *
+                    mMusicMasterVolume;
+                for (std::size_t aFrame = 0;
+                     aFrame < aRenderedFrameCount;
+                     ++aFrame)
+                {
+                    const auto anOutputOffset =
+                        (anOutputFrame + aFrame) * 2;
+                    const auto aModuleOffset = aFrame * 2;
+                    theOutput[anOutputOffset] +=
+                        mModuleScratch[aModuleOffset] * aGain;
+                    theOutput[anOutputOffset + 1] +=
+                        mModuleScratch[aModuleOffset + 1] *
+                        aGain;
+                }
+                anOutputFrame += aRenderedFrameCount;
+                if (aRenderedFrameCount <
+                    aRequestedFrameCount)
+                {
+                    aModuleSlot->mPlaying = false;
+                    break;
+                }
+            }
+        }
+
         const auto aSampleCount = theFrameCount * 2;
         for (std::size_t aSample = 0;
              aSample < aSampleCount;
@@ -262,10 +407,14 @@ struct SdlAudioDevice::Implementation
 
     std::vector<SoundSlot> mSounds;
     std::array<VoiceSlot, kMaximumVoiceCount> mVoices;
+    std::vector<std::unique_ptr<ModuleSlot>> mModules;
+    std::array<float, kModuleRenderChunkFrames * 2>
+        mModuleScratch;
     std::string mLastError;
     SDL_AudioDeviceID mDevice{};
     std::uint32_t mOutputSampleRate{};
     float mMasterVolume{1.0F};
+    float mMusicMasterVolume{1.0F};
     bool mOwnsAudioSubsystem{};
 };
 
@@ -561,6 +710,332 @@ void SdlAudioDevice::SetMasterVolume(float theVolume)
         return;
     const AudioDeviceLock aLock(mImplementation->mDevice);
     mImplementation->mMasterVolume =
+        std::clamp(theVolume, 0.0F, 1.0F);
+}
+
+bool SdlAudioDevice::CreateModule(
+    std::span<const std::byte> theEncodedBytes,
+    engine::ModuleHandle& theModule,
+    engine::ModuleDescriptor& theDescriptor)
+{
+    theModule = {};
+    theDescriptor = {};
+    if (mImplementation->mDevice == 0 ||
+        theEncodedBytes.empty())
+    {
+        return false;
+    }
+
+    int anError{};
+    const char* anErrorMessage{};
+    auto aSlot =
+        std::make_unique<Implementation::ModuleSlot>();
+    aSlot->mModule = openmpt_module_ext_create_from_memory(
+        theEncodedBytes.data(),
+        theEncodedBytes.size(),
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        &anError,
+        &anErrorMessage,
+        nullptr);
+    if (aSlot->mModule == nullptr)
+    {
+        mImplementation->mLastError =
+            anErrorMessage != nullptr
+                ? anErrorMessage
+                : "libopenmpt rejected the module";
+        if (anErrorMessage != nullptr)
+            openmpt_free_string(anErrorMessage);
+        static_cast<void>(anError);
+        return false;
+    }
+    if (anErrorMessage != nullptr)
+        openmpt_free_string(anErrorMessage);
+    static_cast<void>(anError);
+
+    auto* const aModule =
+        openmpt_module_ext_get_module(aSlot->mModule);
+    const auto aChannelCount =
+        aModule != nullptr
+            ? openmpt_module_get_num_channels(aModule)
+            : 0;
+    const auto anOrderCount =
+        aModule != nullptr
+            ? openmpt_module_get_num_orders(aModule)
+            : 0;
+    if (aModule == nullptr ||
+        aChannelCount <= 0 ||
+        anOrderCount <= 0 ||
+        openmpt_module_ext_get_interface(
+            aSlot->mModule,
+            LIBOPENMPT_EXT_C_INTERFACE_INTERACTIVE,
+            &aSlot->mInteractive,
+            sizeof(aSlot->mInteractive)) == 0)
+    {
+        mImplementation->mLastError =
+            "libopenmpt module lacks required interactive controls";
+        return false;
+    }
+    aSlot->mDescriptor = {
+        .mChannelCount =
+            static_cast<std::uint32_t>(aChannelCount),
+        .mOrderCount =
+            static_cast<std::uint32_t>(anOrderCount),
+    };
+    aSlot->mOccupied = true;
+
+    const AudioDeviceLock aLock(mImplementation->mDevice);
+    std::size_t aSlotIndex{};
+    for (; aSlotIndex < mImplementation->mModules.size();
+         ++aSlotIndex)
+    {
+        if (mImplementation->mModules[aSlotIndex] == nullptr ||
+            !mImplementation->mModules[aSlotIndex]->mOccupied)
+        {
+            break;
+        }
+    }
+    if (aSlotIndex ==
+        std::numeric_limits<std::uint32_t>::max())
+    {
+        return false;
+    }
+    if (aSlotIndex == mImplementation->mModules.size())
+    {
+        mImplementation->mModules.push_back(std::move(aSlot));
+    }
+    else
+    {
+        const auto aGeneration =
+            mImplementation->mModules[aSlotIndex] != nullptr
+                ? mImplementation->mModules[aSlotIndex]
+                      ->mGeneration
+                : 1;
+        aSlot->mGeneration = aGeneration;
+        mImplementation->mModules[aSlotIndex] =
+            std::move(aSlot);
+    }
+
+    const auto& aStoredSlot =
+        *mImplementation->mModules[aSlotIndex];
+    theModule = {
+        .mIndex = static_cast<std::uint32_t>(aSlotIndex + 1),
+        .mGeneration = aStoredSlot.mGeneration,
+    };
+    theDescriptor = aStoredSlot.mDescriptor;
+    return true;
+}
+
+void SdlAudioDevice::DestroyModule(
+    engine::ModuleHandle theModule)
+{
+    const AudioDeviceLock aLock(mImplementation->mDevice);
+    if (!mImplementation->IsModuleValid(theModule))
+        return;
+
+    const auto anIndex =
+        static_cast<std::size_t>(theModule.mIndex - 1);
+    auto& aSlot = *mImplementation->mModules[anIndex];
+    const auto aNextGeneration =
+        NextGeneration(aSlot.mGeneration);
+    aSlot.Reset();
+    aSlot.mGeneration = aNextGeneration;
+}
+
+bool SdlAudioDevice::PlayModule(
+    engine::ModuleHandle theModule,
+    const engine::MusicPlayback& thePlayback)
+{
+    if (!std::isfinite(thePlayback.mVolume) ||
+        thePlayback.mVolume < 0.0F)
+    {
+        return false;
+    }
+
+    const AudioDeviceLock aLock(mImplementation->mDevice);
+    if (!mImplementation->IsModuleValid(theModule))
+        return false;
+    auto& aSlot =
+        *mImplementation->mModules[
+            static_cast<std::size_t>(theModule.mIndex - 1)];
+    auto* const aModule =
+        openmpt_module_ext_get_module(aSlot.mModule);
+    if (aModule == nullptr ||
+        openmpt_module_set_repeat_count(
+            aModule,
+            thePlayback.mLoopMode == engine::MusicLoopMode::Loop
+                ? -1
+                : 0) == 0 ||
+        !Implementation::SetPosition(
+            aSlot,
+            thePlayback.mPosition))
+    {
+        return false;
+    }
+
+    aSlot.mVolume =
+        std::clamp(thePlayback.mVolume, 0.0F, 1.0F);
+    aSlot.mPaused = false;
+    aSlot.mPlaying = true;
+    return true;
+}
+
+void SdlAudioDevice::StopModule(
+    engine::ModuleHandle theModule)
+{
+    const AudioDeviceLock aLock(mImplementation->mDevice);
+    if (!mImplementation->IsModuleValid(theModule))
+        return;
+    auto& aSlot =
+        *mImplementation->mModules[
+            static_cast<std::size_t>(theModule.mIndex - 1)];
+    aSlot.mPlaying = false;
+    aSlot.mPaused = false;
+}
+
+void SdlAudioDevice::PauseModule(
+    engine::ModuleHandle theModule,
+    bool thePaused)
+{
+    const AudioDeviceLock aLock(mImplementation->mDevice);
+    if (!mImplementation->IsModuleValid(theModule))
+        return;
+    mImplementation
+        ->mModules[
+            static_cast<std::size_t>(theModule.mIndex - 1)]
+        ->mPaused = thePaused;
+}
+
+bool SdlAudioDevice::IsModulePlaying(
+    engine::ModuleHandle theModule) const
+{
+    const AudioDeviceLock aLock(mImplementation->mDevice);
+    if (!mImplementation->IsModuleValid(theModule))
+        return false;
+    return mImplementation
+        ->mModules[
+            static_cast<std::size_t>(theModule.mIndex - 1)]
+        ->mPlaying;
+}
+
+bool SdlAudioDevice::SetModulePosition(
+    engine::ModuleHandle theModule,
+    engine::MusicPosition thePosition)
+{
+    const AudioDeviceLock aLock(mImplementation->mDevice);
+    if (!mImplementation->IsModuleValid(theModule))
+        return false;
+    return Implementation::SetPosition(
+        *mImplementation
+             ->mModules[
+                 static_cast<std::size_t>(
+                     theModule.mIndex - 1)],
+        thePosition);
+}
+
+bool SdlAudioDevice::GetModulePosition(
+    engine::ModuleHandle theModule,
+    engine::MusicPosition& thePosition) const
+{
+    thePosition = {};
+    const AudioDeviceLock aLock(mImplementation->mDevice);
+    if (!mImplementation->IsModuleValid(theModule))
+        return false;
+    const auto& aSlot =
+        *mImplementation
+             ->mModules[
+                 static_cast<std::size_t>(
+                     theModule.mIndex - 1)];
+    auto* const aModule =
+        openmpt_module_ext_get_module(aSlot.mModule);
+    if (aModule == nullptr)
+        return false;
+    const auto anOrder =
+        openmpt_module_get_current_order(aModule);
+    const auto aRow =
+        openmpt_module_get_current_row(aModule);
+    if (anOrder < 0 || aRow < 0)
+        return false;
+    thePosition = {
+        .mOrder = static_cast<std::uint32_t>(anOrder),
+        .mRow = static_cast<std::uint32_t>(aRow),
+    };
+    return true;
+}
+
+bool SdlAudioDevice::SetModuleChannelEnabled(
+    engine::ModuleHandle theModule,
+    std::uint32_t theChannel,
+    bool theEnabled)
+{
+    const AudioDeviceLock aLock(mImplementation->mDevice);
+    if (!mImplementation->IsModuleValid(theModule))
+        return false;
+    auto& aSlot =
+        *mImplementation
+             ->mModules[
+                 static_cast<std::size_t>(
+                     theModule.mIndex - 1)];
+    if (theChannel >= aSlot.mDescriptor.mChannelCount ||
+        theChannel >
+            static_cast<std::uint32_t>(
+                std::numeric_limits<std::int32_t>::max()))
+    {
+        return false;
+    }
+    return aSlot.mInteractive.set_channel_mute_status(
+               aSlot.mModule,
+               static_cast<std::int32_t>(theChannel),
+               theEnabled ? 0 : 1) != 0;
+}
+
+bool SdlAudioDevice::SetModuleVolume(
+    engine::ModuleHandle theModule,
+    float theVolume)
+{
+    if (!std::isfinite(theVolume) || theVolume < 0.0F)
+        return false;
+    const AudioDeviceLock aLock(mImplementation->mDevice);
+    if (!mImplementation->IsModuleValid(theModule))
+        return false;
+    mImplementation
+        ->mModules[
+            static_cast<std::size_t>(theModule.mIndex - 1)]
+        ->mVolume = std::clamp(theVolume, 0.0F, 1.0F);
+    return true;
+}
+
+bool SdlAudioDevice::SetModuleTempoFactor(
+    engine::ModuleHandle theModule,
+    float theFactor)
+{
+    if (!std::isfinite(theFactor) ||
+        theFactor <= 0.0F ||
+        theFactor > 4.0F)
+    {
+        return false;
+    }
+    const AudioDeviceLock aLock(mImplementation->mDevice);
+    if (!mImplementation->IsModuleValid(theModule))
+        return false;
+    auto& aSlot =
+        *mImplementation
+             ->mModules[
+                 static_cast<std::size_t>(
+                     theModule.mIndex - 1)];
+    return aSlot.mInteractive.set_tempo_factor(
+               aSlot.mModule,
+               static_cast<double>(theFactor)) != 0;
+}
+
+void SdlAudioDevice::SetMusicMasterVolume(float theVolume)
+{
+    if (!std::isfinite(theVolume))
+        return;
+    const AudioDeviceLock aLock(mImplementation->mDevice);
+    mImplementation->mMusicMasterVolume =
         std::clamp(theVolume, 0.0F, 1.0F);
 }
 

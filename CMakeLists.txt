@@ -27,6 +27,16 @@ option(
     "Build the portable Ogg Vorbis sound decoder."
     ${PVZ_BUILD_MACOS_APP}
 )
+option(
+    PVZ_BUILD_MODULE_MUSIC
+    "Build MO3 module music support through libopenmpt."
+    ${PVZ_BUILD_MACOS_APP}
+)
+
+if(PVZ_BUILD_MODULE_MUSIC)
+    list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/CMake")
+    find_package(OpenMPT REQUIRED)
+endif()
 
 if(PVZ_BUILD_PORTABLE_ENGINE)
     include(CTest)

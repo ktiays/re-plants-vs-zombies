@@ -93,6 +93,33 @@ engine::LifecycleResult GameModule::Initialize(
             engine::LogLevel::Information,
             "Portable loading sound decoded and queued");
     }
+    engine::MusicResourceDiagnostic aMusicDiagnostic;
+    if (mServices->GetMusicResources().Load(
+            "sounds/mainmusic.mo3",
+            mTitleMusic,
+            aMusicDiagnostic))
+    {
+        const engine::MusicPlayback aTitlePlayback{
+            .mPosition = {.mOrder = 0x98, .mRow = 0},
+            .mVolume = 1.0F,
+            .mLoopMode = engine::MusicLoopMode::Loop,
+        };
+        if (mTitleMusic.mDescriptor.mOrderCount > 0x98 &&
+            mServices->GetMusicResources().Play(
+                mTitleMusic.mModule,
+                aTitlePlayback))
+        {
+            mServices->GetLogger().Log(
+                engine::LogLevel::Information,
+                "Portable title module started at order 0x98");
+        }
+        else
+        {
+            mServices->GetMusicResources().Release(
+                mTitleMusic.mModule);
+            mTitleMusic = {};
+        }
+    }
     mServices->GetLogger().Log(
         engine::LogLevel::Information,
         "Portable game module initialized");
@@ -210,13 +237,29 @@ bool GameModule::SaveState(engine::IStateWriter& theWriter) const
 void GameModule::Suspend()
 {
     if (mInitialized)
+    {
         mSuspended = true;
+        if (mTitleMusic.mModule.IsValid())
+        {
+            mServices->GetMusicResources().Pause(
+                mTitleMusic.mModule,
+                true);
+        }
+    }
 }
 
 void GameModule::Resume()
 {
     if (mInitialized)
+    {
         mSuspended = false;
+        if (mTitleMusic.mModule.IsValid())
+        {
+            mServices->GetMusicResources().Pause(
+                mTitleMusic.mModule,
+                false);
+        }
+    }
 }
 
 void GameModule::Shutdown()
@@ -238,10 +281,18 @@ void GameModule::Shutdown()
     if (mLoadingSound.mSound.IsValid())
         mServices->GetSoundResources().Release(
             mLoadingSound.mSound);
+    if (mTitleMusic.mModule.IsValid())
+    {
+        mServices->GetMusicResources().Stop(
+            mTitleMusic.mModule);
+        mServices->GetMusicResources().Release(
+            mTitleMusic.mModule);
+    }
     mLoadingTextSprites.clear();
     mLoadingFont = {};
     mLoadingVoice = {};
     mLoadingSound = {};
+    mTitleMusic = {};
     mTitleLogo = {};
     mTitleScreen = {};
     mServices = nullptr;

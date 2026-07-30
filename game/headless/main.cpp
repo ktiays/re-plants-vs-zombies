@@ -1,6 +1,7 @@
 #include "pvz/engine/core/BinaryStateIO.h"
 #include "pvz/engine/core/NullFontResources.h"
 #include "pvz/engine/core/NullImageStore.h"
+#include "pvz/engine/core/NullMusicResources.h"
 #include "pvz/engine/core/NullSoundResources.h"
 #include "pvz/game/GameModule.h"
 
@@ -68,6 +69,12 @@ public:
         return mSoundResources;
     }
 
+    [[nodiscard]] pvz::engine::IMusicResources&
+    GetMusicResources() override
+    {
+        return mMusicResources;
+    }
+
 private:
     class EmptyResourceStore final : public pvz::engine::IResourceStore
     {
@@ -126,6 +133,7 @@ private:
     pvz::engine::core::NullImageResources mImageResources;
     pvz::engine::core::NullFontResources mFontResources;
     pvz::engine::core::NullSoundResources mSoundResources;
+    pvz::engine::core::NullMusicResources mMusicResources;
 };
 
 class EmptyInputFrame final : public pvz::engine::IInputFrame

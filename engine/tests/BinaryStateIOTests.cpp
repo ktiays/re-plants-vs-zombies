@@ -17,6 +17,7 @@ int gFailureCount{};
 void RunPakArchiveTests();
 void RunBitmapFontResourceManagerTests();
 void RunImageResourceManagerTests();
+void RunModuleMusicResourceManagerTests();
 void RunSoundResourceManagerTests();
 void RunXmlDocumentTests();
 void RunXmlPullParserTests();
@@ -160,6 +161,7 @@ int main()
     TestMalformedInput();
     RunBitmapFontResourceManagerTests();
     RunImageResourceManagerTests();
+    RunModuleMusicResourceManagerTests();
     RunSoundResourceManagerTests();
     RunPakArchiveTests();
     RunXmlDocumentTests();

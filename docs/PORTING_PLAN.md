@@ -91,6 +91,20 @@ Last updated: 2026-07-30
   looping, master volume, and stale-handle rejection
 - [x] First retail audio path: the portable game loads and plays
   `SOUND_LOADINGBAR_FLOWER` solely through `ISoundResources`
+- [x] Fixed-width module-music firewall: generational handles, descriptors,
+  playback state, explicit 32-bit order/row positions, resource diagnostics,
+  device controls, and the game-facing music service expose no libopenmpt,
+  BASS, packed Win32 position, or architecture-dependent integer types
+- [x] PAK-backed MO3 playback through BSD-licensed libopenmpt: memory-backed
+  loading, order/row seeking, indefinite looping, per-channel muting, module
+  volume, tempo factor, pause/resume, and SDL float-stereo callback mixing
+- [x] Both retail modules validated in full: `mainmusic.mo3` and
+  `mainmusic_hihats.mo3` each expose 30 channels and 236 orders, accept
+  interactive channel controls, seek correctly, and render finite non-silent
+  48 kHz stereo samples
+- [x] First retail music transition: the portable game starts
+  `mainmusic.mo3` at the legacy title-theme order `0x98`, then pauses, resumes,
+  stops, and releases it solely through `IMusicResources`
 - [ ] Windows runtime parity baseline for the reconstructed legacy target
 - [ ] Migration of the remaining gameplay `Board`, `Challenge`, data-array, and
   effect snapshots from raw object blocks to fieldwise fixed-width schemas
@@ -101,7 +115,7 @@ Last updated: 2026-07-30
 - [ ] Complete Metal renderer (untextured geometry, pool paths, Direct3D parity
   tuning, and golden-image validation remain; bitmap text now uses the shared
   sprite path)
-- [x] Native sound-effect audio backend (MO3 module music remains)
+- [x] Native sound-effect and MO3 module-music audio backend
 - [ ] Full gameplay parity and productization
 
 ## Non-negotiable architecture rules
@@ -322,11 +336,15 @@ Exit gate:
 
 Current partial result:
 
-- OGG effects are decoded through a fixed-width adapter and mixed by SDL.
-- MO3 music is intentionally not treated as an ordinary sound effect. The next
-  audio milestone must select or implement a module decoder that supports the
-  legacy order jumps and layered-track muting used by `mainmusic.mo3` and
-  `mainmusic_hihats.mo3`.
+- OGG effects are decoded through a fixed-width Tremor adapter and mixed by
+  SDL.
+- MO3 music remains a distinct module protocol rather than an ordinary sound
+  effect. libopenmpt loads modules directly from PAK memory and supplies the
+  order/row, channel-mute, loop, volume, and tempo controls required by the
+  legacy music policy.
+- The title transition is integrated. Gameplay-specific tune selection,
+  synchronized main/drum/hihat instances, burst fades, and the complete content
+  matrix remain.
 
 ### Phase 7 — Productization
 
@@ -364,17 +382,19 @@ Every completed phase updates the following evidence:
 The first vertical slice is complete when the portable engine contracts and
 state codec build on macOS, the real PAK can be enumerated, XML definitions can
 load, a Metal window renders the title screen, one effect and one MO3 transition
-play, and a Windows save fixture loads. The effect portion is now complete;
-MO3 transition playback and a verified Windows save fixture remain.
+play, and a Windows save fixture loads. The title effect and MO3 transition are
+now complete; a verified Windows save fixture remains.
 
 ## macOS developer entrypoint
 
 The current native slice requires CMake, Ninja, Xcode's macOS SDK, SDL2,
-libpng, libjpeg-turbo, and giflib. Image and audio codecs are isolated behind
-`IImageDecoder` and `IAudioDecoder`; OGG decoding uses the repository's
-BSD-licensed Tremor source and adds no package dependency. Configure portable
-headless-only builds with `PVZ_BUILD_IMAGE_CODECS=OFF` and
-`PVZ_BUILD_AUDIO_CODECS=OFF` when those decoders are not needed.
+libpng, libjpeg-turbo, giflib, and libopenmpt. Image and effect codecs are
+isolated behind `IImageDecoder` and `IAudioDecoder`; OGG decoding uses the
+repository's BSD-licensed Tremor source and adds no package dependency. MO3
+decoding is isolated behind `IModuleMusicDevice` and uses BSD-licensed
+libopenmpt. Configure portable headless-only builds with
+`PVZ_BUILD_IMAGE_CODECS=OFF`, `PVZ_BUILD_AUDIO_CODECS=OFF`, and
+`PVZ_BUILD_MODULE_MUSIC=OFF` when those decoders are not needed.
 Build and launch the app through the project-local entrypoint:
 
 ```sh
@@ -393,14 +413,21 @@ logo through `IImageResources`, loads `FONT_BRIANNETOD16` through
 `IFontResources`, and submits both images and generated glyph sprites through
 the renderer protocol. Font layout uses `char32_t` text and fixed-width
 metrics; it does not expose host `wchar_t` or native font APIs. The default
-headless build remains independent of the codec libraries and uses null image
-font-, and sound-resource implementations.
+headless build remains independent of the codec libraries and uses null image-,
+font-, sound-, and music-resource implementations.
 
 The same startup path resolves `SOUND_LOADINGBAR_FLOWER` through
 `ISoundResources`, decodes it through `IAudioDecoder`, uploads fixed-width
 signed 16-bit PCM through `IAudioDevice`, and queues it in the SDL callback
 mixer. Neither the game module nor the public engine API includes SDL or
 Tremor types.
+
+The title startup path separately loads `sounds/mainmusic.mo3` through
+`IMusicResources` and starts it at the legacy title-theme order `0x98`.
+`MusicPosition` carries order and row as independent `std::uint32_t` fields;
+the packed BASS/Win32 position and its host-dependent `unsigned long` never
+cross the portable boundary. The macOS backend streams 48 kHz float stereo
+from libopenmpt into the same bounded SDL callback mix used by sound effects.
 
 The PAK inspection tool can validate all shipped bitmap-font descriptors and
 their decoded atlases without extracting them:
@@ -415,6 +442,14 @@ It can also audit every sound declaration and decode every shipped OGG file:
 ```sh
 ./build/macos/engine/pvz_pak_inspect \
   /path/to/main.pak --validate-sounds
+```
+
+It can validate the MO3 decoder and the interactive controls needed by legacy
+tune transitions:
+
+```sh
+./build/macos/engine/pvz_pak_inspect \
+  /path/to/main.pak --validate-music
 ```
 
 The procedural renderer validation scene is selected independently of the

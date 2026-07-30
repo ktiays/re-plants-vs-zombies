@@ -116,6 +116,141 @@ public:
     std::uint32_t mReleaseCount{};
 };
 
+class TestMusicResources final : public pvz::engine::IMusicResources
+{
+public:
+    [[nodiscard]] bool Load(
+        std::string_view thePath,
+        pvz::engine::MusicResource& theResource,
+        pvz::engine::MusicResourceDiagnostic& theDiagnostic) override
+    {
+        if (thePath != "sounds/mainmusic.mo3")
+            return false;
+        ++mLoadCount;
+        theResource = {
+            .mModule = {.mIndex = 7, .mGeneration = 4},
+            .mDescriptor =
+                {
+                    .mChannelCount = 30,
+                    .mOrderCount = 240,
+                },
+        };
+        theDiagnostic = {};
+        return true;
+    }
+
+    void Release(pvz::engine::ModuleHandle theModule) override
+    {
+        if (theModule.mIndex == 7 &&
+            theModule.mGeneration == 4)
+        {
+            ++mReleaseCount;
+        }
+    }
+
+    [[nodiscard]] bool Play(
+        pvz::engine::ModuleHandle theModule,
+        const pvz::engine::MusicPlayback& thePlayback) override
+    {
+        if (theModule.mIndex != 7 ||
+            theModule.mGeneration != 4)
+        {
+            return false;
+        }
+        mPlayback = thePlayback;
+        ++mPlayCount;
+        return true;
+    }
+
+    void Stop(pvz::engine::ModuleHandle theModule) override
+    {
+        if (theModule.mIndex == 7 &&
+            theModule.mGeneration == 4)
+        {
+            ++mStopCount;
+        }
+    }
+
+    void Pause(
+        pvz::engine::ModuleHandle theModule,
+        bool thePaused) override
+    {
+        if (theModule.mIndex == 7 &&
+            theModule.mGeneration == 4)
+        {
+            mPaused = thePaused;
+            ++mPauseCount;
+        }
+    }
+
+    [[nodiscard]] bool IsPlaying(
+        pvz::engine::ModuleHandle theModule) const override
+    {
+        return theModule.mIndex == 7 &&
+               theModule.mGeneration == 4;
+    }
+
+    [[nodiscard]] bool SetPosition(
+        pvz::engine::ModuleHandle theModule,
+        pvz::engine::MusicPosition thePosition) override
+    {
+        static_cast<void>(theModule);
+        static_cast<void>(thePosition);
+        return true;
+    }
+
+    [[nodiscard]] bool GetPosition(
+        pvz::engine::ModuleHandle theModule,
+        pvz::engine::MusicPosition& thePosition) const override
+    {
+        static_cast<void>(theModule);
+        thePosition = mPlayback.mPosition;
+        return true;
+    }
+
+    [[nodiscard]] bool SetChannelEnabled(
+        pvz::engine::ModuleHandle theModule,
+        std::uint32_t theChannel,
+        bool theEnabled) override
+    {
+        static_cast<void>(theModule);
+        static_cast<void>(theChannel);
+        static_cast<void>(theEnabled);
+        return true;
+    }
+
+    [[nodiscard]] bool SetVolume(
+        pvz::engine::ModuleHandle theModule,
+        float theVolume) override
+    {
+        static_cast<void>(theModule);
+        static_cast<void>(theVolume);
+        return true;
+    }
+
+    [[nodiscard]] bool SetTempoFactor(
+        pvz::engine::ModuleHandle theModule,
+        float theFactor) override
+    {
+        static_cast<void>(theModule);
+        static_cast<void>(theFactor);
+        return true;
+    }
+
+    void SetMasterVolume(float theVolume) override
+    {
+        static_cast<void>(theVolume);
+    }
+
+    pvz::engine::MusicPlayback mPlayback;
+    std::uint32_t mLoadCount{};
+    std::uint32_t mPlayCount{};
+    std::uint32_t mStopCount{};
+    std::uint32_t mPauseCount{};
+    std::uint32_t mReleaseCount{};
+    bool mPaused{};
+};
+
 class TestServices final : public pvz::engine::IEngineServices
 {
 public:
@@ -158,6 +293,12 @@ public:
         return mSoundResources;
     }
 
+    [[nodiscard]] pvz::engine::IMusicResources&
+    GetMusicResources() override
+    {
+        return mMusicResources;
+    }
+
     [[nodiscard]] TestLogger& GetTestLogger()
     {
         return mLogger;
@@ -166,6 +307,11 @@ public:
     [[nodiscard]] TestSoundResources& GetTestSoundResources()
     {
         return mSoundResources;
+    }
+
+    [[nodiscard]] TestMusicResources& GetTestMusicResources()
+    {
+        return mMusicResources;
     }
 
 private:
@@ -226,6 +372,7 @@ private:
     pvz::engine::core::NullImageResources mImageResources;
     pvz::engine::core::NullFontResources mFontResources;
     TestSoundResources mSoundResources;
+    TestMusicResources mMusicResources;
 };
 
 class EmptyInputFrame final : public pvz::engine::IInputFrame
@@ -323,6 +470,14 @@ void TestLifecycleAndState()
             aServices.GetTestSoundResources().mPlayCount == 1,
         "game loads and plays sound through engine protocol");
     Expect(
+        aServices.GetTestMusicResources().mLoadCount == 1 &&
+            aServices.GetTestMusicResources().mPlayCount == 1 &&
+            aServices.GetTestMusicResources()
+                    .mPlayback.mPosition.mOrder == 0x98 &&
+            aServices.GetTestMusicResources()
+                    .mPlayback.mPosition.mRow == 0,
+        "game starts title music through fixed-width protocol");
+    Expect(
         aGame.Initialize(aServices) == pvz::engine::LifecycleResult::Failure,
         "game rejects duplicate initialization");
 
@@ -332,9 +487,17 @@ void TestLifecycleAndState()
     Expect(aGame.GetLastTick() == 11, "last tick is recorded");
 
     aGame.Suspend();
+    Expect(
+        aServices.GetTestMusicResources().mPauseCount == 1 &&
+            aServices.GetTestMusicResources().mPaused,
+        "suspend pauses title music");
     aGame.Update(pvz::engine::GameTick{12}, anInput);
     Expect(aGame.GetUpdateCount() == 2, "suspended game does not update");
     aGame.Resume();
+    Expect(
+        aServices.GetTestMusicResources().mPauseCount == 2 &&
+            !aServices.GetTestMusicResources().mPaused,
+        "resume continues title music");
     aGame.Update(pvz::engine::GameTick{12}, anInput);
     Expect(aGame.GetUpdateCount() == 3, "resumed game updates");
 
@@ -370,12 +533,16 @@ void TestLifecycleAndState()
     aGame.Shutdown();
     Expect(!aGame.IsInitialized(), "shutdown clears initialized state");
     Expect(
-        aServices.GetTestLogger().GetMessageCount() == 3,
+        aServices.GetTestLogger().GetMessageCount() == 4,
         "lifecycle messages use engine logger");
     Expect(
         aServices.GetTestSoundResources().mStopCount == 1 &&
             aServices.GetTestSoundResources().mReleaseCount == 1,
         "game releases sound through engine protocol");
+    Expect(
+        aServices.GetTestMusicResources().mStopCount == 1 &&
+            aServices.GetTestMusicResources().mReleaseCount == 1,
+        "game stops and releases title music");
 
     pvz::engine::core::BinaryStateWriter anUninitializedWriter;
     Expect(

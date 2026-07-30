@@ -16,6 +16,12 @@ if(NOT TARGET pvz_audio_codecs)
         "PVZ_BUILD_MACOS_APP requires PVZ_BUILD_AUDIO_CODECS."
     )
 endif()
+if(NOT TARGET OpenMPT::OpenMPT)
+    message(
+        FATAL_ERROR
+        "PVZ_BUILD_MACOS_APP requires PVZ_BUILD_MODULE_MUSIC."
+    )
+endif()
 
 set(PVZ_METAL_LIBRARY "${CMAKE_CURRENT_BINARY_DIR}/PvzShaders.metallib")
 set(
@@ -57,6 +63,7 @@ target_link_libraries(
     PUBLIC
         pvz_engine_api
     PRIVATE
+        OpenMPT::OpenMPT
         SDL2::SDL2
 )
 

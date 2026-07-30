@@ -14,8 +14,10 @@ add_library(
         core/src/BitmapFontDescriptor.cpp
         core/src/BitmapFontResourceManager.cpp
         core/src/ImageResourceManager.cpp
+        core/src/ModuleMusicResourceManager.cpp
         core/src/NullFontResources.cpp
         core/src/NullImageStore.cpp
+        core/src/NullMusicResources.cpp
         core/src/NullSoundResources.cpp
         core/src/PakArchive.cpp
         core/src/PakResourceStore.cpp
@@ -164,7 +166,6 @@ if(TARGET pvz_audio_codecs)
         )
     endif()
 endif()
-
 add_custom_target(
     pvz_check_portable_boundaries ALL
     COMMAND
@@ -202,6 +203,16 @@ if(TARGET pvz_audio_codecs)
         PRIVATE pvz_audio_codecs
     )
 endif()
+if(TARGET OpenMPT::OpenMPT)
+    target_compile_definitions(
+        pvz_pak_inspect
+        PRIVATE PVZ_HAS_MODULE_MUSIC=1
+    )
+    target_link_libraries(
+        pvz_pak_inspect
+        PRIVATE OpenMPT::OpenMPT
+    )
+endif()
 
 if(BUILD_TESTING)
     add_executable(
@@ -211,6 +222,7 @@ if(BUILD_TESTING)
         tests/BitmapFontResourceManagerTests.cpp
         tests/EngineApiContractTests.cpp
         tests/ImageResourceManagerTests.cpp
+        tests/ModuleMusicResourceManagerTests.cpp
         tests/PakArchiveTests.cpp
         tests/SoundResourceManagerTests.cpp
         tests/XmlDocumentTests.cpp

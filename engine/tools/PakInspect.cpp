@@ -15,11 +15,19 @@
 #include "pvz/engine/image/PortableImageDecoder.h"
 #endif
 
+#if defined(PVZ_HAS_MODULE_MUSIC)
+#include <libopenmpt/libopenmpt_ext.h>
+#endif
+
+#include <algorithm>
+#include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <iostream>
 #include <limits>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -333,6 +341,205 @@ private:
         << " stereo=" << aStereoCount
         << " decoded-frames=" << aFrameCount
         << " duration-microseconds=" << aDurationMicroseconds
+        << '\n';
+    return true;
+}
+#endif
+
+#if defined(PVZ_HAS_MODULE_MUSIC)
+struct OpenMptModuleDeleter
+{
+    void operator()(openmpt_module_ext* theModule) const
+    {
+        if (theModule != nullptr)
+            openmpt_module_ext_destroy(theModule);
+    }
+};
+
+using OpenMptModule =
+    std::unique_ptr<openmpt_module_ext, OpenMptModuleDeleter>;
+
+[[nodiscard]] bool ValidateModuleMusic(
+    const pvz::engine::core::PakArchive& theArchive)
+{
+    std::uint32_t aModuleCount{};
+    std::uint64_t aRenderedFrameCount{};
+    std::vector<std::byte> aBytes;
+    std::array<float, 48'000 * 2> aSamples;
+    for (const auto& anEntry : theArchive.GetEntries())
+    {
+        if (!EndsWithAsciiInsensitive(anEntry.mPath, ".mo3"))
+            continue;
+        if (!theArchive.ReadEntry(anEntry, aBytes))
+        {
+            std::cerr << anEntry.mPath << ": could not read entry\n";
+            return false;
+        }
+
+        int anError{};
+        const char* anErrorMessage{};
+        OpenMptModule aModule(
+            openmpt_module_ext_create_from_memory(
+                aBytes.data(),
+                aBytes.size(),
+                nullptr,
+                nullptr,
+                nullptr,
+                nullptr,
+                &anError,
+                &anErrorMessage,
+                nullptr));
+        if (aModule == nullptr)
+        {
+            std::cerr
+                << anEntry.mPath << ": libopenmpt error "
+                << anError;
+            if (anErrorMessage != nullptr)
+                std::cerr << ": " << anErrorMessage;
+            std::cerr << '\n';
+            if (anErrorMessage != nullptr)
+                openmpt_free_string(anErrorMessage);
+            return false;
+        }
+        if (anErrorMessage != nullptr)
+            openmpt_free_string(anErrorMessage);
+
+        auto* const aBaseModule =
+            openmpt_module_ext_get_module(aModule.get());
+        openmpt_module_ext_interface_interactive anInteractive{};
+        if (aBaseModule == nullptr ||
+            openmpt_module_ext_get_interface(
+                aModule.get(),
+                LIBOPENMPT_EXT_C_INTERFACE_INTERACTIVE,
+                &anInteractive,
+                sizeof(anInteractive)) == 0)
+        {
+            std::cerr
+                << anEntry.mPath
+                << ": required interactive interface is unavailable\n";
+            return false;
+        }
+
+        const auto aChannelCount =
+            openmpt_module_get_num_channels(aBaseModule);
+        const auto anOrderCount =
+            openmpt_module_get_num_orders(aBaseModule);
+        if (aChannelCount <= 0 || anOrderCount <= 0)
+        {
+            std::cerr
+                << anEntry.mPath
+                << ": invalid module channel or order count\n";
+            return false;
+        }
+        if (anInteractive.set_channel_mute_status(
+                aModule.get(),
+                0,
+                1) == 0 ||
+            anInteractive.set_channel_mute_status(
+                aModule.get(),
+                0,
+                0) == 0 ||
+            anInteractive.set_tempo_factor(
+                aModule.get(),
+                1.01) == 0 ||
+            std::abs(
+                anInteractive.get_tempo_factor(
+                    aModule.get()) -
+                1.01) > 0.0001 ||
+            anInteractive.set_tempo_factor(
+                aModule.get(),
+                1.0) == 0)
+        {
+            std::cerr
+                << anEntry.mPath
+                << ": interactive module control failed\n";
+            return false;
+        }
+
+        const std::int32_t aStartOrder =
+            EndsWithAsciiInsensitive(
+                anEntry.mPath,
+                "mainmusic.mo3")
+                ? 0x98
+                : 0;
+        if (aStartOrder >= anOrderCount)
+        {
+            std::cerr
+                << anEntry.mPath
+                << ": required order is outside the module\n";
+            return false;
+        }
+        static_cast<void>(
+            openmpt_module_set_position_order_row(
+                aBaseModule,
+                aStartOrder,
+                0));
+        if (openmpt_module_get_current_order(aBaseModule) !=
+                aStartOrder ||
+            openmpt_module_get_current_row(aBaseModule) != 0)
+        {
+            std::cerr
+                << anEntry.mPath
+                << ": order and row seek failed\n";
+            return false;
+        }
+        if (openmpt_module_set_repeat_count(aBaseModule, -1) == 0)
+        {
+            std::cerr
+                << anEntry.mPath
+                << ": repeat control failed\n";
+            return false;
+        }
+
+        const auto aRendered =
+            openmpt_module_read_interleaved_float_stereo(
+                aBaseModule,
+                48'000,
+                48'000,
+                aSamples.data());
+        float aPeak{};
+        for (std::size_t aSample = 0;
+             aSample < aRendered * 2;
+             ++aSample)
+        {
+            if (!std::isfinite(aSamples[aSample]))
+            {
+                std::cerr
+                    << anEntry.mPath
+                    << ": decoder emitted a non-finite sample\n";
+                return false;
+            }
+            aPeak = std::max(
+                aPeak,
+                std::abs(aSamples[aSample]));
+        }
+        if (aRendered == 0 || aPeak == 0.0F)
+        {
+            std::cerr
+                << anEntry.mPath
+                << ": module rendered no audible frames\n";
+            return false;
+        }
+
+        ++aModuleCount;
+        aRenderedFrameCount += aRendered;
+        std::cout
+            << anEntry.mPath
+            << " channels=" << aChannelCount
+            << " orders=" << anOrderCount
+            << " seek-order=" << aStartOrder
+            << " rendered-frames=" << aRendered
+            << " peak=" << aPeak
+            << '\n';
+    }
+    if (aModuleCount == 0)
+    {
+        std::cerr << "archive contains no MO3 modules\n";
+        return false;
+    }
+    std::cout
+        << "module-music-files=" << aModuleCount
+        << " rendered-frames=" << aRenderedFrameCount
         << '\n';
     return true;
 }
@@ -761,6 +968,7 @@ int main(int theArgumentCount, char** theArguments)
                "--list-audio|"
                "--print-resource-manifest|--validate-images|"
                "--validate-fonts|--validate-sounds|"
+               "--validate-music|"
                "--print-entry <entry-path>]\n";
         return 2;
     }
@@ -779,6 +987,8 @@ int main(int theArgumentCount, char** theArguments)
         anOption == "--validate-fonts";
     const bool shouldValidateSounds =
         anOption == "--validate-sounds";
+    const bool shouldValidateMusic =
+        anOption == "--validate-music";
     const bool shouldPrintEntry =
         anOption == "--print-entry";
     if ((shouldPrintEntry && theArgumentCount != 4) ||
@@ -791,6 +1001,7 @@ int main(int theArgumentCount, char** theArguments)
         !shouldValidateImages &&
         !shouldValidateFonts &&
         !shouldValidateSounds &&
+        !shouldValidateMusic &&
         !shouldPrintEntry))
     {
         std::cerr << "invalid option or arguments";
@@ -895,6 +1106,17 @@ int main(int theArgumentCount, char** theArguments)
             return 1;
 #else
         std::cerr << "audio codecs are not enabled in this build\n";
+        return 1;
+#endif
+    }
+    if (shouldValidateMusic)
+    {
+#if defined(PVZ_HAS_MODULE_MUSIC)
+        if (!ValidateModuleMusic(anArchive))
+            return 1;
+#else
+        std::cerr
+            << "module music support is not enabled in this build\n";
         return 1;
 #endif
     }

@@ -1,6 +1,7 @@
 #include "pvz/engine/Game.h"
 #include "pvz/engine/Audio.h"
 #include "pvz/engine/Font.h"
+#include "pvz/engine/Music.h"
 #include "pvz/engine/Resources.h"
 #include "pvz/engine/Runtime.h"
 #include "pvz/engine/StateIO.h"
@@ -19,6 +20,10 @@ static_assert(sizeof(pvz::engine::ImageHandle) == 8);
 static_assert(sizeof(pvz::engine::FontHandle) == 8);
 static_assert(sizeof(pvz::engine::SoundHandle) == 8);
 static_assert(sizeof(pvz::engine::VoiceHandle) == 8);
+static_assert(sizeof(pvz::engine::ModuleHandle) == 8);
+static_assert(sizeof(pvz::engine::MusicPosition) == 8);
+static_assert(sizeof(pvz::engine::ModuleDescriptor) == 8);
+static_assert(sizeof(pvz::engine::MusicPlayback) == 16);
 static_assert(sizeof(pvz::engine::FontMetrics) == 20);
 static_assert(sizeof(pvz::engine::TextMetrics) == 4);
 static_assert(
@@ -29,6 +34,10 @@ static_assert(
     std::is_trivially_copyable_v<pvz::engine::SoundHandle>);
 static_assert(
     std::is_trivially_copyable_v<pvz::engine::VoiceHandle>);
+static_assert(
+    std::is_trivially_copyable_v<pvz::engine::ModuleHandle>);
+static_assert(
+    std::is_trivially_copyable_v<pvz::engine::MusicPosition>);
 static_assert(std::has_virtual_destructor_v<pvz::engine::IGame>);
 static_assert(std::has_virtual_destructor_v<pvz::engine::IImageDecoder>);
 static_assert(std::has_virtual_destructor_v<pvz::engine::IImageStore>);
@@ -42,6 +51,10 @@ static_assert(
     std::has_virtual_destructor_v<pvz::engine::IAudioDevice>);
 static_assert(
     std::has_virtual_destructor_v<pvz::engine::ISoundResources>);
+static_assert(
+    std::has_virtual_destructor_v<pvz::engine::IModuleMusicDevice>);
+static_assert(
+    std::has_virtual_destructor_v<pvz::engine::IMusicResources>);
 static_assert(std::has_virtual_destructor_v<pvz::engine::IResourceStore>);
 static_assert(std::has_virtual_destructor_v<pvz::engine::IStateReader>);
 static_assert(std::has_virtual_destructor_v<pvz::engine::IStateWriter>);

@@ -1,6 +1,7 @@
 #include "pvz/engine/core/ApplicationRunner.h"
 #include "pvz/engine/core/BitmapFontResourceManager.h"
 #include "pvz/engine/core/ImageResourceManager.h"
+#include "pvz/engine/core/ModuleMusicResourceManager.h"
 #include "pvz/engine/core/PakResourceStore.h"
 #include "pvz/engine/core/ResourceXmlDocumentLoader.h"
 #include "pvz/engine/core/SoundResourceManager.h"
@@ -59,14 +60,16 @@ public:
         pvz::engine::IImageStore& theImages,
         pvz::engine::IImageResources& theImageResources,
         pvz::engine::IFontResources& theFontResources,
-        pvz::engine::ISoundResources& theSoundResources)
+        pvz::engine::ISoundResources& theSoundResources,
+        pvz::engine::IMusicResources& theMusicResources)
         : mLogger(theLogger),
           mResources(theResources),
           mDocuments(theDocuments),
           mImages(theImages),
           mImageResources(theImageResources),
           mFontResources(theFontResources),
-          mSoundResources(theSoundResources)
+          mSoundResources(theSoundResources),
+          mMusicResources(theMusicResources)
     {
     }
 
@@ -109,6 +112,12 @@ public:
         return mSoundResources;
     }
 
+    [[nodiscard]] pvz::engine::IMusicResources&
+    GetMusicResources() override
+    {
+        return mMusicResources;
+    }
+
 private:
     pvz::engine::ILogger& mLogger;
     pvz::engine::IResourceStore& mResources;
@@ -117,6 +126,7 @@ private:
     pvz::engine::IImageResources& mImageResources;
     pvz::engine::IFontResources& mFontResources;
     pvz::engine::ISoundResources& mSoundResources;
+    pvz::engine::IMusicResources& mMusicResources;
 };
 
 } // namespace
@@ -240,6 +250,10 @@ int main(int theArgumentCount, char** theArguments)
                 << '\n';
             return 1;
         }
+        pvz::engine::core::ModuleMusicResourceManager
+            aMusicResources(
+                aResources,
+                anAudioDevice);
         MacEngineServices aServices(
             aLogger,
             aResources,
@@ -247,7 +261,8 @@ int main(int theArgumentCount, char** theArguments)
             aRenderer,
             anImageResources,
             aFontResources,
-            aSoundResources);
+            aSoundResources,
+            aMusicResources);
         pvz::game::GameModule aGame;
         pvz::platform::macos::RendererSmokeGame
             aRendererSmokeGame;

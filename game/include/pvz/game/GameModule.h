@@ -36,6 +36,7 @@ private:
     engine::FontResource mLoadingFont;
     engine::SoundResource mLoadingSound;
     engine::VoiceHandle mLoadingVoice;
+    engine::MusicResource mTitleMusic;
     std::vector<engine::SpriteDraw> mLoadingTextSprites;
     engine::TickIndex mLastTick{};
     std::uint64_t mUpdateCount{};

@@ -2,6 +2,7 @@
 
 #include "pvz/engine/Audio.h"
 #include "pvz/engine/Font.h"
+#include "pvz/engine/Music.h"
 #include "pvz/engine/Render.h"
 #include "pvz/engine/Resources.h"
 #include "pvz/engine/Xml.h"
@@ -40,6 +41,7 @@ public:
     [[nodiscard]] virtual IImageResources& GetImageResources() = 0;
     [[nodiscard]] virtual IFontResources& GetFontResources() = 0;
     [[nodiscard]] virtual ISoundResources& GetSoundResources() = 0;
+    [[nodiscard]] virtual IMusicResources& GetMusicResources() = 0;
 };
 
 } // namespace pvz::engine

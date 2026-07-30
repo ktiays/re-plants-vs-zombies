@@ -91,6 +91,22 @@ Validate the portable sound manifest and decode every shipped OGG effect:
   /path/to/main.pak --validate-sounds
 ```
 
+MO3 module music support uses the BSD-licensed libopenmpt backend. On macOS,
+install it with Homebrew and configure with
+`-DPVZ_BUILD_MODULE_MUSIC=ON` (the native application enables it by default):
+
+```sh
+brew install libopenmpt
+```
+
+Validate every shipped MO3 file, including order/row seeking, channel muting,
+looping, and float-stereo rendering:
+
+```sh
+./out/portable/engine/pvz_pak_inspect \
+  /path/to/main.pak --validate-music
+```
+
 Original game data is not part of this repository and must not be committed.
 
 ## Installation
