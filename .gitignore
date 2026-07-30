@@ -233,6 +233,7 @@ _pkginfo.txt
 # Others
 *.pvzc
 *.pvzr
+*.pvzb
 ClientBin/
 ~$*
 *~

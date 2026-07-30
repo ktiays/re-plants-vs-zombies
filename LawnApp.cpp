@@ -49,6 +49,7 @@
 #include "SexyAppFramework/resource.h"
 
 #ifdef PVZ_HAS_REFERENCE_INPUT_CAPTURE
+#include "pvz/platform/windows/LegacyBehaviorAdapter.h"
 #include "pvz/platform/windows/LegacyInputCapture.h"
 #endif
 
@@ -1398,6 +1399,11 @@ void LawnApp::HandleCmdLineParam(const std::string& theParamName, const std::str
 		if (!pvz::platform::windows::ConfigureLegacyInputCapture(theParamValue))
 			mLoadingFailed = true;
 	}
+	else if (theParamName == "-recordbehavior")
+	{
+		if (!pvz::platform::windows::ConfigureLegacyBehaviorCapture(theParamValue))
+			mLoadingFailed = true;
+	}
 #endif
 	else
 	{
@@ -1684,6 +1690,9 @@ void LawnApp::UpdateFrames()
 		}
 
 		CheckForGameEnd();
+#ifdef PVZ_HAS_REFERENCE_INPUT_CAPTURE
+		pvz::platform::windows::CaptureLegacyBehaviorTick(*this);
+#endif
 	}
 }
 
@@ -3571,4 +3580,3 @@ void LawnApp::UpdateRegisterInfo()
 {
 
 }
-

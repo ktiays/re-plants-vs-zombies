@@ -79,7 +79,7 @@ target_link_libraries(
     pvz_game_headless
     PRIVATE
         pvz_game
-        pvz_engine_core
+        pvz_parity
 )
 
 add_executable(

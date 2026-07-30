@@ -1,6 +1,7 @@
 #include "pvz/platform/windows/LegacyInputCapture.h"
 
 #include "pvz/engine/core/BinaryStateIO.h"
+#include "pvz/parity/BehaviorCapture.h"
 #include "pvz/platform/windows/ReferenceInputRecorder.h"
 
 #include <cstddef>
@@ -16,11 +17,19 @@ namespace pvz::platform::windows
 namespace
 {
 
+enum class CaptureKind : std::uint8_t
+{
+    InputReplay,
+    Behavior,
+};
+
 struct CaptureState
 {
     ReferenceInputRecorder mRecorder;
+    parity::BehaviorCapture mBehaviorCapture;
     std::filesystem::path mOutputPath;
     std::string mError;
+    CaptureKind mKind{CaptureKind::InputReplay};
     bool mRequested{};
     bool mEnabled{};
     bool mFinalized{};
@@ -50,13 +59,13 @@ void SetError(CaptureState& theState, std::string theError)
     {
         SetError(
             theState,
-            "could not inspect replay output path: " +
+            "could not inspect reference capture output path: " +
                 anError.message());
         return false;
     }
     if (hasOutput)
     {
-        SetError(theState, "replay output already exists");
+        SetError(theState, "reference capture output already exists");
         return false;
     }
 
@@ -68,13 +77,15 @@ void SetError(CaptureState& theState, std::string theError)
     {
         SetError(
             theState,
-            "could not inspect temporary replay path: " +
+            "could not inspect temporary reference capture path: " +
                 anError.message());
         return false;
     }
     if (hasTemporaryOutput)
     {
-        SetError(theState, "temporary replay output already exists");
+        SetError(
+            theState,
+            "temporary reference capture output already exists");
         return false;
     }
 
@@ -83,7 +94,9 @@ void SetError(CaptureState& theState, std::string theError)
         std::ios::binary | std::ios::trunc);
     if (!aStream)
     {
-        SetError(theState, "could not create temporary replay output");
+        SetError(
+            theState,
+            "could not create temporary reference capture output");
         return false;
     }
     if (!theBytes.empty())
@@ -95,7 +108,9 @@ void SetError(CaptureState& theState, std::string theError)
     aStream.close();
     if (!aStream)
     {
-        SetError(theState, "could not write complete replay output");
+        SetError(
+            theState,
+            "could not write complete reference capture output");
         std::filesystem::remove(aTemporaryPath, anError);
         return false;
     }
@@ -108,7 +123,7 @@ void SetError(CaptureState& theState, std::string theError)
     {
         SetError(
             theState,
-            "could not publish replay output: " +
+            "could not publish reference capture output: " +
                 anError.message());
         std::filesystem::remove(aTemporaryPath, anError);
         return false;
@@ -116,21 +131,26 @@ void SetError(CaptureState& theState, std::string theError)
     return true;
 }
 
-} // namespace
-
-bool ConfigureLegacyInputCapture(
-    std::string_view theOutputPath)
+[[nodiscard]] bool ConfigureCapture(
+    std::string_view theOutputPath,
+    CaptureKind theKind)
 {
     auto& aState = GetCaptureState();
     if (aState.mRequested)
     {
-        SetError(aState, "replay capture was configured more than once");
+        SetError(aState, "reference capture was configured more than once");
         return false;
     }
     aState.mRequested = true;
+    aState.mKind = theKind;
+    if (theKind == CaptureKind::Behavior)
+    {
+        aState.mBehaviorCapture.SetProducer(
+            parity::BehaviorProducer::LegacyWindows);
+    }
     if (theOutputPath.empty())
     {
-        SetError(aState, "replay output path is empty");
+        SetError(aState, "reference capture output path is empty");
         return false;
     }
 
@@ -142,7 +162,7 @@ bool ConfigureLegacyInputCapture(
     {
         SetError(
             aState,
-            "could not resolve replay output path: " +
+            "could not resolve reference capture output path: " +
                 anError.message());
         return false;
     }
@@ -152,22 +172,48 @@ bool ConfigureLegacyInputCapture(
     {
         SetError(
             aState,
-            "could not inspect replay output path: " +
+            "could not inspect reference capture output path: " +
                 anError.message());
         return false;
     }
     if (hasOutput)
     {
-        SetError(aState, "replay output already exists");
+        SetError(aState, "reference capture output already exists");
         return false;
     }
     aState.mEnabled = true;
     return true;
 }
 
+} // namespace
+
+bool ConfigureLegacyInputCapture(
+    std::string_view theOutputPath)
+{
+    return ConfigureCapture(
+        theOutputPath,
+        CaptureKind::InputReplay);
+}
+
+bool ConfigureLegacyBehaviorCapture(
+    std::string_view theOutputPath)
+{
+    return ConfigureCapture(
+        theOutputPath,
+        CaptureKind::Behavior);
+}
+
 bool WasLegacyInputCaptureRequested()
 {
     return GetCaptureState().mRequested;
+}
+
+bool WasLegacyBehaviorCaptureRequested()
+{
+    const auto& aState = GetCaptureState();
+    return
+        aState.mRequested &&
+        aState.mKind == CaptureKind::Behavior;
 }
 
 bool IsLegacyInputCaptureEnabled()
@@ -249,6 +295,27 @@ void CaptureLegacyInputTick()
     }
 }
 
+void RecordLegacyBehaviorObservation(
+    game::BehaviorObservation theObservation)
+{
+    auto& aState = GetCaptureState();
+    if (!aState.mEnabled ||
+        aState.mKind != CaptureKind::Behavior)
+    {
+        return;
+    }
+    parity::BehaviorCaptureError anError{};
+    if (!aState.mBehaviorCapture.AppendObservation(
+            theObservation,
+            anError))
+    {
+        SetError(
+            aState,
+            std::string(
+                parity::GetBehaviorCaptureErrorMessage(anError)));
+    }
+}
+
 bool FinalizeLegacyInputCapture()
 {
     auto& aState = GetCaptureState();
@@ -261,7 +328,22 @@ bool FinalizeLegacyInputCapture()
         return false;
 
     engine::core::BinaryStateWriter aWriter;
-    if (!aState.mRecorder.Save(aWriter))
+    if (aState.mKind == CaptureKind::Behavior)
+    {
+        aState.mBehaviorCapture.SetInputReplay(
+            aState.mRecorder.GetReplay());
+        parity::BehaviorCaptureError anError{};
+        if (!aState.mBehaviorCapture.Save(aWriter, anError))
+        {
+            SetError(
+                aState,
+                std::string(
+                    parity::GetBehaviorCaptureErrorMessage(
+                        anError)));
+            return false;
+        }
+    }
+    else if (!aState.mRecorder.Save(aWriter))
     {
         SetError(
             aState,

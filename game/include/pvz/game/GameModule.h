@@ -1,6 +1,7 @@
 #pragma once
 
 #include "pvz/engine/Game.h"
+#include "pvz/game/BehaviorObservation.h"
 #include "pvz/game/GameFlow.h"
 #include "pvz/game/ReanimationPlayer.h"
 
@@ -34,6 +35,7 @@ public:
     [[nodiscard]] std::uint64_t GetUpdateCount() const;
     [[nodiscard]] GameScene GetScene() const;
     [[nodiscard]] GameFlowState GetFlowState() const;
+    [[nodiscard]] BehaviorObservation GetBehaviorObservation() const;
     [[nodiscard]] std::uint64_t GetReanimationTick() const;
 
 private:

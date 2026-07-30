@@ -11,9 +11,10 @@ Replays establish cross-platform determinism. They do not by themselves prove
 parity with the legacy game; a reference replay must first be recorded from the
 Windows adapter and then run against the portable game.
 
-The reconstructed Windows adapter records `PVZR` at the legacy
-`WidgetManager`/logical-update boundary. It intentionally records input only:
-the legacy `LawnApp`/`Board` object graph is not serialized or hashed as though
+The reconstructed Windows adapter can record `PVZR` at the legacy
+`WidgetManager`/logical-update boundary. Its `PVZB` mode nests the same input
+and adds a deliberately narrow behavior observation after every update. The
+legacy `LawnApp`/`Board` object graph is never serialized or hashed as though
 it were the portable `GameModule` state.
 
 ## Version 1 binary format
@@ -96,6 +97,15 @@ Run a Windows-recorded input stream through the portable game:
   --write-session /absolute/path/portable-result.pvzc
 ```
 
+The headless runner also accepts a `PVZB` behavior capture as replay input and
+uses its nested `PVZR` stream:
+
+```sh
+./out/portable/game/pvz_game_headless \
+  --replay /absolute/path/windows-behavior.pvzb \
+  --write-behavior /absolute/path/portable-behavior.pvzb
+```
+
 Write the verified headless session to a local capture:
 
 ```sh
@@ -132,7 +142,7 @@ PVZ_RECORD_SESSION_PATH=/absolute/path/mac-session.pvzc \
 ```
 
 The capture is written atomically when the application exits normally.
-Generated `.pvzr` and `.pvzc` files are ignored by Git.
+Generated `.pvzr`, `.pvzc`, and `.pvzb` files are ignored by Git.
 
 Inspect one capture:
 
@@ -159,3 +169,46 @@ hashes, and the transcript hash match when both inputs are complete sessions.
 For a raw-to-raw or raw-to-session comparison, it compares the input frames and
 reports `inputs-match`; state comparison is unavailable until both operands
 contain state hashes.
+
+## Version 1 behavior capture
+
+A `.pvzb` capture combines the complete input replay with one normalized
+post-update observation per frame:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| Magic | `uint32` | `0x425A5650` (`PVZB`) |
+| Version | `uint16` | `1` |
+| Simulation frequency | `uint32` | `100` |
+| Producer | `uint8` | Unknown, portable game, or legacy Windows |
+| Replay byte count | `uint32` | At most 256 MiB |
+| Replay bytes | byte array | Complete versioned `PVZR` stream |
+| Observation count | `uint32` | Must equal replay frame count |
+
+Each 24-byte observation contains:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| Tick | `uint64` | Zero-based and strictly sequential |
+| Scene | `uint8` | Normalized lifecycle/game scene |
+| Board stage | `uint8` | None, day, night, pool, fog, roof, boss, or other |
+| Grid column | `uint8` | `0` through `8`, or `0xFF` with no focus |
+| Grid row | `uint8` | `0` through `5`, or `0xFF` with no focus |
+| Occupied cells | `uint64` | Low 54 bits represent the 9 by 6 board |
+| Plant count | `uint32` | Live board plants; may exceed occupied bits for stacked plants |
+
+The producer is provenance only and is not compared. The Windows exporter
+converts legacy enums and live `DataArray<Plant>` objects field by field; it
+does not persist array metadata, pointers, padding, or native object memory.
+The portable exporter derives the same schema from `GameModule`.
+
+Compare captures:
+
+```sh
+./out/portable/parity/pvz_behavior_inspect \
+  windows-behavior.pvzb portable-behavior.pvzb
+```
+
+The inspector first verifies the nested inputs, then reports the first
+different observation field, for example
+`behavior-mismatch-tick=63 field=grid-column left=3 right=2`.

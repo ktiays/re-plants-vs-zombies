@@ -34,7 +34,7 @@ int WINAPI WinMain(_In_ HINSTANCE /* hInstance */, _In_opt_ HINSTANCE /* hPrevIn
 	if (!pvz::platform::windows::FinalizeLegacyInputCapture())
 	{
 		const std::string anError =
-			"Could not save reference input replay: " +
+			"Could not save reference capture: " +
 			std::string(
 				pvz::platform::windows::GetLegacyInputCaptureError());
 		std::cerr << anError << '\n';
@@ -44,7 +44,9 @@ int WINAPI WinMain(_In_ HINSTANCE /* hInstance */, _In_opt_ HINSTANCE /* hPrevIn
 	else if (pvz::platform::windows::WasLegacyInputCaptureRequested())
 	{
 		const std::string aSummary =
-			"Reference input replay captured: " +
+			(pvz::platform::windows::WasLegacyBehaviorCaptureRequested()
+				? "Reference behavior capture recorded: "
+				: "Reference input replay captured: ") +
 			std::to_string(
 				pvz::platform::windows::
 					GetLegacyInputCaptureFrameCount()) +

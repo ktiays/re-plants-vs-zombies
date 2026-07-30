@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -506,6 +507,40 @@ GameScene GameModule::GetScene() const
 GameFlowState GameModule::GetFlowState() const
 {
     return mFlow.GetState();
+}
+
+BehaviorObservation GameModule::GetBehaviorObservation() const
+{
+    const auto aFlowState = mFlow.GetState();
+    BehaviorObservation anObservation;
+    anObservation.mTick = mLastTick;
+    switch (aFlowState.mScene)
+    {
+    case GameScene::Title:
+        anObservation.mScene = BehaviorScene::Title;
+        break;
+    case GameScene::MainMenu:
+        anObservation.mScene = BehaviorScene::MainMenu;
+        break;
+    case GameScene::StartingAdventure:
+        anObservation.mScene = BehaviorScene::AdventureIntro;
+        break;
+    case GameScene::AdventureDay:
+        anObservation.mScene = BehaviorScene::AdventurePlaying;
+        anObservation.mBoardStage = BehaviorBoardStage::Day;
+        anObservation.mGridColumn = aFlowState.mGridColumn;
+        anObservation.mGridRow = aFlowState.mGridRow;
+        anObservation.mOccupiedCells =
+            aFlowState.mOccupiedCells;
+        anObservation.mPlantCount =
+            static_cast<std::uint32_t>(
+                std::popcount(aFlowState.mOccupiedCells));
+        break;
+    case GameScene::Count:
+        anObservation.mScene = BehaviorScene::Other;
+        break;
+    }
+    return anObservation;
 }
 
 std::uint64_t GameModule::GetReanimationTick() const

@@ -1,0 +1,146 @@
+#include "pvz/platform/windows/LegacyBehaviorAdapter.h"
+
+#include "Lawn/Board.h"
+#include "Lawn/CursorObject.h"
+#include "LawnApp.h"
+#include "pvz/platform/windows/LegacyInputCapture.h"
+
+#include <cstdint>
+
+namespace pvz::platform::windows
+{
+namespace
+{
+
+[[nodiscard]] game::BehaviorScene GetScene(const LawnApp& theApp)
+{
+    if (theApp.mGameScene == GameScenes::SCENE_LOADING)
+        return game::BehaviorScene::Loading;
+    if (theApp.mTitleScreen != nullptr)
+        return game::BehaviorScene::Title;
+    if (theApp.mGameSelector != nullptr ||
+        theApp.mGameScene == GameScenes::SCENE_MENU)
+    {
+        return game::BehaviorScene::MainMenu;
+    }
+    if (theApp.mGameScene == GameScenes::SCENE_LEVEL_INTRO)
+        return game::BehaviorScene::AdventureIntro;
+    if (theApp.mGameScene == GameScenes::SCENE_PLAYING)
+        return game::BehaviorScene::AdventurePlaying;
+    return game::BehaviorScene::Other;
+}
+
+[[nodiscard]] game::BehaviorBoardStage GetBoardStage(
+    const Board* theBoard)
+{
+    if (theBoard == nullptr)
+        return game::BehaviorBoardStage::None;
+    switch (theBoard->mBackground)
+    {
+    case BackgroundType::BACKGROUND_1_DAY:
+        return game::BehaviorBoardStage::Day;
+    case BackgroundType::BACKGROUND_2_NIGHT:
+        return game::BehaviorBoardStage::Night;
+    case BackgroundType::BACKGROUND_3_POOL:
+        return game::BehaviorBoardStage::Pool;
+    case BackgroundType::BACKGROUND_4_FOG:
+        return game::BehaviorBoardStage::Fog;
+    case BackgroundType::BACKGROUND_5_ROOF:
+        return game::BehaviorBoardStage::Roof;
+    case BackgroundType::BACKGROUND_6_BOSS:
+        return game::BehaviorBoardStage::Boss;
+    case BackgroundType::BACKGROUND_MUSHROOM_GARDEN:
+    case BackgroundType::BACKGROUND_GREENHOUSE:
+    case BackgroundType::BACKGROUND_ZOMBIQUARIUM:
+    case BackgroundType::BACKGROUND_TREEOFWISDOM:
+        return game::BehaviorBoardStage::Other;
+    }
+    return game::BehaviorBoardStage::Other;
+}
+
+void ObserveGridFocus(
+    const Board& theBoard,
+    game::BehaviorObservation& theObservation)
+{
+    if (theBoard.mCursorPreview == nullptr)
+        return;
+    const int aColumn = theBoard.mCursorPreview->mGridX;
+    const int aRow = theBoard.mCursorPreview->mGridY;
+    if (aColumn < 0 ||
+        aColumn >= static_cast<int>(
+            game::kBehaviorBoardColumnCount) ||
+        aRow < 0 ||
+        aRow >= static_cast<int>(
+            game::kBehaviorBoardRowCount))
+    {
+        return;
+    }
+    theObservation.mGridColumn =
+        static_cast<std::uint8_t>(aColumn);
+    theObservation.mGridRow =
+        static_cast<std::uint8_t>(aRow);
+}
+
+void ObservePlants(
+    Board& theBoard,
+    game::BehaviorObservation& theObservation)
+{
+    Plant* aPlant = nullptr;
+    while (theBoard.IteratePlants(aPlant))
+    {
+        if (!aPlant->mIsOnBoard ||
+            aPlant->mPlantCol < 0 ||
+            aPlant->mPlantCol >= static_cast<int>(
+                game::kBehaviorBoardColumnCount) ||
+            aPlant->mRow < 0 ||
+            aPlant->mRow >= static_cast<int>(
+                game::kBehaviorBoardRowCount))
+        {
+            continue;
+        }
+        const auto aColumn =
+            static_cast<std::uint32_t>(aPlant->mPlantCol);
+        const auto aRow =
+            static_cast<std::uint32_t>(aPlant->mRow);
+        const auto aBit = aRow *
+            static_cast<std::uint32_t>(
+                game::kBehaviorBoardColumnCount) +
+            aColumn;
+        theObservation.mOccupiedCells |=
+            std::uint64_t{1} << aBit;
+        ++theObservation.mPlantCount;
+    }
+}
+
+} // namespace
+
+void CaptureLegacyBehaviorTick(LawnApp& theApp)
+{
+    if (!WasLegacyBehaviorCaptureRequested() ||
+        !IsLegacyInputCaptureEnabled())
+    {
+        return;
+    }
+    const auto aFrameCount =
+        GetLegacyInputCaptureFrameCount();
+    if (aFrameCount == 0)
+        return;
+
+    game::BehaviorObservation anObservation;
+    anObservation.mTick = aFrameCount - 1U;
+    anObservation.mScene = GetScene(theApp);
+    anObservation.mBoardStage =
+        GetBoardStage(theApp.mBoard);
+    if (theApp.mBoard != nullptr)
+    {
+        if (anObservation.mScene ==
+            game::BehaviorScene::AdventurePlaying)
+        {
+            ObserveGridFocus(*theApp.mBoard, anObservation);
+        }
+        ObservePlants(*theApp.mBoard, anObservation);
+    }
+    RecordLegacyBehaviorObservation(anObservation);
+}
+
+} // namespace pvz::platform::windows

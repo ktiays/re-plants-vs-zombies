@@ -1,5 +1,7 @@
 #pragma once
 
+#include "pvz/game/BehaviorObservation.h"
+
 #include <cstdint>
 #include <string_view>
 
@@ -15,7 +17,10 @@ enum class ReferencePointerButton : std::uint8_t
 
 [[nodiscard]] bool ConfigureLegacyInputCapture(
     std::string_view theOutputPath);
+[[nodiscard]] bool ConfigureLegacyBehaviorCapture(
+    std::string_view theOutputPath);
 [[nodiscard]] bool WasLegacyInputCaptureRequested();
+[[nodiscard]] bool WasLegacyBehaviorCaptureRequested();
 [[nodiscard]] bool IsLegacyInputCaptureEnabled();
 
 void RecordLegacyPointerPosition(
@@ -32,6 +37,8 @@ void RecordLegacyVirtualKeyDown(
 void RecordLegacyVirtualKeyUp(std::uint32_t theVirtualKey);
 void RecordLegacyText(std::uint32_t theCodePoint);
 void CaptureLegacyInputTick();
+void RecordLegacyBehaviorObservation(
+    game::BehaviorObservation theObservation);
 
 [[nodiscard]] bool FinalizeLegacyInputCapture();
 [[nodiscard]] std::string_view GetLegacyInputCaptureError();

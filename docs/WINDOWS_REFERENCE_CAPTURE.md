@@ -1,10 +1,11 @@
-# Windows reference input capture
+# Windows reference capture
 
 ## Scope
 
-The reconstructed Win32 game can emit the same versioned `PVZR` logical-input
-format consumed by the portable game. This is an input-evidence bridge, not a
-claim that the legacy and portable object models already share a state schema.
+The reconstructed Win32 game can emit either the versioned `PVZR`
+logical-input format or a `PVZB` capture containing the same input plus
+normalized behavior observations. This is an evidence bridge, not a claim that
+the legacy and portable object models share a native state layout.
 
 The recorder observes the legacy `WidgetManager` after window coordinates have
 been remapped into the game's 800 by 600 logical space. Recording at that
@@ -23,6 +24,16 @@ Transient input is consumed after one recorded tick. Held state remains until a
 matching release. Slow-motion iterations that perform no game update do not
 produce a replay frame; fast-forward iterations produce one frame per actual
 update.
+
+In behavior mode, a normalized observation is recorded after that same update:
+
+- scene and board stage;
+- current valid grid focus, or the fixed `0xFF` no-focus sentinel;
+- a 54-bit 9 by 6 occupancy mask built from live on-board plants;
+- an explicit 32-bit live plant count, which preserves stacked-plant cases.
+
+These values are converted field by field. Legacy pointers, `DataArray`
+metadata, object padding, and native integer widths never enter the file.
 
 ## Windows build and capture
 
@@ -45,13 +56,22 @@ path\to\LawnProject.exe ^
   -recordreplay="C:\captures\legacy-input.pvzr"
 ```
 
+Or record the preferred behavior-comparison artifact:
+
+```bat
+path\to\LawnProject.exe ^
+  -recordbehavior="C:\captures\legacy-behavior.pvzb"
+```
+
+The two capture switches are mutually exclusive for a process.
+
 Capture starts at the first actual legacy update and stops when the application
 leaves its main loop. The file is serialized and published only during normal
 shutdown. The final path and its `.tmp` sibling must not already exist; the
 recorder refuses to overwrite evidence.
 
-Generated `.pvzr` and `.pvzc` files are ignored by Git. Retail assets and
-captures stay local.
+Generated `.pvzr`, `.pvzc`, and `.pvzb` files are ignored by Git. Retail assets
+and captures stay local.
 
 ## Validate and replay on macOS
 
@@ -71,6 +91,23 @@ session:
   --write-session /absolute/path/portable-result.pvzc
 ```
 
+For a direct behavior comparison, use the nested input from the Windows
+capture to produce the portable observation stream:
+
+```sh
+./out/portable/game/pvz_game_headless \
+  --replay /absolute/path/legacy-behavior.pvzb \
+  --write-behavior /absolute/path/portable-behavior.pvzb
+
+./out/portable/parity/pvz_behavior_inspect \
+  /absolute/path/legacy-behavior.pvzb \
+  /absolute/path/portable-behavior.pvzb
+```
+
+The behavior inspector returns success only when the nested input frames and
+all normalized observations match. On failure it reports the first input tick
+or the first behavior tick and field.
+
 The headless runner rejects malformed, oversized, non-100-Hz, or
 non-sequential streams before running the game. `pvz_replay_inspect` can compare
 two raw input streams, a raw stream with the input nested in a session, or two
@@ -87,13 +124,9 @@ hash and the rolling transcript hash.
 
 ## Evidence boundary
 
-`PVZR` proves what logical input reached each legacy update. Replaying it
-through `GameModule` establishes deterministic portable behavior for that
-input. It does not compare the legacy game's internal `LawnApp`/`Board` state
-with the portable state because those representations are not yet equivalent.
-
-The next behavior-parity layer must define a narrow fixed-width observation
-schema—scene, board geometry, selected grid cell, entity summaries, and other
-slice-specific values—and implement independent legacy and portable exporters.
-Raw legacy object memory and native structure hashes are explicitly unsuitable
-for that comparison.
+`PVZR` proves what logical input reached each legacy update. `PVZB` adds the
+first cross-runtime behavior layer without pretending the object graphs are
+equivalent. The initial schema is intentionally small; future gameplay slices
+must extend it through a new format version and independent exporters rather
+than adding legacy memory hashes. Screenshot comparison remains a separate
+rendering gate because a behavior match does not prove pixel parity.

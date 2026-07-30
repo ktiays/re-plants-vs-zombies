@@ -20,7 +20,7 @@ backend can be replaced without changing game code.
 
 ## Current execution status
 
-Last updated: 2026-07-30
+Last updated: 2026-07-31
 
 - [x] Portable engine API and core CMake targets
 - [x] Shared 100 Hz application runner with bounded catch-up, suspension,
@@ -44,6 +44,10 @@ Last updated: 2026-07-30
   `WidgetManager` input at each actual legacy update into non-overwriting
   `PVZR` files; the headless runner consumes those streams and the inspector
   compares raw input with portable sessions
+- [x] Versioned fixed-width `PVZB` behavior captures combine exact logical
+  input with post-update normalized scene, board stage, grid focus, occupied
+  cells, and plant count; independent legacy and portable exporters plus the
+  behavior inspector report the first differing tick and field
 - [x] Engine-owned rendering, input, logging, state, and resource protocols
 - [x] Portable PAK indexing, normalization, validation, and resource reads
 - [x] Validation against the supplied retail PAK: 3,198 entries and
@@ -142,8 +146,9 @@ Last updated: 2026-07-30
   `mainmusic.mo3` at the legacy title-theme order `0x98`, stops it during the
   Adventure transition, starts the daytime music at order zero, and restores
   the title music when returning to the menu solely through `IMusicResources`
-- [ ] Windows runtime behavior-state and screenshot baseline for the
-  reconstructed legacy target (logical input capture is complete)
+- [ ] Complete Windows runtime behavior and screenshot baselines for the
+  reconstructed legacy target (the first normalized gameplay observation
+  schema and capture hook are complete)
 - [ ] Migration of the remaining gameplay `Board`, `Challenge`, data-array, and
   effect snapshots from raw object blocks to fieldwise fixed-width schemas
 - [x] Mapping portable XML tokens into runtime definitions used by effects

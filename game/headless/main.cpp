@@ -7,6 +7,7 @@
 #include "pvz/engine/core/NullSoundResources.h"
 #include "pvz/engine/core/ReplaySession.h"
 #include "pvz/game/GameModule.h"
+#include "pvz/parity/BehaviorCapture.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -24,8 +25,10 @@
 namespace
 {
 
-inline constexpr std::uint64_t kMaximumReplayFileSize =
-    256ULL * 1'024ULL * 1'024ULL;
+inline constexpr std::uint64_t kMaximumReplayInputFileSize =
+    320ULL * 1'024ULL * 1'024ULL;
+inline constexpr std::uint32_t kInputReplayMagic = 0x525A5650;
+inline constexpr std::uint32_t kBehaviorCaptureMagic = 0x425A5650;
 
 class HeadlessLogger final : public pvz::engine::ILogger
 {
@@ -211,7 +214,7 @@ private:
     return true;
 }
 
-[[nodiscard]] bool LoadReplayFile(
+[[nodiscard]] bool LoadReplayInput(
     const std::filesystem::path& thePath,
     pvz::engine::core::InputReplay& theReplay)
 {
@@ -227,11 +230,11 @@ private:
             << '\n';
         return false;
     }
-    if (aFileSize > kMaximumReplayFileSize)
+    if (aFileSize > kMaximumReplayInputFileSize)
     {
         std::cerr
             << thePath.string()
-            << ": replay exceeds the 256 MiB limit\n";
+            << ": replay input exceeds the 320 MiB limit\n";
         return false;
     }
 
@@ -261,19 +264,53 @@ private:
         return false;
     }
 
-    pvz::engine::core::BinaryStateReader aReader(aBytes);
-    pvz::engine::core::InputReplayError aReplayError{};
-    if (!theReplay.Load(aReader, aReplayError))
+    pvz::engine::core::BinaryStateReader aHeaderReader(aBytes);
+    std::uint32_t aMagic{};
+    if (!aHeaderReader.ReadU32(aMagic))
     {
         std::cerr
             << thePath.string()
-            << ": "
-            << pvz::engine::core::GetInputReplayErrorMessage(
-                   aReplayError)
-            << '\n';
+            << ": replay header is truncated\n";
         return false;
     }
-    return true;
+    if (aMagic == kInputReplayMagic)
+    {
+        pvz::engine::core::BinaryStateReader aReader(aBytes);
+        pvz::engine::core::InputReplayError aReplayError{};
+        if (!theReplay.Load(aReader, aReplayError))
+        {
+            std::cerr
+                << thePath.string()
+                << ": "
+                << pvz::engine::core::GetInputReplayErrorMessage(
+                       aReplayError)
+                << '\n';
+            return false;
+        }
+        return true;
+    }
+    if (aMagic == kBehaviorCaptureMagic)
+    {
+        pvz::engine::core::BinaryStateReader aReader(aBytes);
+        pvz::parity::BehaviorCapture aCapture;
+        pvz::parity::BehaviorCaptureError aCaptureError{};
+        if (!aCapture.Load(aReader, aCaptureError))
+        {
+            std::cerr
+                << thePath.string()
+                << ": "
+                << pvz::parity::GetBehaviorCaptureErrorMessage(
+                       aCaptureError)
+                << '\n';
+            return false;
+        }
+        theReplay = aCapture.GetInputReplay();
+        return true;
+    }
+    std::cerr
+        << thePath.string()
+        << ": replay magic is neither PVZR nor PVZB\n";
+    return false;
 }
 
 class HeadlessRenderFrame final : public pvz::engine::IRenderFrame
@@ -304,6 +341,7 @@ private:
 
 int main(int theArgumentCount, char** theArguments)
 {
+    std::optional<std::filesystem::path> aBehaviorOutputPath;
     std::optional<std::filesystem::path> aSessionOutputPath;
     std::optional<std::filesystem::path> aReplayInputPath;
     for (int anArgumentIndex = 1;
@@ -321,6 +359,15 @@ int main(int theArgumentCount, char** theArguments)
                 std::filesystem::path(
                     theArguments[anArgumentIndex]);
         }
+        else if (anArgument == "--write-behavior" &&
+                 !aBehaviorOutputPath.has_value() &&
+                 anArgumentIndex + 1 < theArgumentCount)
+        {
+            ++anArgumentIndex;
+            aBehaviorOutputPath =
+                std::filesystem::path(
+                    theArguments[anArgumentIndex]);
+        }
         else if (anArgument == "--replay" &&
                  !aReplayInputPath.has_value() &&
                  anArgumentIndex + 1 < theArgumentCount)
@@ -334,8 +381,9 @@ int main(int theArgumentCount, char** theArguments)
         {
             std::cerr
                 << "usage: pvz_game_headless "
-                   "[--replay input.pvzr] "
-                   "[--write-session capture.pvzc]\n";
+                   "[--replay input.pvzr-or-pvzb] "
+                   "[--write-session capture.pvzc] "
+                   "[--write-behavior capture.pvzb]\n";
             return 2;
         }
     }
@@ -348,7 +396,7 @@ int main(int theArgumentCount, char** theArguments)
     pvz::engine::core::InputReplay aReplay;
 
     if (aReplayInputPath.has_value()
-            ? !LoadReplayFile(*aReplayInputPath, aReplay)
+            ? !LoadReplayInput(*aReplayInputPath, aReplay)
             : !BuildAdventureReplay(aReplay))
     {
         return 1;
@@ -364,6 +412,12 @@ int main(int theArgumentCount, char** theArguments)
     if (!aLoadedReplay.Load(aReplayReader, aReplayError))
         return 1;
 
+    pvz::parity::BehaviorCapture aBehaviorCapture;
+    aBehaviorCapture.SetProducer(
+        pvz::parity::BehaviorProducer::PortableGameModule);
+    aBehaviorCapture.SetInputReplay(aLoadedReplay);
+    pvz::parity::BehaviorCaptureError aBehaviorError{};
+
     if (aRecordingGame.Initialize(aServices) !=
         pvz::engine::LifecycleResult::Success)
     {
@@ -378,6 +432,12 @@ int main(int theArgumentCount, char** theArguments)
         aRecordingGame.Update(
             pvz::engine::GameTick{aRecordedFrame.mTick},
             anInput);
+        if (!aBehaviorCapture.AppendObservation(
+                aGame.GetBehaviorObservation(),
+                aBehaviorError))
+        {
+            return 1;
+        }
     }
     if (aRecordingGame.GetRecordingError() !=
         pvz::engine::core::ReplayRecordingError::None)
@@ -399,6 +459,8 @@ int main(int theArgumentCount, char** theArguments)
     const auto aTranscriptHash =
         aRecordedSession.GetTranscriptHash();
     const auto aFlowState = aGame.GetFlowState();
+    const auto aBehaviorObservations =
+        aBehaviorCapture.GetObservations();
     const bool hasExpectedBuiltInState =
         aReplayInputPath.has_value() ||
         aGame.GetScene() ==
@@ -410,6 +472,16 @@ int main(int theArgumentCount, char** theArguments)
         aFlowState.mOccupiedCells ==
             ((std::uint64_t{1} << 38U) |
              (std::uint64_t{1} << 39U)) &&
+        aBehaviorObservations.size() == 65 &&
+        aBehaviorObservations.back().mScene ==
+            pvz::game::BehaviorScene::AdventurePlaying &&
+        aBehaviorObservations.back().mBoardStage ==
+            pvz::game::BehaviorBoardStage::Day &&
+        aBehaviorObservations.back().mGridColumn == 2 &&
+        aBehaviorObservations.back().mGridRow == 4 &&
+        aBehaviorObservations.back().mOccupiedCells ==
+            aFlowState.mOccupiedCells &&
+        aBehaviorObservations.back().mPlantCount == 2 &&
         aFinalHash == 14'239'196'991'121'916'159ULL &&
         aTranscriptHash == 5'816'442'757'865'445'562ULL;
 
@@ -451,6 +523,41 @@ int main(int theArgumentCount, char** theArguments)
             return 1;
     }
 
+    pvz::engine::core::BinaryStateWriter aBehaviorWriter;
+    if (!aBehaviorCapture.Save(
+            aBehaviorWriter,
+            aBehaviorError))
+    {
+        return 1;
+    }
+    pvz::engine::core::BinaryStateReader aBehaviorReader(
+        aBehaviorWriter.GetBytes());
+    pvz::parity::BehaviorCapture aLoadedBehavior;
+    if (!aLoadedBehavior.Load(
+            aBehaviorReader,
+            aBehaviorError) ||
+        aLoadedBehavior.GetProducer() !=
+            pvz::parity::BehaviorProducer::PortableGameModule ||
+        aLoadedBehavior.GetObservations().size() !=
+            aLoadedReplay.GetFrames().size())
+    {
+        return 1;
+    }
+    if (aBehaviorOutputPath.has_value())
+    {
+        std::ofstream aStream(
+            *aBehaviorOutputPath,
+            std::ios::binary | std::ios::trunc);
+        const auto aBytes = aBehaviorWriter.GetBytes();
+        if (!aStream)
+            return 1;
+        aStream.write(
+            reinterpret_cast<const char*>(aBytes.data()),
+            static_cast<std::streamsize>(aBytes.size()));
+        if (!aStream)
+            return 1;
+    }
+
     std::cout << "replay-frames="
               << aLoadedReplay.GetFrames().size()
               << " replay-bytes="
@@ -458,6 +565,8 @@ int main(int theArgumentCount, char** theArguments)
               << " state-bytes=" << aWriter.GetBytesWritten()
               << " session-bytes="
               << aSessionWriter.GetBytesWritten()
+              << " behavior-bytes="
+              << aBehaviorWriter.GetBytesWritten()
               << " state-fnv1a=" << aFinalHash
               << " transcript-fnv1a=" << aTranscriptHash
               << '\n';

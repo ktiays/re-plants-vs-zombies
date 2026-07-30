@@ -86,14 +86,23 @@ the portable targets are included in the Windows build:
 path\to\LawnProject.exe -recordreplay="C:\captures\legacy-input.pvzr"
 ```
 
+For behavior-level differential testing, record input and normalized
+post-update observations together:
+
+```bat
+path\to\LawnProject.exe -recordbehavior="C:\captures\legacy-behavior.pvzb"
+```
+
 The output path must not already exist. After exiting the Windows game
-normally, inspect the input or replay it through the portable game:
+normally, replay either capture through the portable game:
 
 ```sh
 ./out/portable/engine/pvz_replay_inspect legacy-input.pvzr
 ./out/portable/game/pvz_game_headless \
-  --replay legacy-input.pvzr \
-  --write-session portable-result.pvzc
+  --replay legacy-behavior.pvzb \
+  --write-behavior portable-behavior.pvzb
+./out/portable/parity/pvz_behavior_inspect \
+  legacy-behavior.pvzb portable-behavior.pvzb
 ```
 
 The exact evidence boundary and comparison workflow are documented in
