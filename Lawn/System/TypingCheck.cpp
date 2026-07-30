@@ -1,4 +1,7 @@
 #include "TypingCheck.h"
+
+#include <cctype>
+
 using namespace Sexy;
 
 //0x51C470
@@ -22,8 +25,9 @@ void TypingCheck::AddKeyCode(Sexy::KeyCode theKeyCode)
 //0x51C510
 void TypingCheck::AddChar(char theChar)
 {
-	theChar = (char)tolower(theChar);
-	std::string aCharString(&theChar);
+	theChar = static_cast<char>(
+		std::tolower(static_cast<unsigned char>(theChar)));
+	std::string aCharString(1, theChar);
 	AddKeyCode(GetKeyCodeFromName(aCharString));
 }
 

@@ -299,7 +299,21 @@ set_target_properties(d8vk
 
 target_include_directories(${PROJECT_NAME} PRIVATE "${CMAKE_BINARY_DIR}/include")
 target_include_directories(${PROJECT_NAME} PRIVATE ".") # SexyAppFramework
-target_link_libraries(${PROJECT_NAME} PRIVATE -static -static-libgcc -static-libstdc++ "${ADDITIONAL_LIBRARY_DEPENDENCIES}")
+if(MSVC)
+    target_link_libraries(
+        ${PROJECT_NAME}
+        PRIVATE "${ADDITIONAL_LIBRARY_DEPENDENCIES}"
+    )
+else()
+    target_link_libraries(
+        ${PROJECT_NAME}
+        PRIVATE
+            -static
+            -static-libgcc
+            -static-libstdc++
+            "${ADDITIONAL_LIBRARY_DEPENDENCIES}"
+    )
+endif()
 
 if(TARGET pvz_win32_reference_input)
     target_compile_definitions(

@@ -44,6 +44,14 @@ void TestBehaviorCaptureBridge()
         pvz::platform::windows::ConfigureLegacyBehaviorCapture(
             anOutputPath.string()),
         "configure global reference behavior capture");
+    pvz::platform::windows::RecordLegacyPointerPosition(12, 34);
+    pvz::platform::windows::CaptureLegacyInputTick();
+    Expect(
+        !pvz::platform::windows::HasLegacyBehaviorCaptureStarted() &&
+            pvz::platform::windows::GetLegacyInputCaptureFrameCount() == 0,
+        "behavior capture ignores boot-time input");
+
+    pvz::platform::windows::StartLegacyBehaviorCapture();
     pvz::platform::windows::RecordLegacyPointerPosition(100, 200);
     pvz::platform::windows::CaptureLegacyInputTick();
 
@@ -78,6 +86,7 @@ void TestBehaviorCaptureBridge()
         "open bounded published behavior capture");
     if (!aStream || anError || aFileSize > 1'024'000)
     {
+        aStream.close();
         std::filesystem::remove(anOutputPath, anError);
         return;
     }
@@ -112,6 +121,7 @@ void TestBehaviorCaptureBridge()
             "reference behavior fields round trip");
     }
 
+    aStream.close();
     std::filesystem::remove(anOutputPath, anError);
     Expect(!anError, "remove temporary reference behavior capture");
 }

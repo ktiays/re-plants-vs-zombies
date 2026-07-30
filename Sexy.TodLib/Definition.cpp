@@ -366,7 +366,16 @@ bool DefinitionLoadFont(_Font** theFont, const SexyString& theName)
 
 bool DefinitionLoadXML(const SexyString& theFileName, DefMap* theDefMap, void* theDefinition)
 {
-    return DefinitionCompileAndLoad(theFileName, theDefMap, theDefinition);
+    XMLParser aXMLParser;
+    if (!aXMLParser.OpenFile(theFileName))
+    {
+        TodTrace(_S("XML file not found: %s\n"), theFileName.c_str());
+        return false;
+    }
+    return DefinitionLoadMap(
+        &aXMLParser,
+        theDefMap,
+        theDefinition);
 }
 
 //0x444020
@@ -767,7 +776,7 @@ bool DefinitionReadStringField(XMLParser* theXmlParser, char** theValue)
     }
     else
     {
-        *theValue = (char*)DefinitionAlloc(aStringValue.size());
+        *theValue = (char*)DefinitionAlloc(aStringValue.size() + 1);
         strcpy(*theValue, aStringValue.c_str());
     }
     return true;
@@ -792,7 +801,11 @@ bool DefinitionReadVector2Field(XMLParser* theXmlParser, SexyVector2* theValue)
     if (!DefinitionReadXMLString(theXmlParser, aStringValue))
         return false;
 
-    if (sexysscanf(aStringValue.c_str(), _S("%f %f"), theValue) == 1)
+    if (sexysscanf(
+            aStringValue.c_str(),
+            _S("%f %f"),
+            &theValue->x,
+            &theValue->y) == 2)
         return true;
 
     DefinitionXmlError(theXmlParser, "Can't parse vector2 value '%s'", aStringValue.c_str());
@@ -1036,7 +1049,7 @@ bool DefinitionReadFlagField(XMLParser* theXmlParser, const SexyString& theEleme
         return false;
 
     float aFlag; // This was obviously a bug, the casting is wrong, although amusingly it just woks since it's just a bit
-    if (sexysscanf(aStringValue.c_str(), _S("%f %f"), &aFlag) != 1)
+    if (sexysscanf(aStringValue.c_str(), _S("%f"), &aFlag) != 1)
     {
         DefinitionXmlError(theXmlParser, "Can't parse int value '%s'", aStringValue.c_str());
         return false;
@@ -1327,6 +1340,14 @@ bool DefinitionCompileAndLoad(const SexyString& theXMLFilePath, DefMap* theDefMa
     if (DefinitionReadCompiledFile(aCompiledFilePath, theDefMap, theDefinition))
         return true;
 
+#ifdef _WIN64
+    // Retail compiled definitions contain the original 32-bit structure
+    // layout. Parse the source definition instead of treating those native
+    // blobs as portable data in the reconstructed x64 reference.
+    if (DefinitionLoadXML(theXMLFilePath, theDefMap, theDefinition))
+        return true;
+#endif
+
     TodErrorMessageBox(StrFormat(_S("missing resource %s"), aCompiledFilePath.c_str()).c_str(), _S("Error"));
     exit(0);
     
@@ -1414,8 +1435,11 @@ void DefinitionFreeMap(DefMap* theDefMap, char* theDefinition)
         switch (aField->mFieldType)
         {
         case DefFieldType::DT_STRING:
-            if (*(char*)theArray->mArrayData == '\0')
+            if (theArray->mArrayData != nullptr &&
+                *(char*)theArray->mArrayData != '\0')
+            {
                 delete[] (char*)theArray->mArrayData;  // 释放字符数组
+            }
             theArray->mArrayData = nullptr;
             break;
         case DefFieldType::DT_ARRAY:

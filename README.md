@@ -83,14 +83,16 @@ The reconstructed Windows reference can record its logical 100 Hz input when
 the portable targets are included in the Windows build:
 
 ```bat
-path\to\LawnProject.exe -recordreplay="C:\captures\legacy-input.pvzr"
+path\to\LawnProject.exe -nosound ^
+  -recordreplay="C:\captures\legacy-input.pvzr"
 ```
 
 For behavior-level differential testing, record input and normalized
 post-update observations together:
 
 ```bat
-path\to\LawnProject.exe -recordbehavior="C:\captures\legacy-behavior.pvzb"
+path\to\LawnProject.exe -nosound ^
+  -recordbehavior="C:\captures\legacy-behavior.pvzb"
 ```
 
 The output path must not already exist. After exiting the Windows game

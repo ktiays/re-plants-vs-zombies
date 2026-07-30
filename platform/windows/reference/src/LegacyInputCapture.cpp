@@ -32,6 +32,7 @@ struct CaptureState
     CaptureKind mKind{CaptureKind::InputReplay};
     bool mRequested{};
     bool mEnabled{};
+    bool mBehaviorStarted{};
     bool mFinalized{};
 };
 
@@ -221,36 +222,71 @@ bool IsLegacyInputCaptureEnabled()
     return GetCaptureState().mEnabled;
 }
 
+bool HasLegacyBehaviorCaptureStarted()
+{
+    const auto& aState = GetCaptureState();
+    return
+        aState.mEnabled &&
+        aState.mKind == CaptureKind::Behavior &&
+        aState.mBehaviorStarted;
+}
+
+void StartLegacyBehaviorCapture()
+{
+    auto& aState = GetCaptureState();
+    if (aState.mEnabled &&
+        aState.mKind == CaptureKind::Behavior)
+    {
+        aState.mBehaviorStarted = true;
+    }
+}
+
 void RecordLegacyPointerPosition(
     std::int32_t theX,
     std::int32_t theY)
 {
     auto& aState = GetCaptureState();
-    if (aState.mEnabled)
+    if (aState.mEnabled &&
+        (aState.mKind == CaptureKind::InputReplay ||
+         aState.mBehaviorStarted))
+    {
         aState.mRecorder.RecordPointerPosition(theX, theY);
+    }
 }
 
 void RecordLegacyPointerButtonDown(
     ReferencePointerButton theButton)
 {
     auto& aState = GetCaptureState();
-    if (aState.mEnabled)
+    if (aState.mEnabled &&
+        (aState.mKind == CaptureKind::InputReplay ||
+         aState.mBehaviorStarted))
+    {
         aState.mRecorder.RecordPointerButtonDown(theButton);
+    }
 }
 
 void RecordLegacyPointerButtonUp(
     ReferencePointerButton theButton)
 {
     auto& aState = GetCaptureState();
-    if (aState.mEnabled)
+    if (aState.mEnabled &&
+        (aState.mKind == CaptureKind::InputReplay ||
+         aState.mBehaviorStarted))
+    {
         aState.mRecorder.RecordPointerButtonUp(theButton);
+    }
 }
 
 void RecordLegacyMouseWheel(std::int32_t theStepDelta)
 {
     auto& aState = GetCaptureState();
-    if (aState.mEnabled)
+    if (aState.mEnabled &&
+        (aState.mKind == CaptureKind::InputReplay ||
+         aState.mBehaviorStarted))
+    {
         aState.mRecorder.RecordMouseWheel(theStepDelta);
+    }
 }
 
 void RecordLegacyVirtualKeyDown(
@@ -258,7 +294,9 @@ void RecordLegacyVirtualKeyDown(
     bool theRepeat)
 {
     auto& aState = GetCaptureState();
-    if (aState.mEnabled)
+    if (aState.mEnabled &&
+        (aState.mKind == CaptureKind::InputReplay ||
+         aState.mBehaviorStarted))
     {
         aState.mRecorder.RecordVirtualKeyDown(
             theVirtualKey,
@@ -269,22 +307,34 @@ void RecordLegacyVirtualKeyDown(
 void RecordLegacyVirtualKeyUp(std::uint32_t theVirtualKey)
 {
     auto& aState = GetCaptureState();
-    if (aState.mEnabled)
+    if (aState.mEnabled &&
+        (aState.mKind == CaptureKind::InputReplay ||
+         aState.mBehaviorStarted))
+    {
         aState.mRecorder.RecordVirtualKeyUp(theVirtualKey);
+    }
 }
 
 void RecordLegacyText(std::uint32_t theCodePoint)
 {
     auto& aState = GetCaptureState();
-    if (aState.mEnabled)
+    if (aState.mEnabled &&
+        (aState.mKind == CaptureKind::InputReplay ||
+         aState.mBehaviorStarted))
+    {
         aState.mRecorder.RecordText(theCodePoint);
+    }
 }
 
 void CaptureLegacyInputTick()
 {
     auto& aState = GetCaptureState();
-    if (!aState.mEnabled)
+    if (!aState.mEnabled ||
+        (aState.mKind == CaptureKind::Behavior &&
+         !aState.mBehaviorStarted))
+    {
         return;
+    }
     if (!aState.mRecorder.CaptureTick())
     {
         SetError(

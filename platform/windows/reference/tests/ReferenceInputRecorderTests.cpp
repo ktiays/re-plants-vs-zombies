@@ -170,6 +170,7 @@ void TestCaptureBridgePublishesReplay()
         "open bounded published reference input capture");
     if (!aStream || anError || aFileSize > 1'024'000)
     {
+        aStream.close();
         std::filesystem::remove(anOutputPath, anError);
         return;
     }
@@ -191,6 +192,7 @@ void TestCaptureBridgePublishesReplay()
             aReplay.GetFrames().size() == 1,
         "published reference input capture is valid PVZR");
 
+    aStream.close();
     std::filesystem::remove(anOutputPath, anError);
     Expect(!anError, "remove temporary reference input capture");
 }

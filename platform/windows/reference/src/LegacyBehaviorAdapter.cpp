@@ -14,10 +14,10 @@ namespace
 
 [[nodiscard]] game::BehaviorScene GetScene(const LawnApp& theApp)
 {
-    if (theApp.mGameScene == GameScenes::SCENE_LOADING)
-        return game::BehaviorScene::Loading;
     if (theApp.mTitleScreen != nullptr)
         return game::BehaviorScene::Title;
+    if (theApp.mGameScene == GameScenes::SCENE_LOADING)
+        return game::BehaviorScene::Loading;
     if (theApp.mGameSelector != nullptr ||
         theApp.mGameScene == GameScenes::SCENE_MENU)
     {
@@ -119,6 +119,12 @@ void CaptureLegacyBehaviorTick(LawnApp& theApp)
     if (!WasLegacyBehaviorCaptureRequested() ||
         !IsLegacyInputCaptureEnabled())
     {
+        return;
+    }
+    if (!HasLegacyBehaviorCaptureStarted())
+    {
+        if (GetScene(theApp) == game::BehaviorScene::Title)
+            StartLegacyBehaviorCapture();
         return;
     }
     const auto aFrameCount =

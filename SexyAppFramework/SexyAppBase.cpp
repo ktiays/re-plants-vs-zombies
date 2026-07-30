@@ -5994,6 +5994,10 @@ void SexyAppBase::HandleCmdLineParam(const std::string& theParamName, const std:
 	{
 		mChangeDirTo = theParamValue;
 	}
+	else if (theParamName == "-nosound")
+	{
+		mNoSoundNeeded = true;
+	}
 	else
 	{
 		Popup(GetString("INVALID_COMMANDLINE_PARAM", _S("Invalid command line parameter: ")) + StringToSexyString(theParamName));
@@ -6097,9 +6101,7 @@ void SexyAppBase::Init()
 	if (!ChangeDirHook(mChangeDirTo.c_str()))
 		chdir(mChangeDirTo.c_str());
 
-	/*
 	gPakInterface->AddPakFile("main.pak");
-	*/
 
 	// Create a message we can use to talk to ourselves inter-process
 	mNotifyGameMessage = RegisterWindowMessage((_S("Notify") + StringToSexyString(mProdName)).c_str());

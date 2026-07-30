@@ -53,6 +53,7 @@ Run the resulting reconstructed executable with an unused output path:
 
 ```bat
 path\to\LawnProject.exe ^
+  -nosound ^
   -recordreplay="C:\captures\legacy-input.pvzr"
 ```
 
@@ -60,18 +61,32 @@ Or record the preferred behavior-comparison artifact:
 
 ```bat
 path\to\LawnProject.exe ^
+  -nosound ^
   -recordbehavior="C:\captures\legacy-behavior.pvzb"
 ```
 
 The two capture switches are mutually exclusive for a process.
 
-Capture starts at the first actual legacy update and stops when the application
-leaves its main loop. The file is serialized and published only during normal
-shutdown. The final path and its `.tmp` sibling must not already exist; the
-recorder refuses to overwrite evidence.
+The reconstructed x64 target cannot load the 32-bit `bass.dll` distributed
+with the retail Steam game. `-nosound` selects the framework's dummy music and
+sound backends so the reference can run without incompatible audio middleware.
+This affects audio output only; logical input and behavior capture remain
+enabled.
+
+Raw input capture starts at the first actual legacy update. Behavior capture
+uses the stable game-layer boundary described below. Both stop when the
+application leaves its main loop. The file is serialized and published only
+during normal shutdown. The final path and its `.tmp` sibling must not already
+exist; the recorder refuses to overwrite evidence.
 
 Generated `.pvzr`, `.pvzc`, and `.pvzb` files are ignored by Git. Retail assets
 and captures stay local.
+
+Behavior capture is armed by the command line but begins only after the legacy
+runtime reaches its first stable title frame. This keeps asynchronous engine
+loading outside the comparison: tick zero in both the Windows capture and the
+portable replay is a game-layer title update. Raw `-recordreplay` capture still
+starts immediately when requested.
 
 ## Validate and replay on macOS
 

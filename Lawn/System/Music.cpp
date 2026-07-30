@@ -28,7 +28,7 @@ Music::Music()
 	mPauseOffset = 0;
 	mPauseOffsetDrums = 0;
 	mPaused = false;
-	mMusicDisabled = false;
+	mMusicDisabled = mApp->mNoSoundNeeded;
 	mFadeOutCounter = 0;
 	mFadeOutDuration = 0;
 }
@@ -157,6 +157,9 @@ void Music::SetupMusicFileForTune(MusicFile theMusicFile, MusicTune theMusicTune
 
 void Music::LoadSong(MusicFile theMusicFile, const std::string& theFileName)
 {
+	if (mMusicDisabled)
+		return;
+
 	TodHesitationTrace("preloadsong");
 	if (!TodLoadMusic(theMusicFile, theFileName))
 	{
@@ -200,6 +203,9 @@ void Music::MusicInit()
 //0x45AAC0
 void Music::MusicCreditScreenInit()
 {
+	if (mMusicDisabled)
+		return;
+
 #ifndef _DEBUG
 	BassMusicInterface* aBass = (BassMusicInterface*)mApp->mMusicInterface;
 	if (aBass->mMusicMap.find((int)MusicFile::MUSIC_FILE_CREDITS_ZOMBIES_ON_YOUR_LAWN) == aBass->mMusicMap.end())  // 如果尚未加载

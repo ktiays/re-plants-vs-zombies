@@ -2,6 +2,14 @@ cmake_minimum_required(VERSION 3.20 FATAL_ERROR)
 
 project(PlantsVsZombies LANGUAGES C CXX)
 
+if(MSVC)
+    add_compile_options(
+        "$<$<COMPILE_LANGUAGE:C>:/utf-8>"
+        "$<$<COMPILE_LANGUAGE:CXX>:/utf-8>"
+    )
+    add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
+endif()
+
 option(
     PVZ_BUILD_PORTABLE_ENGINE
     "Build the platform-neutral engine API, core, and tests."
@@ -94,7 +102,6 @@ if(PVZ_BUILD_LEGACY_WINDOWS)
     set(universal_cflags "${CMAKE_C_FLAGS} ${universal_compiler_flags}")
     set(CMAKE_CXX_FLAGS "${universal_cxxflags} ${warn_flags}")
     set(CMAKE_C_FLAGS "${universal_cflags} ${warn_flags}")
-    set(CMAKE_BUILD_TYPE Debug)
     set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
     enable_language(RC)

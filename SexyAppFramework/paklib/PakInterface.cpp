@@ -2,10 +2,10 @@
 #define NOMINMAX 1
 #include <windows.h>
 #include <direct.h>
+#include <cstdint>
 
 typedef unsigned char uchar;
 typedef unsigned short ushort;
-typedef unsigned long ulong;
 
 enum
 {
@@ -76,16 +76,16 @@ bool PakInterface::AddPakFile(const std::string& theFileName)
 	if (aFP == NULL)
 		return false;
 
-	ulong aMagic = 0;
-	FRead(&aMagic, sizeof(ulong), 1, aFP);
+	std::uint32_t aMagic = 0;
+	FRead(&aMagic, sizeof(aMagic), 1, aFP);
 	if (aMagic != 0xBAC04AC0)
 	{
 		FClose(aFP);
 		return false;
 	}
 
-	ulong aVersion = 0;
-	FRead(&aVersion, sizeof(ulong), 1, aFP);
+	std::uint32_t aVersion = 0;
+	FRead(&aVersion, sizeof(aVersion), 1, aFP);
 	if (aVersion > 0)
 	{
 		FClose(aFP);
@@ -444,4 +444,3 @@ BOOL PakInterface::FindClose(HANDLE hFindFile)
 	delete aFindData;
 	return TRUE;
 }
-

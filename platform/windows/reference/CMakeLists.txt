@@ -11,7 +11,10 @@ if(WIN32 AND PVZ_BUILD_LEGACY_WINDOWS)
     )
     target_include_directories(
         pvz_win32_reference_input
-        PRIVATE "${PROJECT_SOURCE_DIR}"
+        SYSTEM
+        PRIVATE
+            "${PROJECT_SOURCE_DIR}"
+            "${PROJECT_SOURCE_DIR}/SexyAppFramework"
     )
 endif()
 target_compile_features(
