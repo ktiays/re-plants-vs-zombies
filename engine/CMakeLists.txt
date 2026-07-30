@@ -11,7 +11,10 @@ add_library(
     STATIC
         core/src/ApplicationRunner.cpp
         core/src/BinaryStateIO.cpp
+        core/src/BitmapFontDescriptor.cpp
+        core/src/BitmapFontResourceManager.cpp
         core/src/ImageResourceManager.cpp
+        core/src/NullFontResources.cpp
         core/src/NullImageStore.cpp
         core/src/PakArchive.cpp
         core/src/PakResourceStore.cpp
@@ -122,6 +125,7 @@ if(BUILD_TESTING)
         pvz_engine_core_tests
         tests/BinaryStateIOTests.cpp
         tests/ApplicationRunnerTests.cpp
+        tests/BitmapFontResourceManagerTests.cpp
         tests/EngineApiContractTests.cpp
         tests/ImageResourceManagerTests.cpp
         tests/PakArchiveTests.cpp

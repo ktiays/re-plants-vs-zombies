@@ -45,6 +45,12 @@ Last updated: 2026-07-30
 - [x] Portable `resources.xml` image mapping: extensionless path resolution,
   fixed-width atlas metadata, shared generational handles, automatic companion
   alpha images, explicit alpha images/grids, and alpha-only composition
+- [x] Portable bitmap-font resources and text layout: fixed-width generational
+  handles and metrics, explicit 32-bit characters, descriptor-relative atlases,
+  multi-layer outlines, per-glyph offsets, color multiplication, kerning, and
+  conversion to ordinary engine sprite draws
+- [x] Bitmap-font parsing and atlas bounds validated against all 20 retail font
+  resources: 23 layers, 3,563 glyphs, and 323 kerning pairs
 - [x] Versioned architecture-neutral XML definition document cache, round-trip
   validated against those 261 sources (23,424,177 encoded bytes)
 - [x] Legacy version-12 player profiles use fixed-width, fieldwise encoding
@@ -65,7 +71,8 @@ Last updated: 2026-07-30
   and point/linear clamp/repeat sampling
 - [x] First retail visual path: the portable game resolves and renders
   `IMAGE_TITLESCREEN` and alpha-composited `IMAGE_PVZ_LOGO` through engine
-  protocols when a user-owned PAK is mounted
+  protocols when a user-owned PAK is mounted, then lays out the loader label
+  through `IFontResources` for the same Metal sprite path
 - [ ] Windows runtime parity baseline for the reconstructed legacy target
 - [ ] Migration of the remaining gameplay `Board`, `Challenge`, data-array, and
   effect snapshots from raw object blocks to fieldwise fixed-width schemas
@@ -73,8 +80,9 @@ Last updated: 2026-07-30
 - [ ] Existing Windows backend adapters
 - [ ] Complete SDL macOS platform backend (fullscreen, cursor, and lifecycle
   parity remain)
-- [ ] Complete Metal renderer (untextured geometry, text and pool paths,
-  Direct3D parity tuning, and golden-image validation remain)
+- [ ] Complete Metal renderer (untextured geometry, pool paths, Direct3D parity
+  tuning, and golden-image validation remain; bitmap text now uses the shared
+  sprite path)
 - [ ] Native audio backend
 - [ ] Full gameplay parity and productization
 
@@ -350,10 +358,21 @@ startup:
 PVZ_PAK_PATH=/path/to/main.pak ./script/build_and_run.sh
 ```
 
-With a retail PAK mounted, the portable game now resolves the title background
-and logo through `IImageResources` and submits them through the renderer
-protocol. The default headless build remains independent of the codec
-libraries and uses the null image-resource implementation.
+With a retail PAK mounted, the portable game resolves the title background and
+logo through `IImageResources`, loads `FONT_BRIANNETOD16` through
+`IFontResources`, and submits both images and generated glyph sprites through
+the renderer protocol. Font layout uses `char32_t` text and fixed-width
+metrics; it does not expose host `wchar_t` or native font APIs. The default
+headless build remains independent of the codec libraries and uses null image
+and font-resource implementations.
+
+The PAK inspection tool can validate all shipped bitmap-font descriptors and
+their decoded atlases without extracting them:
+
+```sh
+./build/macos/engine/pvz_pak_inspect \
+  /path/to/main.pak --validate-fonts
+```
 
 The procedural renderer validation scene is selected independently of the
 portable game and does not require retail data:

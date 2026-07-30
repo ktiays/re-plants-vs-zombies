@@ -75,6 +75,15 @@ Validate every source XML and reanimation definition in the PAK:
   /path/to/main.pak --validate-xml
 ```
 
+Validate every encoded retail image or every bitmap-font descriptor and atlas:
+
+```sh
+./out/portable/engine/pvz_pak_inspect \
+  /path/to/main.pak --validate-images
+./out/portable/engine/pvz_pak_inspect \
+  /path/to/main.pak --validate-fonts
+```
+
 Original game data is not part of this repository and must not be committed.
 
 ## Installation

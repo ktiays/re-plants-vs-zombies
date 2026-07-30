@@ -3,6 +3,7 @@
 #include "pvz/engine/Game.h"
 
 #include <cstdint>
+#include <vector>
 
 namespace pvz::game
 {
@@ -32,6 +33,8 @@ private:
     engine::IEngineServices* mServices{};
     engine::ImageResource mTitleScreen;
     engine::ImageResource mTitleLogo;
+    engine::FontResource mLoadingFont;
+    std::vector<engine::SpriteDraw> mLoadingTextSprites;
     engine::TickIndex mLastTick{};
     std::uint64_t mUpdateCount{};
     bool mInitialized{};

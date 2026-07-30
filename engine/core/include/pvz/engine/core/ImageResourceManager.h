@@ -50,6 +50,10 @@ public:
         std::string_view theResourceId,
         ImageResource& theResource,
         ImageResourceDiagnostic& theDiagnostic) override;
+    [[nodiscard]] bool LoadSource(
+        std::string_view theLogicalPath,
+        ImageResource& theResource,
+        ImageResourceDiagnostic& theDiagnostic) override;
     void Release(ImageHandle theImage) override;
 
 private:
@@ -74,6 +78,11 @@ private:
     [[nodiscard]] bool ParseManifest(
         const XmlNode& theRoot,
         std::unordered_map<std::string, Definition>& theDefinitions);
+    [[nodiscard]] bool LoadDefinition(
+        std::string_view theCacheKey,
+        const Definition& theDefinition,
+        ImageResource& theResource,
+        ImageResourceDiagnostic& theDiagnostic);
     void FailManifest(
         ImageManifestError theError,
         std::uint32_t theLine);

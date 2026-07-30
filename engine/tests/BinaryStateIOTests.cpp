@@ -15,6 +15,7 @@ namespace
 int gFailureCount{};
 
 void RunPakArchiveTests();
+void RunBitmapFontResourceManagerTests();
 void RunImageResourceManagerTests();
 void RunXmlDocumentTests();
 void RunXmlPullParserTests();
@@ -156,6 +157,7 @@ int main()
     TestGoldenEncoding();
     TestRoundTrip();
     TestMalformedInput();
+    RunBitmapFontResourceManagerTests();
     RunImageResourceManagerTests();
     RunPakArchiveTests();
     RunXmlDocumentTests();

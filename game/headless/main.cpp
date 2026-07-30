@@ -1,4 +1,5 @@
 #include "pvz/engine/core/BinaryStateIO.h"
+#include "pvz/engine/core/NullFontResources.h"
 #include "pvz/engine/core/NullImageStore.h"
 #include "pvz/game/GameModule.h"
 
@@ -52,6 +53,12 @@ public:
     GetImageResources() override
     {
         return mImageResources;
+    }
+
+    [[nodiscard]] pvz::engine::IFontResources&
+    GetFontResources() override
+    {
+        return mFontResources;
     }
 
 private:
@@ -110,6 +117,7 @@ private:
     EmptyXmlDocumentLoader mXmlDocuments;
     pvz::engine::core::NullImageStore mImages;
     pvz::engine::core::NullImageResources mImageResources;
+    pvz::engine::core::NullFontResources mFontResources;
 };
 
 class EmptyInputFrame final : public pvz::engine::IInputFrame

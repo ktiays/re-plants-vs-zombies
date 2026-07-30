@@ -62,6 +62,10 @@ public:
         std::string_view theResourceId,
         ImageResource& theResource,
         ImageResourceDiagnostic& theDiagnostic) = 0;
+    [[nodiscard]] virtual bool LoadSource(
+        std::string_view theLogicalPath,
+        ImageResource& theResource,
+        ImageResourceDiagnostic& theDiagnostic) = 0;
     virtual void Release(ImageHandle theImage) = 0;
 };
 

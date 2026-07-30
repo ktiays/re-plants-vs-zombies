@@ -1,4 +1,5 @@
 #include "pvz/engine/core/ApplicationRunner.h"
+#include "pvz/engine/core/BitmapFontResourceManager.h"
 #include "pvz/engine/core/ImageResourceManager.h"
 #include "pvz/engine/core/PakResourceStore.h"
 #include "pvz/engine/core/ResourceXmlDocumentLoader.h"
@@ -53,12 +54,14 @@ public:
         pvz::engine::IResourceStore& theResources,
         pvz::engine::IXmlDocumentLoader& theDocuments,
         pvz::engine::IImageStore& theImages,
-        pvz::engine::IImageResources& theImageResources)
+        pvz::engine::IImageResources& theImageResources,
+        pvz::engine::IFontResources& theFontResources)
         : mLogger(theLogger),
           mResources(theResources),
           mDocuments(theDocuments),
           mImages(theImages),
-          mImageResources(theImageResources)
+          mImageResources(theImageResources),
+          mFontResources(theFontResources)
     {
     }
 
@@ -89,12 +92,19 @@ public:
         return mImageResources;
     }
 
+    [[nodiscard]] pvz::engine::IFontResources&
+    GetFontResources() override
+    {
+        return mFontResources;
+    }
+
 private:
     pvz::engine::ILogger& mLogger;
     pvz::engine::IResourceStore& mResources;
     pvz::engine::IXmlDocumentLoader& mDocuments;
     pvz::engine::IImageStore& mImages;
     pvz::engine::IImageResources& mImageResources;
+    pvz::engine::IFontResources& mFontResources;
 };
 
 } // namespace
@@ -175,12 +185,30 @@ int main(int theArgumentCount, char** theArguments)
                 << '\n';
             return 1;
         }
+        pvz::engine::core::BitmapFontResourceManager
+            aFontResources(
+                aResources,
+                aDocuments,
+                anImageResources);
+        if (aPakPath.has_value() &&
+            !aFontResources.LoadManifest(
+                "properties/resources.xml"))
+        {
+            std::cerr
+                << pvz::engine::core::GetFontManifestErrorMessage(
+                       aFontResources.GetManifestError())
+                << " at line "
+                << aFontResources.GetManifestErrorLine()
+                << '\n';
+            return 1;
+        }
         MacEngineServices aServices(
             aLogger,
             aResources,
             aDocuments,
             aRenderer,
-            anImageResources);
+            anImageResources,
+            aFontResources);
         pvz::game::GameModule aGame;
         pvz::platform::macos::RendererSmokeGame
             aRendererSmokeGame;

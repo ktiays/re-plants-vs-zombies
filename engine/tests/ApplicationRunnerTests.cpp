@@ -1,4 +1,5 @@
 #include "pvz/engine/core/ApplicationRunner.h"
+#include "pvz/engine/core/NullFontResources.h"
 #include "pvz/engine/core/NullImageStore.h"
 
 #include "pvz/engine/core/BinaryStateIO.h"
@@ -304,6 +305,12 @@ public:
         return mImageResources;
     }
 
+    [[nodiscard]] pvz::engine::IFontResources&
+    GetFontResources() override
+    {
+        return mFontResources;
+    }
+
     [[nodiscard]] const TestLogger& GetTestLogger() const
     {
         return mLogger;
@@ -315,6 +322,7 @@ private:
     EmptyXmlDocumentLoader mDocuments;
     pvz::engine::core::NullImageStore mImages;
     pvz::engine::core::NullImageResources mImageResources;
+    pvz::engine::core::NullFontResources mFontResources;
 };
 
 class TestGame final : public pvz::engine::IGame

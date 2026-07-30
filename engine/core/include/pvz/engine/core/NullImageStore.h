@@ -30,6 +30,10 @@ public:
         std::string_view theResourceId,
         ImageResource& theResource,
         ImageResourceDiagnostic& theDiagnostic) override;
+    [[nodiscard]] bool LoadSource(
+        std::string_view theLogicalPath,
+        ImageResource& theResource,
+        ImageResourceDiagnostic& theDiagnostic) override;
     void Release(ImageHandle theImage) override;
 };
 

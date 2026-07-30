@@ -33,6 +33,44 @@ engine::LifecycleResult GameModule::Initialize(
             "IMAGE_PVZ_LOGO",
             mTitleLogo,
             aDiagnostic));
+    engine::FontResourceDiagnostic aFontDiagnostic;
+    if (mServices->GetFontResources().Load(
+            "FONT_BRIANNETOD16",
+            mLoadingFont,
+            aFontDiagnostic))
+    {
+        constexpr std::u32string_view kLoadingText = U"LOADING...";
+        engine::TextMetrics aTextMetrics;
+        if (mServices->GetFontResources().MeasureText(
+                mLoadingFont.mFont,
+                kLoadingText,
+                aTextMetrics) &&
+            mServices->GetFontResources().AppendTextSprites(
+                mLoadingFont.mFont,
+                kLoadingText,
+                engine::PointF{
+                    .mX =
+                        (800.0F -
+                         static_cast<float>(
+                             aTextMetrics.mAdvance)) *
+                        0.5F,
+                    .mY = 565.0F,
+                },
+                engine::ColorRgba8{255, 255, 255, 255},
+                mLoadingTextSprites))
+        {
+            mServices->GetLogger().Log(
+                engine::LogLevel::Information,
+                "Portable bitmap font and text layout loaded");
+        }
+        else
+        {
+            mServices->GetFontResources().Release(
+                mLoadingFont.mFont);
+            mLoadingFont = {};
+            mLoadingTextSprites.clear();
+        }
+    }
     if (mTitleScreen.mImage.IsValid())
     {
         mServices->GetLogger().Log(
@@ -113,6 +151,8 @@ void GameModule::Render(engine::IRenderFrame& theFrame) const
         std::span<const engine::SpriteDraw>(
             aDraws.data(),
             aDrawCount));
+    if (!mLoadingTextSprites.empty())
+        theFrame.SubmitSprites(mLoadingTextSprites);
 }
 
 bool GameModule::LoadState(engine::IStateReader& theReader)
@@ -177,6 +217,10 @@ void GameModule::Shutdown()
         mServices->GetImageResources().Release(mTitleLogo.mImage);
     if (mTitleScreen.mImage.IsValid())
         mServices->GetImageResources().Release(mTitleScreen.mImage);
+    if (mLoadingFont.mFont.IsValid())
+        mServices->GetFontResources().Release(mLoadingFont.mFont);
+    mLoadingTextSprites.clear();
+    mLoadingFont = {};
     mTitleLogo = {};
     mTitleScreen = {};
     mServices = nullptr;

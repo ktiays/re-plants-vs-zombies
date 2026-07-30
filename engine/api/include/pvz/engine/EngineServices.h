@@ -1,5 +1,6 @@
 #pragma once
 
+#include "pvz/engine/Font.h"
 #include "pvz/engine/Render.h"
 #include "pvz/engine/Resources.h"
 #include "pvz/engine/Xml.h"
@@ -36,6 +37,7 @@ public:
     [[nodiscard]] virtual IXmlDocumentLoader& GetXmlDocuments() = 0;
     [[nodiscard]] virtual IImageStore& GetImages() = 0;
     [[nodiscard]] virtual IImageResources& GetImageResources() = 0;
+    [[nodiscard]] virtual IFontResources& GetFontResources() = 0;
 };
 
 } // namespace pvz::engine

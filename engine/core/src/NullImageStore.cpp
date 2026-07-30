@@ -52,6 +52,19 @@ bool NullImageResources::Load(
     return false;
 }
 
+bool NullImageResources::LoadSource(
+    std::string_view theLogicalPath,
+    ImageResource& theResource,
+    ImageResourceDiagnostic& theDiagnostic)
+{
+    static_cast<void>(theLogicalPath);
+    theResource = {};
+    theDiagnostic = {
+        .mError = ImageResourceError::SourceNotFound,
+    };
+    return false;
+}
+
 void NullImageResources::Release(ImageHandle theImage)
 {
     static_cast<void>(theImage);

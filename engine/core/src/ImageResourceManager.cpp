@@ -432,9 +432,46 @@ bool ImageResourceManager::Load(
             ImageResourceError::ResourceNotFound;
         return false;
     }
+    return LoadDefinition(
+        theResourceId,
+        aDefinition->second,
+        theResource,
+        theDiagnostic);
+}
 
+bool ImageResourceManager::LoadSource(
+    std::string_view theLogicalPath,
+    ImageResource& theResource,
+    ImageResourceDiagnostic& theDiagnostic)
+{
+    theResource = {};
+    theDiagnostic = {};
+    if (theLogicalPath.empty())
+    {
+        theDiagnostic.mError = ImageResourceError::SourceNotFound;
+        return false;
+    }
+
+    std::string aCacheKey(1, '\0');
+    aCacheKey.append("source:");
+    aCacheKey.append(theLogicalPath);
+    Definition aDefinition;
+    aDefinition.mPath = theLogicalPath;
+    return LoadDefinition(
+        aCacheKey,
+        aDefinition,
+        theResource,
+        theDiagnostic);
+}
+
+bool ImageResourceManager::LoadDefinition(
+    std::string_view theCacheKey,
+    const Definition& theDefinition,
+    ImageResource& theResource,
+    ImageResourceDiagnostic& theDiagnostic)
+{
     const auto aLoaded = mLoadedResources.find(
-        std::string(theResourceId));
+        std::string(theCacheKey));
     if (aLoaded != mLoadedResources.end())
     {
         if (aLoaded->second.mReferenceCount ==
@@ -448,7 +485,7 @@ bool ImageResourceManager::Load(
         return true;
     }
 
-    const auto& aDefinitionValue = aDefinition->second;
+    const auto& aDefinitionValue = theDefinition;
     std::string aBasePath;
     std::vector<std::byte> aBaseBytes;
     const auto aBaseRead = ReadImageResource(
@@ -598,7 +635,7 @@ bool ImageResourceManager::Load(
         .mRows = aDefinitionValue.mRows,
         .mColumns = aDefinitionValue.mColumns,
     };
-    const std::string anId(theResourceId);
+    const std::string anId(theCacheKey);
     mLoadedResources.emplace(
         anId,
         LoadedResource{

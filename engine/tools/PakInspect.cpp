@@ -3,6 +3,9 @@
 #include "pvz/engine/core/XmlDocument.h"
 
 #if defined(PVZ_HAS_IMAGE_CODECS)
+#include "pvz/engine/core/BitmapFontResourceManager.h"
+#include "pvz/engine/core/ImageResourceManager.h"
+#include "pvz/engine/core/ResourceXmlDocumentLoader.h"
 #include "pvz/engine/image/PortableImageDecoder.h"
 #endif
 
@@ -13,6 +16,7 @@
 #include <limits>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 namespace
@@ -212,6 +216,114 @@ namespace
 }
 
 #if defined(PVZ_HAS_IMAGE_CODECS)
+class ArchiveResourceStore final : public pvz::engine::IResourceStore
+{
+public:
+    explicit ArchiveResourceStore(
+        const pvz::engine::core::PakArchive& theArchive)
+        : mArchive(theArchive)
+    {
+    }
+
+    [[nodiscard]] bool Contains(
+        std::string_view thePath) const override
+    {
+        return mArchive.FindEntry(thePath) != nullptr;
+    }
+
+    [[nodiscard]] bool GetSize(
+        std::string_view thePath,
+        std::uint64_t& theSize) const override
+    {
+        const auto* anEntry = mArchive.FindEntry(thePath);
+        if (anEntry == nullptr)
+            return false;
+        theSize = anEntry->mDataSize;
+        return true;
+    }
+
+    [[nodiscard]] bool ReadAll(
+        std::string_view thePath,
+        std::vector<std::byte>& theBytes) const override
+    {
+        return mArchive.ReadEntry(thePath, theBytes);
+    }
+
+private:
+    const pvz::engine::core::PakArchive& mArchive;
+};
+
+class ValidationImageStore final : public pvz::engine::IImageStore
+{
+public:
+    [[nodiscard]] bool CreateImage(
+        const pvz::engine::ImageDescriptor& theDescriptor,
+        std::span<const std::byte> theInitialPixels,
+        std::uint32_t theSourceBytesPerRow,
+        pvz::engine::ImageHandle& theImage) override
+    {
+        const auto aWidth = theDescriptor.mSize.mWidth;
+        const auto aHeight = theDescriptor.mSize.mHeight;
+        if (aWidth == 0 ||
+            aHeight == 0 ||
+            theDescriptor.mPixelFormat !=
+                pvz::engine::ImagePixelFormat::Bgra8Unorm ||
+            aWidth >
+                std::numeric_limits<std::uint32_t>::max() / 4 ||
+            theSourceBytesPerRow < aWidth * 4)
+        {
+            return false;
+        }
+        const auto aRequiredBytes =
+            static_cast<std::uint64_t>(theSourceBytesPerRow) *
+            aHeight;
+        if (aRequiredBytes > theInitialPixels.size() ||
+            mNextIndex ==
+                std::numeric_limits<std::uint32_t>::max())
+        {
+            return false;
+        }
+
+        theImage = {
+            .mIndex = mNextIndex++,
+            .mGeneration = 1,
+        };
+        mSizes.emplace(theImage.mIndex, theDescriptor.mSize);
+        return true;
+    }
+
+    [[nodiscard]] bool UpdateImage(
+        pvz::engine::ImageHandle theImage,
+        const pvz::engine::ImageUpdate& theUpdate) override
+    {
+        static_cast<void>(theImage);
+        static_cast<void>(theUpdate);
+        return false;
+    }
+
+    void DestroyImage(pvz::engine::ImageHandle theImage) override
+    {
+        mSizes.erase(theImage.mIndex);
+    }
+
+    [[nodiscard]] bool GetImageSize(
+        pvz::engine::ImageHandle theImage,
+        pvz::engine::SizeI& theSize) const override
+    {
+        if (theImage.mGeneration != 1)
+            return false;
+        const auto aSize = mSizes.find(theImage.mIndex);
+        if (aSize == mSizes.end())
+            return false;
+        theSize = aSize->second;
+        return true;
+    }
+
+private:
+    std::unordered_map<std::uint32_t, pvz::engine::SizeI> mSizes;
+    std::uint32_t mNextIndex{1};
+};
+
 [[nodiscard]] bool ValidateImageSources(
     const pvz::engine::core::PakArchive& theArchive)
 {
@@ -267,22 +379,117 @@ namespace
               << " decoded-pixels=" << aPixelCount << '\n';
     return true;
 }
+
+[[nodiscard]] bool ValidateFontResources(
+    const pvz::engine::core::PakArchive& theArchive)
+{
+    ArchiveResourceStore aResources(theArchive);
+    pvz::engine::core::ResourceXmlDocumentLoader aDocuments(
+        aResources);
+    pvz::engine::image::PortableImageDecoder aDecoder;
+    ValidationImageStore anImageStore;
+    pvz::engine::core::ImageResourceManager anImages(
+        aResources,
+        aDocuments,
+        aDecoder,
+        anImageStore);
+    if (!anImages.LoadManifest("properties/resources.xml"))
+    {
+        std::cerr
+            << pvz::engine::core::GetImageManifestErrorMessage(
+                   anImages.GetManifestError())
+            << " at line "
+            << anImages.GetManifestErrorLine()
+            << '\n';
+        return false;
+    }
+
+    pvz::engine::core::BitmapFontResourceManager aFonts(
+        aResources,
+        aDocuments,
+        anImages);
+    if (!aFonts.LoadManifest("properties/resources.xml"))
+    {
+        std::cerr
+            << pvz::engine::core::GetFontManifestErrorMessage(
+                   aFonts.GetManifestError())
+            << " at line "
+            << aFonts.GetManifestErrorLine()
+            << '\n';
+        return false;
+    }
+
+    std::uint64_t aLayerCount{};
+    std::uint64_t aGlyphCount{};
+    std::uint64_t aKerningCount{};
+    std::vector<pvz::engine::FontResource> aLoadedFonts;
+    const auto anIds = aFonts.GetDefinitionIds();
+    aLoadedFonts.reserve(anIds.size());
+    for (const auto& anId : anIds)
+    {
+        pvz::engine::FontResource aFont;
+        pvz::engine::FontResourceDiagnostic aDiagnostic;
+        if (!aFonts.Load(anId, aFont, aDiagnostic))
+        {
+            std::cerr
+                << anId << ": "
+                << pvz::engine::core::GetFontResourceErrorMessage(
+                       aDiagnostic.mError);
+            if (!aDiagnostic.mPath.empty())
+                std::cerr << ": " << aDiagnostic.mPath;
+            if (aDiagnostic.mLine != 0)
+                std::cerr << ':' << aDiagnostic.mLine;
+            if (!aDiagnostic.mCommand.empty())
+                std::cerr << ": " << aDiagnostic.mCommand;
+            if (aDiagnostic.mImageDiagnostic.mError !=
+                pvz::engine::ImageResourceError::None)
+            {
+                std::cerr
+                    << ": "
+                    << pvz::engine::core::
+                           GetImageResourceErrorMessage(
+                               aDiagnostic.mImageDiagnostic
+                                   .mError);
+            }
+            std::cerr << '\n';
+            for (const auto& aLoaded : aLoadedFonts)
+                aFonts.Release(aLoaded.mFont);
+            return false;
+        }
+        aLayerCount += aFont.mLayerCount;
+        aGlyphCount += aFont.mGlyphCount;
+        aKerningCount += aFont.mKerningPairCount;
+        aLoadedFonts.push_back(aFont);
+    }
+    for (const auto& aFont : aLoadedFonts)
+        aFonts.Release(aFont.mFont);
+
+    std::cout
+        << "fonts=" << aLoadedFonts.size()
+        << " font-layers=" << aLayerCount
+        << " font-glyphs=" << aGlyphCount
+        << " kerning-pairs=" << aKerningCount
+        << '\n';
+    return true;
+}
 #endif
 
 } // namespace
 
 int main(int theArgumentCount, char** theArguments)
 {
-    if (theArgumentCount < 2 || theArgumentCount > 3)
+    if (theArgumentCount < 2 || theArgumentCount > 4)
     {
         std::cerr
             << "usage: pvz_pak_inspect <path-to-main.pak> "
                "[--validate-xml|--list-images|"
-               "--print-resource-manifest|--validate-images]\n";
+               "--print-resource-manifest|--validate-images|"
+               "--validate-fonts|"
+               "--print-entry <entry-path>]\n";
         return 2;
     }
     const std::string_view anOption =
-        theArgumentCount == 3
+        theArgumentCount >= 3
             ? std::string_view(theArguments[2])
             : std::string_view{};
     const bool shouldValidateXml = anOption == "--validate-xml";
@@ -291,13 +498,24 @@ int main(int theArgumentCount, char** theArguments)
         anOption == "--print-resource-manifest";
     const bool shouldValidateImages =
         anOption == "--validate-images";
-    if (theArgumentCount == 3 &&
+    const bool shouldValidateFonts =
+        anOption == "--validate-fonts";
+    const bool shouldPrintEntry =
+        anOption == "--print-entry";
+    if ((shouldPrintEntry && theArgumentCount != 4) ||
+        (!shouldPrintEntry && theArgumentCount == 4) ||
+        (theArgumentCount >= 3 &&
         !shouldValidateXml &&
         !shouldListImages &&
         !shouldPrintResourceManifest &&
-        !shouldValidateImages)
+        !shouldValidateImages &&
+        !shouldValidateFonts &&
+        !shouldPrintEntry))
     {
-        std::cerr << "unknown option: " << theArguments[2] << '\n';
+        std::cerr << "invalid option or arguments";
+        if (theArgumentCount >= 3)
+            std::cerr << ": " << theArguments[2];
+        std::cerr << '\n';
         return 2;
     }
 
@@ -308,6 +526,20 @@ int main(int theArgumentCount, char** theArguments)
             << pvz::engine::core::GetPakErrorMessage(anArchive.GetError())
             << '\n';
         return 1;
+    }
+
+    if (shouldPrintEntry)
+    {
+        std::vector<std::byte> anEntryBytes;
+        if (!anArchive.ReadEntry(theArguments[3], anEntryBytes))
+        {
+            std::cerr << "entry is missing: " << theArguments[3] << '\n';
+            return 1;
+        }
+        std::cout.write(
+            reinterpret_cast<const char*>(anEntryBytes.data()),
+            static_cast<std::streamsize>(anEntryBytes.size()));
+        return 0;
     }
 
     std::cout << "entries=" << anArchive.GetEntries().size()
@@ -351,6 +583,16 @@ int main(int theArgumentCount, char** theArguments)
     {
 #if defined(PVZ_HAS_IMAGE_CODECS)
         if (!ValidateImageSources(anArchive))
+            return 1;
+#else
+        std::cerr << "image codecs are not enabled in this build\n";
+        return 1;
+#endif
+    }
+    if (shouldValidateFonts)
+    {
+#if defined(PVZ_HAS_IMAGE_CODECS)
+        if (!ValidateFontResources(anArchive))
             return 1;
 #else
         std::cerr << "image codecs are not enabled in this build\n";
