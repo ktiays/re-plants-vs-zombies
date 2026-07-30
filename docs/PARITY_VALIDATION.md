@@ -92,7 +92,6 @@ ctest --test-dir out/portable --output-on-failure
 The board gate covers deterministic geometry and render-command alignment. The
 remaining cross-runtime infrastructure is:
 
-- a versioned input-replay and state-hash format shared by both executables;
 - a Windows reference capture tool for behavior and render-command fixtures;
 - logical-tick capture hooks in the Windows and macOS applications;
 - a local image normalizer and difference reporter for user-owned golden

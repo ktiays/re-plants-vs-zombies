@@ -56,11 +56,14 @@ cmake --build out/portable
 ctest --test-dir out/portable --output-on-failure
 ```
 
-Run the headless game contract:
+Run the deterministic headless Adventure replay and state-hash contract:
 
 ```sh
 ./out/portable/game/pvz_game_headless
 ```
+
+The versioned replay format and transcript-hash policy are documented in
+[docs/REPLAY_FORMAT.md](docs/REPLAY_FORMAT.md).
 
 Validate migrated game behavior against independent legacy reference fixtures:
 

@@ -13,7 +13,9 @@ add_library(
         core/src/BinaryStateIO.cpp
         core/src/BitmapFontDescriptor.cpp
         core/src/BitmapFontResourceManager.cpp
+        core/src/DeterministicHash.cpp
         core/src/ImageResourceManager.cpp
+        core/src/InputReplay.cpp
         core/src/ModuleMusicResourceManager.cpp
         core/src/NullFontResources.cpp
         core/src/NullImageStore.cpp
@@ -222,6 +224,7 @@ if(BUILD_TESTING)
         tests/BitmapFontResourceManagerTests.cpp
         tests/EngineApiContractTests.cpp
         tests/ImageResourceManagerTests.cpp
+        tests/InputReplayTests.cpp
         tests/ModuleMusicResourceManagerTests.cpp
         tests/PakArchiveTests.cpp
         tests/SoundResourceManagerTests.cpp

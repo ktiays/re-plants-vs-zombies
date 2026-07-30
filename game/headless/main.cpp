@@ -1,4 +1,6 @@
 #include "pvz/engine/core/BinaryStateIO.h"
+#include "pvz/engine/core/DeterministicHash.h"
+#include "pvz/engine/core/InputReplay.h"
 #include "pvz/engine/core/NullFontResources.h"
 #include "pvz/engine/core/NullImageStore.h"
 #include "pvz/engine/core/NullMusicResources.h"
@@ -10,6 +12,7 @@
 #include <iostream>
 #include <span>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace
@@ -136,48 +139,68 @@ private:
     pvz::engine::core::NullMusicResources mMusicResources;
 };
 
-class EmptyInputFrame final : public pvz::engine::IInputFrame
+[[nodiscard]] bool AppendReplayFrame(
+    pvz::engine::core::InputReplay& theReplay,
+    pvz::engine::core::RecordedInputFrame theFrame)
 {
-public:
-    [[nodiscard]] bool IsKeyDown(
-        pvz::engine::KeyCode theKey) const override
-    {
-        static_cast<void>(theKey);
-        return false;
-    }
+    pvz::engine::core::InputReplayError anError{};
+    return theReplay.AppendFrame(
+        std::move(theFrame),
+        anError);
+}
 
-    [[nodiscard]] bool WasKeyPressed(
-        pvz::engine::KeyCode theKey) const override
+[[nodiscard]] bool BuildAdventureReplay(
+    pvz::engine::core::InputReplay& theReplay)
+{
+    constexpr pvz::engine::TickIndex kFrameCount = 65;
+    for (pvz::engine::TickIndex aTick = 0;
+         aTick < kFrameCount;
+         ++aTick)
     {
-        static_cast<void>(theKey);
-        return false;
+        pvz::engine::core::RecordedInputFrame aFrame;
+        aFrame.mTick = aTick;
+        if (aTick == 0 || aTick == 1)
+        {
+            aFrame.SetKeyDown(
+                pvz::engine::KeyCode::Enter,
+                true);
+            aFrame.SetKeyPressed(
+                pvz::engine::KeyCode::Enter,
+                true);
+        }
+        else if (aTick == 62)
+        {
+            aFrame.SetPointerButtonDown(
+                pvz::engine::PointerButton::Primary,
+                true);
+            aFrame.SetPointerButtonPressed(
+                pvz::engine::PointerButton::Primary,
+                true);
+            aFrame.mPointer.mPosition = {320, 530};
+        }
+        else if (aTick == 63)
+        {
+            aFrame.SetKeyDown(
+                pvz::engine::KeyCode::ArrowLeft,
+                true);
+            aFrame.SetKeyPressed(
+                pvz::engine::KeyCode::ArrowLeft,
+                true);
+        }
+        else if (aTick == 64)
+        {
+            aFrame.SetKeyDown(
+                pvz::engine::KeyCode::Space,
+                true);
+            aFrame.SetKeyPressed(
+                pvz::engine::KeyCode::Space,
+                true);
+        }
+        if (!AppendReplayFrame(theReplay, std::move(aFrame)))
+            return false;
     }
-
-    [[nodiscard]] bool IsPointerButtonDown(
-        pvz::engine::PointerButton theButton) const override
-    {
-        static_cast<void>(theButton);
-        return false;
-    }
-
-    [[nodiscard]] bool WasPointerButtonPressed(
-        pvz::engine::PointerButton theButton) const override
-    {
-        static_cast<void>(theButton);
-        return false;
-    }
-
-    [[nodiscard]] pvz::engine::PointerState GetPointerState()
-        const override
-    {
-        return {};
-    }
-
-    [[nodiscard]] std::span<const char32_t> GetTextInput() const override
-    {
-        return {};
-    }
-};
+    return true;
+}
 
 class HeadlessRenderFrame final : public pvz::engine::IRenderFrame
 {
@@ -203,31 +226,53 @@ private:
     std::uint64_t mSpriteCount{};
 };
 
-std::uint64_t CalculateFnv1a(std::span<const std::byte> theBytes)
-{
-    std::uint64_t aHash = 14'695'981'039'346'656'037ULL;
-    for (const auto aByte : theBytes)
-    {
-        aHash ^= std::to_integer<std::uint8_t>(aByte);
-        aHash *= 1'099'511'628'211ULL;
-    }
-    return aHash;
-}
-
 } // namespace
 
 int main()
 {
     HeadlessServices aServices;
-    EmptyInputFrame anInput;
     HeadlessRenderFrame aFrame;
     pvz::game::GameModule aGame;
+    pvz::engine::core::InputReplay aReplay;
 
-    if (aGame.Initialize(aServices) != pvz::engine::LifecycleResult::Success)
+    if (!BuildAdventureReplay(aReplay))
         return 1;
 
-    for (pvz::engine::TickIndex aTick = 0; aTick < 100; ++aTick)
-        aGame.Update(pvz::engine::GameTick{aTick}, anInput);
+    pvz::engine::core::BinaryStateWriter aReplayWriter;
+    pvz::engine::core::InputReplayError aReplayError{};
+    if (!aReplay.Save(aReplayWriter, aReplayError))
+        return 1;
+    pvz::engine::core::BinaryStateReader aReplayReader(
+        aReplayWriter.GetBytes());
+    pvz::engine::core::InputReplay aLoadedReplay;
+    if (!aLoadedReplay.Load(aReplayReader, aReplayError))
+        return 1;
+
+    if (aGame.Initialize(aServices) !=
+        pvz::engine::LifecycleResult::Success)
+    {
+        return 1;
+    }
+
+    auto aTranscriptHash =
+        pvz::engine::core::kFnv1a64Offset;
+    for (const auto& aRecordedFrame :
+         aLoadedReplay.GetFrames())
+    {
+        const pvz::engine::core::ReplayInputFrame anInput(
+            aRecordedFrame);
+        aGame.Update(
+            pvz::engine::GameTick{aRecordedFrame.mTick},
+            anInput);
+
+        pvz::engine::core::BinaryStateWriter aTickWriter;
+        if (!aGame.SaveState(aTickWriter))
+            return 1;
+        aTranscriptHash =
+            pvz::engine::core::CalculateFnv1a64(
+                aTickWriter.GetBytes(),
+                aTranscriptHash);
+    }
 
     aGame.Render(aFrame);
 
@@ -235,10 +280,31 @@ int main()
     if (!aGame.SaveState(aWriter))
         return 1;
 
-    std::cout << "ticks=" << aGame.GetUpdateCount()
+    const auto aFinalHash =
+        pvz::engine::core::CalculateFnv1a64(
+            aWriter.GetBytes());
+    const auto aFlowState = aGame.GetFlowState();
+    const bool hasExpectedState =
+        aGame.GetScene() ==
+            pvz::game::GameScene::AdventureDay &&
+        aGame.GetLastTick() == 64 &&
+        aGame.GetUpdateCount() == 65 &&
+        aFlowState.mGridColumn == 2 &&
+        aFlowState.mGridRow == 4 &&
+        aFlowState.mOccupiedCells ==
+            ((std::uint64_t{1} << 38U) |
+             (std::uint64_t{1} << 39U)) &&
+        aFinalHash == 14'239'196'991'121'916'159ULL &&
+        aTranscriptHash == 5'816'442'757'865'445'562ULL;
+
+    std::cout << "replay-frames="
+              << aLoadedReplay.GetFrames().size()
+              << " replay-bytes="
+              << aReplayWriter.GetBytesWritten()
               << " state-bytes=" << aWriter.GetBytesWritten()
-              << " state-fnv1a=" << CalculateFnv1a(aWriter.GetBytes())
+              << " state-fnv1a=" << aFinalHash
+              << " transcript-fnv1a=" << aTranscriptHash
               << '\n';
     aGame.Shutdown();
-    return 0;
+    return hasExpectedState ? 0 : 1;
 }

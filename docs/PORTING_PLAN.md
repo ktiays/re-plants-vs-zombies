@@ -28,6 +28,12 @@ Last updated: 2026-07-30
 - [x] Automated platform-leakage and architecture-dependent-type checks
 - [x] Explicit little-endian state reader/writer with malformed-input tests
 - [x] Portable game lifecycle target and headless 100 Hz smoke runner
+- [x] Versioned fixed-width input replay: sequential 100 Hz frames capture
+  persistent and transient keyboard/pointer state, logical coordinates, wheel,
+  and bounded Unicode text; malformed streams fail transactionally
+- [x] Deterministic headless Adventure replay: 65 ticks cover title, menu,
+  transition, pointer placement, and keyboard placement while final-state and
+  rolling per-tick transcript hashes provide a cross-platform comparison gate
 - [x] Engine-owned rendering, input, logging, state, and resource protocols
 - [x] Portable PAK indexing, normalization, validation, and resource reads
 - [x] Validation against the supplied retail PAK: 3,198 entries and
