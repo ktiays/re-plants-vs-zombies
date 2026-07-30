@@ -51,6 +51,8 @@
 #ifdef PVZ_HAS_REFERENCE_INPUT_CAPTURE
 #include "pvz/platform/windows/LegacyBehaviorAdapter.h"
 #include "pvz/platform/windows/LegacyInputCapture.h"
+
+#include <algorithm>
 #endif
 
 bool gIsPartnerBuild = false; // GOTY @Patoke: 0x729659
@@ -58,6 +60,38 @@ bool gSlowMo = false;  //0x6A9EAA
 bool gFastMo = false;  //0x6A9EAB
 LawnApp* gLawnApp = nullptr;  //0x6A9EC0
 int gSlowMoCounter = 0;  //0x6A9EC4
+
+#ifdef PVZ_HAS_REFERENCE_INPUT_CAPTURE
+namespace
+{
+
+std::string gReferenceProfileName;
+bool gReferenceProfileFresh{};
+
+bool IsValidReferenceProfileName(
+	const std::string& theName)
+{
+	return
+		!theName.empty() &&
+		theName.size() <= 12 &&
+		std::all_of(
+			theName.begin(),
+			theName.end(),
+			[](unsigned char theCharacter)
+			{
+				return
+					(theCharacter >= 'A' &&
+					 theCharacter <= 'Z') ||
+					(theCharacter >= 'a' &&
+					 theCharacter <= 'z') ||
+					(theCharacter >= '0' &&
+					 theCharacter <= '9') ||
+					theCharacter == ' ';
+			});
+}
+
+} // namespace
+#endif
 
 //0x44E8A0
 bool LawnGetCloseRequest()
@@ -1294,6 +1328,29 @@ void LawnApp::Init()
 
 	mProfileMgr->Load();
 
+#ifdef PVZ_HAS_REFERENCE_INPUT_CAPTURE
+	if (!gReferenceProfileName.empty())
+	{
+		const auto aProfileName =
+			StringToSexyStringFast(gReferenceProfileName);
+		mPlayerInfo = mProfileMgr->GetProfile(aProfileName);
+		if (mPlayerInfo == nullptr)
+		{
+			mPlayerInfo = mProfileMgr->AddProfile(aProfileName);
+			if (mPlayerInfo != nullptr)
+				mProfileMgr->Save();
+		}
+		if (mPlayerInfo != nullptr &&
+			gReferenceProfileFresh)
+		{
+			mPlayerInfo->DeleteUserFiles();
+			mPlayerInfo->Reset();
+			mPlayerInfo->SaveDetails();
+			mProfileMgr->Save();
+		}
+	}
+#endif
+
 	std::string aCurUser;
 	if (mPlayerInfo == nullptr && RegistryReadString("CurUser", &aCurUser))
 	{
@@ -1403,6 +1460,19 @@ void LawnApp::HandleCmdLineParam(const std::string& theParamName, const std::str
 	{
 		if (!pvz::platform::windows::ConfigureLegacyBehaviorCapture(theParamValue))
 			mLoadingFailed = true;
+	}
+	else if (theParamName == "-referenceprofile" ||
+			 theParamName == "-referencefreshprofile")
+	{
+		if (!IsValidReferenceProfileName(theParamValue) ||
+			!gReferenceProfileName.empty())
+			mLoadingFailed = true;
+		else
+		{
+			gReferenceProfileName = theParamValue;
+			gReferenceProfileFresh =
+				theParamName == "-referencefreshprofile";
+		}
 	}
 #endif
 	else

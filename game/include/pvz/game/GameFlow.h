@@ -13,6 +13,7 @@ enum class GameScene : std::uint8_t
     MainMenu,
     StartingAdventure,
     AdventureDay,
+    AdventureIntro,
     Count,
 };
 
@@ -65,7 +66,10 @@ public:
 private:
     void UpdateTitle(const engine::IInputFrame& theInput);
     void UpdateMainMenu(const engine::IInputFrame& theInput);
-    void UpdateStartingAdventure();
+    void UpdateStartingAdventure(
+        const engine::IInputFrame& theInput);
+    void UpdateAdventureIntro(
+        const engine::IInputFrame& theInput);
     void UpdateAdventureDay(const engine::IInputFrame& theInput);
     void SelectRelative(std::int32_t theOffset);
     void ActivateMenuItem();

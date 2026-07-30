@@ -13,7 +13,8 @@ namespace
 inline constexpr std::uint8_t kBoardColumnCount = 9;
 inline constexpr std::uint8_t kBoardRowCount = 5;
 inline constexpr std::uint8_t kNoGridCoordinate = 0xFF;
-inline constexpr std::uint16_t kAdventureTransitionTicks = 60;
+inline constexpr std::uint16_t kAdventureTransitionTicks = 450;
+inline constexpr std::uint16_t kAdventureIntroTicks = 855;
 inline constexpr std::uint16_t kUnavailableNoticeTicks = 150;
 inline constexpr std::uint64_t kOccupiedCellMask =
     (std::uint64_t{1} << 45U) - 1U;
@@ -107,7 +108,10 @@ void GameFlow::Update(const engine::IInputFrame& theInput)
         UpdateMainMenu(theInput);
         break;
     case GameScene::StartingAdventure:
-        UpdateStartingAdventure();
+        UpdateStartingAdventure(theInput);
+        break;
+    case GameScene::AdventureIntro:
+        UpdateAdventureIntro(theInput);
         break;
     case GameScene::AdventureDay:
         UpdateAdventureDay(theInput);
@@ -180,14 +184,22 @@ bool GameFlow::RestoreState(const GameFlowState& theState)
 {
     if (theState.mScene >= GameScene::Count ||
         theState.mMenuItem >= MainMenuItem::Count ||
-        (theState.mScene != GameScene::StartingAdventure &&
-         theState.mTransitionTicks != 0) ||
-        theState.mTransitionTicks > kAdventureTransitionTicks ||
         theState.mNoticeTicks > kUnavailableNoticeTicks ||
         (theState.mOccupiedCells & ~kOccupiedCellMask) != 0)
     {
         return false;
     }
+    const bool hasValidTransition =
+        (theState.mScene == GameScene::StartingAdventure &&
+         theState.mTransitionTicks <=
+             kAdventureTransitionTicks) ||
+        (theState.mScene == GameScene::AdventureIntro &&
+         theState.mTransitionTicks <= kAdventureIntroTicks) ||
+        ((theState.mScene != GameScene::StartingAdventure &&
+          theState.mScene != GameScene::AdventureIntro) &&
+         theState.mTransitionTicks == 0);
+    if (!hasValidTransition)
+        return false;
 
     const bool hasNoGridSelection =
         theState.mGridColumn == kNoGridCoordinate &&
@@ -281,15 +293,39 @@ void GameFlow::UpdateMainMenu(
     }
 }
 
-void GameFlow::UpdateStartingAdventure()
+void GameFlow::UpdateStartingAdventure(
+    const engine::IInputFrame& theInput)
 {
+    mLastPointerPosition =
+        theInput.GetPointerState().mPosition;
+    mHasPointerPosition = true;
+    if (mState.mTransitionTicks > 0)
+        --mState.mTransitionTicks;
+    if (mState.mTransitionTicks == 0)
+    {
+        mState.mScene = GameScene::AdventureIntro;
+        mState.mTransitionTicks = kAdventureIntroTicks;
+    }
+}
+
+void GameFlow::UpdateAdventureIntro(
+    const engine::IInputFrame& theInput)
+{
+    mLastPointerPosition =
+        theInput.GetPointerState().mPosition;
+    mHasPointerPosition = true;
     if (mState.mTransitionTicks > 0)
         --mState.mTransitionTicks;
     if (mState.mTransitionTicks == 0)
     {
         mState.mScene = GameScene::AdventureDay;
-        mState.mGridColumn = 0;
-        mState.mGridRow = 0;
+        SelectGridCell(mLastPointerPosition, false);
+        if (mState.mGridColumn == kNoGridCoordinate ||
+            mState.mGridRow == kNoGridCoordinate)
+        {
+            mState.mGridColumn = 0;
+            mState.mGridRow = 0;
+        }
     }
 }
 

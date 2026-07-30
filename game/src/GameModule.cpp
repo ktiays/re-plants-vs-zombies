@@ -16,7 +16,8 @@ namespace
 inline constexpr std::uint32_t kStateMagic = 0x475A5650;
 inline constexpr std::uint16_t kLegacyStateVersion = 1;
 inline constexpr std::uint16_t kFlowStateVersion = 2;
-inline constexpr std::uint16_t kStateVersion = 3;
+inline constexpr std::uint16_t kReanimationStateVersion = 3;
+inline constexpr std::uint16_t kStateVersion = 4;
 inline constexpr std::uint32_t kTitleMusicOrder = 0x98;
 inline constexpr std::uint32_t kAdventureMusicOrder = 0;
 inline constexpr float kLogicalWidth = 800.0F;
@@ -283,6 +284,9 @@ void GameModule::Render(engine::IRenderFrame& theFrame) const
     case GameScene::StartingAdventure:
         RenderMenu(theFrame, true);
         break;
+    case GameScene::AdventureIntro:
+        RenderAdventureDay(theFrame);
+        break;
     case GameScene::AdventureDay:
         RenderAdventureDay(theFrame);
         break;
@@ -316,6 +320,7 @@ bool GameModule::LoadState(engine::IStateReader& theReader)
     if (aMagic != kStateMagic ||
         (aVersion != kLegacyStateVersion &&
          aVersion != kFlowStateVersion &&
+         aVersion != kReanimationStateVersion &&
          aVersion != kStateVersion))
     {
         return false;
@@ -323,6 +328,7 @@ bool GameModule::LoadState(engine::IStateReader& theReader)
 
     GameFlow aFlow;
     if (aVersion == kFlowStateVersion ||
+        aVersion == kReanimationStateVersion ||
         aVersion == kStateVersion)
     {
         std::uint8_t aScene{};
@@ -340,10 +346,16 @@ bool GameModule::LoadState(engine::IStateReader& theReader)
         }
         aState.mScene = static_cast<GameScene>(aScene);
         aState.mMenuItem = static_cast<MainMenuItem>(aMenuItem);
+        if (aVersion != kStateVersion &&
+            aState.mScene == GameScene::AdventureIntro)
+        {
+            return false;
+        }
         if (!aFlow.RestoreState(aState))
             return false;
     }
-    if (aVersion == kStateVersion &&
+    if ((aVersion == kReanimationStateVersion ||
+         aVersion == kStateVersion) &&
         !theReader.ReadU64(aReanimationTick))
     {
         return false;
@@ -523,7 +535,11 @@ BehaviorObservation GameModule::GetBehaviorObservation() const
         anObservation.mScene = BehaviorScene::MainMenu;
         break;
     case GameScene::StartingAdventure:
+        anObservation.mScene = BehaviorScene::MainMenu;
+        break;
+    case GameScene::AdventureIntro:
         anObservation.mScene = BehaviorScene::AdventureIntro;
+        anObservation.mBoardStage = BehaviorBoardStage::Day;
         break;
     case GameScene::AdventureDay:
         anObservation.mScene = BehaviorScene::AdventurePlaying;
@@ -579,6 +595,12 @@ void GameModule::RebuildUiText()
             315.0F,
             {255, 255, 255, 255});
         break;
+    case GameScene::AdventureIntro:
+        AppendCenteredText(
+            U"ADVENTURE INTRO",
+            585.0F,
+            {255, 255, 255, 255});
+        break;
     case GameScene::AdventureDay:
         AppendCenteredText(
             U"CLICK OR ENTER TO PLACE - ESC RETURNS TO MENU",
@@ -631,8 +653,10 @@ void GameModule::HandleSceneChange(
         mServices->GetMusicResources().Stop(
             mTitleMusic.mModule);
         break;
-    case GameScene::AdventureDay:
+    case GameScene::AdventureIntro:
         static_cast<void>(PlayMusicAt(kAdventureMusicOrder));
+        break;
+    case GameScene::AdventureDay:
         break;
     case GameScene::MainMenu:
         if (thePreviousScene == GameScene::AdventureDay)
@@ -678,7 +702,8 @@ void GameModule::SynchronizeMusic()
     else
     {
         const auto anOrder =
-            mFlow.GetScene() == GameScene::AdventureDay
+            (mFlow.GetScene() == GameScene::AdventureIntro ||
+             mFlow.GetScene() == GameScene::AdventureDay)
                 ? kAdventureMusicOrder
                 : kTitleMusicOrder;
         static_cast<void>(PlayMusicAt(anOrder));

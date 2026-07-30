@@ -152,6 +152,63 @@ void PrintSummary(
         << '\n';
 }
 
+void PrintTimeline(
+    const pvz::parity::BehaviorCapture& theCapture)
+{
+    const auto anObservations = theCapture.GetObservations();
+    for (std::size_t anIndex = 0;
+         anIndex < anObservations.size();
+         ++anIndex)
+    {
+        const auto& anObservation = anObservations[anIndex];
+        const bool hasSceneTransition =
+            anIndex == 0 ||
+            anObservation.mScene !=
+                anObservations[anIndex - 1].mScene ||
+            anObservation.mBoardStage !=
+                anObservations[anIndex - 1].mBoardStage;
+        if (hasSceneTransition)
+        {
+            std::cout
+                << "scene-tick=" << anObservation.mTick
+                << " scene="
+                << GetSceneName(anObservation.mScene)
+                << " board="
+                << GetBoardStageName(
+                       anObservation.mBoardStage)
+                << '\n';
+        }
+    }
+
+    for (const auto& aFrame :
+         theCapture.GetInputReplay().GetFrames())
+    {
+        if (aFrame.mKeysPressed == 0 &&
+            aFrame.mPointerButtonsPressed == 0 &&
+            aFrame.mPointer.mWheelDelta == 0 &&
+            aFrame.mTextInput.empty())
+        {
+            continue;
+        }
+        std::cout
+            << "input-tick=" << aFrame.mTick
+            << " keys-pressed="
+            << aFrame.mKeysPressed
+            << " pointer-pressed="
+            << static_cast<std::uint32_t>(
+                   aFrame.mPointerButtonsPressed)
+            << " pointer="
+            << aFrame.mPointer.mPosition.mX
+            << ','
+            << aFrame.mPointer.mPosition.mY
+            << " wheel="
+            << aFrame.mPointer.mWheelDelta
+            << " text-count="
+            << aFrame.mTextInput.size()
+            << '\n';
+    }
+}
+
 [[nodiscard]] bool FramesEqual(
     const pvz::engine::core::RecordedInputFrame& theLeft,
     const pvz::engine::core::RecordedInputFrame& theRight)
@@ -284,6 +341,7 @@ int main(int theArgumentCount, char** theArguments)
     if (!LoadCapture(aLeftPath, aLeft))
         return 2;
     PrintSummary(aLeftPath.string(), aLeft);
+    PrintTimeline(aLeft);
     if (theArgumentCount == 2)
         return 0;
 
@@ -292,6 +350,7 @@ int main(int theArgumentCount, char** theArguments)
     if (!LoadCapture(aRightPath, aRight))
         return 2;
     PrintSummary(aRightPath.string(), aRight);
+    PrintTimeline(aRight);
 
     const auto anInputDifference =
         FindFirstInputDifference(

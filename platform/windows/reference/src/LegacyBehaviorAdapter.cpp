@@ -2,8 +2,10 @@
 
 #include "Lawn/Board.h"
 #include "Lawn/CursorObject.h"
+#include "Lawn/Widget/TitleScreen.h"
 #include "LawnApp.h"
 #include "pvz/platform/windows/LegacyInputCapture.h"
+#include "widget/WidgetManager.h"
 
 #include <cstdint>
 
@@ -11,6 +13,27 @@ namespace pvz::platform::windows
 {
 namespace
 {
+
+void EnsureBehaviorCaptureEnvironment(LawnApp& theApp)
+{
+    const bool wasAppFocused = theApp.mHasFocus;
+    theApp.mActive = true;
+    theApp.mMinimized = false;
+    theApp.mHasFocus = true;
+    if (theApp.mWidgetManager != nullptr &&
+        !theApp.mWidgetManager->mHasFocus)
+    {
+        theApp.mWidgetManager->GotFocus();
+    }
+    if (!wasAppFocused)
+        theApp.GotFocus();
+    if (theApp.mGameScene == GameScenes::SCENE_LEVEL_INTRO &&
+        theApp.mBoard != nullptr &&
+        theApp.mBoard->mDrawCount == 0)
+    {
+        theApp.mBoard->mDrawCount = 1;
+    }
+}
 
 [[nodiscard]] game::BehaviorScene GetScene(const LawnApp& theApp)
 {
@@ -121,10 +144,14 @@ void CaptureLegacyBehaviorTick(LawnApp& theApp)
     {
         return;
     }
+    EnsureBehaviorCaptureEnvironment(theApp);
     if (!HasLegacyBehaviorCaptureStarted())
     {
-        if (GetScene(theApp) == game::BehaviorScene::Title)
+        if (theApp.mTitleScreen != nullptr &&
+            theApp.mTitleScreen->mLoadingThreadComplete)
+        {
             StartLegacyBehaviorCapture();
+        }
         return;
     }
     const auto aFrameCount =

@@ -152,7 +152,7 @@ void EnterAdventureDay(
     theInput.PressKey(pvz::engine::KeyCode::Enter);
     theFlow.Update(theInput);
     theInput.Clear();
-    for (std::uint16_t aTick = 0; aTick < 60; ++aTick)
+    for (std::uint16_t aTick = 0; aTick < 1'305; ++aTick)
         theFlow.Update(theInput);
 }
 
@@ -572,7 +572,7 @@ void TestAdventureRenderCommandsMatchLegacyReference()
     aGame.Update({1}, anInput);
     anInput.Clear();
     for (pvz::engine::TickIndex aTick = 2;
-         aTick < 62;
+         aTick < 1'307;
          ++aTick)
     {
         aGame.Update({aTick}, anInput);
@@ -590,7 +590,7 @@ void TestAdventureRenderCommandsMatchLegacyReference()
             anExpectedX + 40,
             anExpectedY + 50,
         });
-    aGame.Update({62}, anInput);
+    aGame.Update({1'307}, anInput);
     anInput.Clear();
 
     CaptureRenderFrame aFrame;

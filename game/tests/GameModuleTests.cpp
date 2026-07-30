@@ -657,6 +657,40 @@ void TestPreviousStateSchemasRemainReadable()
             aGame.GetReanimationTick() == 0,
         "version-two flow state defaults reanimation tick");
 
+    pvz::engine::core::BinaryStateWriter aVersionThreeWriter;
+    Expect(
+        aVersionThreeWriter.WriteU32(0x475A5650) &&
+            aVersionThreeWriter.WriteU16(3) &&
+            aVersionThreeWriter.WriteU64(125) &&
+            aVersionThreeWriter.WriteU64(150) &&
+            aVersionThreeWriter.WriteBool(false) &&
+            aVersionThreeWriter.WriteU8(
+                static_cast<std::uint8_t>(
+                    pvz::game::GameScene::AdventureDay)) &&
+            aVersionThreeWriter.WriteU8(
+                static_cast<std::uint8_t>(
+                    pvz::game::MainMenuItem::Adventure)) &&
+            aVersionThreeWriter.WriteU16(0) &&
+            aVersionThreeWriter.WriteU16(0) &&
+            aVersionThreeWriter.WriteU8(4) &&
+            aVersionThreeWriter.WriteU8(2) &&
+            aVersionThreeWriter.WriteU64(2) &&
+            aVersionThreeWriter.WriteU64(123),
+        "version-three state fixture writes");
+    pvz::engine::core::BinaryStateReader aVersionThreeReader(
+        aVersionThreeWriter.GetBytes());
+    Expect(
+        aGame.LoadState(aVersionThreeReader) &&
+            aGame.GetLastTick() == 125 &&
+            aGame.GetUpdateCount() == 150 &&
+            aGame.GetScene() ==
+                pvz::game::GameScene::AdventureDay &&
+            aGame.GetFlowState().mGridColumn == 4 &&
+            aGame.GetFlowState().mGridRow == 2 &&
+            aGame.GetFlowState().mOccupiedCells == 2 &&
+            aGame.GetReanimationTick() == 123,
+        "version-three state remains readable");
+
     aGame.Shutdown();
 }
 
@@ -687,17 +721,29 @@ void TestSceneMusicTransitions()
             aServices.GetTestMusicResources().mStopCount == 1,
         "adventure transition stops title music");
 
-    for (pvz::engine::TickIndex aTick = 2; aTick < 62; ++aTick)
+    for (pvz::engine::TickIndex aTick = 2; aTick < 452; ++aTick)
         aGame.Update(pvz::engine::GameTick{aTick}, anInput);
     Expect(
-        aGame.GetScene() == pvz::game::GameScene::AdventureDay &&
+        aGame.GetScene() ==
+                pvz::game::GameScene::AdventureIntro &&
             aServices.GetTestMusicResources().mPlayCount == 2 &&
             aServices.GetTestMusicResources()
                     .mPlayback.mPosition.mOrder == 0,
-        "day board starts adventure music order");
+        "level intro starts adventure music order");
+
+    for (pvz::engine::TickIndex aTick = 452;
+         aTick < 1'307;
+         ++aTick)
+    {
+        aGame.Update(pvz::engine::GameTick{aTick}, anInput);
+    }
+    Expect(
+        aGame.GetScene() == pvz::game::GameScene::AdventureDay &&
+            aServices.GetTestMusicResources().mPlayCount == 2,
+        "first-level intro enters playable day board");
 
     anInput.PressKey(pvz::engine::KeyCode::Space);
-    aGame.Update(pvz::engine::GameTick{62}, anInput);
+    aGame.Update(pvz::engine::GameTick{1'307}, anInput);
     anInput.Clear();
     pvz::engine::core::BinaryStateWriter aWriter;
     Expect(
@@ -723,7 +769,7 @@ void TestSceneMusicTransitions()
         "state restore synchronizes adventure music");
 
     anInput.PressKey(pvz::engine::KeyCode::Escape);
-    aGame.Update(pvz::engine::GameTick{63}, anInput);
+    aGame.Update(pvz::engine::GameTick{1'308}, anInput);
     anInput.Clear();
     Expect(
         aGame.GetScene() == pvz::game::GameScene::MainMenu &&

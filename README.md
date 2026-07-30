@@ -92,6 +92,7 @@ post-update observations together:
 
 ```bat
 path\to\LawnProject.exe -nosound ^
+  -referencefreshprofile=Codex ^
   -recordbehavior="C:\captures\legacy-behavior.pvzb"
 ```
 

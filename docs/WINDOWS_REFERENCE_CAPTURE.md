@@ -62,6 +62,7 @@ Or record the preferred behavior-comparison artifact:
 ```bat
 path\to\LawnProject.exe ^
   -nosound ^
+  -referencefreshprofile=Codex ^
   -recordbehavior="C:\captures\legacy-behavior.pvzb"
 ```
 
@@ -73,6 +74,23 @@ sound backends so the reference can run without incompatible audio middleware.
 This affects audio output only; logical input and behavior capture remain
 enabled.
 
+`-referenceprofile=<name>` deterministically selects an existing local profile
+or creates it before capture starts. `-referencefreshprofile=<name>` does the
+same, then resets that named profile and deletes only its saved games before
+the run. Use the fresh form for repeatable first-level scenarios so both the
+legacy first-run profile dialog and persisted continue-game state stay outside
+behavior evidence. Both reference-only switches accept one to twelve ASCII
+letters, digits, or spaces and are mutually exclusive.
+
+Behavior capture also maintains the legacy application's logical active-focus
+state while recording. This lets scheduled or SSH-driven reference runs update
+widgets exactly like a foreground play session instead of freezing the menu
+when Windows leaves the capture window inactive. Once a level-intro board has
+been instantiated, capture also satisfies the legacy first-draw readiness gate
+that would otherwise depend on an available DirectDraw foreground surface.
+Focus-loss, pause, and renderer-surface behavior are intentionally outside this
+active-gameplay parity stream.
+
 Raw input capture starts at the first actual legacy update. Behavior capture
 uses the stable game-layer boundary described below. Both stop when the
 application leaves its main loop. The file is serialized and published only
@@ -83,10 +101,10 @@ Generated `.pvzr`, `.pvzc`, and `.pvzb` files are ignored by Git. Retail assets
 and captures stay local.
 
 Behavior capture is armed by the command line but begins only after the legacy
-runtime reaches its first stable title frame. This keeps asynchronous engine
-loading outside the comparison: tick zero in both the Windows capture and the
-portable replay is a game-layer title update. Raw `-recordreplay` capture still
-starts immediately when requested.
+runtime's title loading thread completes and the title becomes interactive.
+This keeps asynchronous engine loading outside the comparison: tick zero in
+both the Windows capture and the portable replay is a game-layer title update.
+Raw `-recordreplay` capture still starts immediately when requested.
 
 ## Validate and replay on macOS
 

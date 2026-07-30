@@ -1043,7 +1043,6 @@ void GameSelector::TrackButton(DialogButton* theButton, const char* theTrackName
 void GameSelector::AddedToManager(WidgetManager* theWidgetManager)
 {
 	Widget::AddedToManager(theWidgetManager);
-	this->Move(-800, 0);
 }
 
 //0x44BCA0

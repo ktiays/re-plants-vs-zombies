@@ -103,7 +103,7 @@ void EnterAdventureDay(
     theInput.PressKey(pvz::engine::KeyCode::Enter);
     theFlow.Update(theInput);
     theInput.Clear();
-    for (std::uint16_t aTick = 0; aTick < 60; ++aTick)
+    for (std::uint16_t aTick = 0; aTick < 1'305; ++aTick)
         theFlow.Update(theInput);
 }
 
@@ -189,22 +189,39 @@ void TestAdventureTransition()
     Expect(
         aFlow.GetScene() ==
                 pvz::game::GameScene::StartingAdventure &&
-            aFlow.GetTransitionTicks() == 60,
-        "adventure click starts fixed-duration transition");
+            aFlow.GetTransitionTicks() == 450,
+        "adventure click starts legacy selector transition");
 
-    for (std::uint16_t aTick = 0; aTick < 59; ++aTick)
+    for (std::uint16_t aTick = 0; aTick < 449; ++aTick)
         aFlow.Update(anInput);
     Expect(
         aFlow.GetScene() ==
                 pvz::game::GameScene::StartingAdventure &&
             aFlow.GetTransitionTicks() == 1,
-        "adventure transition remains active before final tick");
+        "selector transition remains active before final tick");
     aFlow.Update(anInput);
     Expect(
-        aFlow.GetScene() == pvz::game::GameScene::AdventureDay &&
+        aFlow.GetScene() ==
+                pvz::game::GameScene::AdventureIntro &&
+            aFlow.GetTransitionTicks() == 855 &&
+            aFlow.GetGridColumn() == 0xFF &&
+            aFlow.GetGridRow() == 0xFF,
+        "selector transition enters the first-level intro");
+
+    for (std::uint16_t aTick = 0; aTick < 854; ++aTick)
+        aFlow.Update(anInput);
+    Expect(
+        aFlow.GetScene() ==
+                pvz::game::GameScene::AdventureIntro &&
+            aFlow.GetTransitionTicks() == 1,
+        "first-level intro remains active before final tick");
+    aFlow.Update(anInput);
+    Expect(
+        aFlow.GetScene() ==
+                pvz::game::GameScene::AdventureDay &&
             aFlow.GetGridColumn() == 0 &&
             aFlow.GetGridRow() == 0,
-        "adventure transition enters day board");
+        "first-level intro enters playable day board");
 }
 
 void TestBoardInteraction()
@@ -289,6 +306,12 @@ void TestStateValidation()
     Expect(
         !aRestoredFlow.RestoreState(anInvalidState),
         "invalid notice duration is rejected");
+    anInvalidState = aState;
+    anInvalidState.mScene = pvz::game::GameScene::AdventureIntro;
+    anInvalidState.mTransitionTicks = 856;
+    Expect(
+        !aRestoredFlow.RestoreState(anInvalidState),
+        "invalid first-level intro duration is rejected");
     Expect(
         aRestoredFlow.GetState().mOccupiedCells ==
             aState.mOccupiedCells,

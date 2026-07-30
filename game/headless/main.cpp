@@ -164,7 +164,7 @@ private:
 [[nodiscard]] bool BuildAdventureReplay(
     pvz::engine::core::InputReplay& theReplay)
 {
-    constexpr pvz::engine::TickIndex kFrameCount = 65;
+    constexpr pvz::engine::TickIndex kFrameCount = 1'310;
     for (pvz::engine::TickIndex aTick = 0;
          aTick < kFrameCount;
          ++aTick)
@@ -180,7 +180,7 @@ private:
                 pvz::engine::KeyCode::Enter,
                 true);
         }
-        else if (aTick == 62)
+        else if (aTick == 1'307)
         {
             aFrame.SetPointerButtonDown(
                 pvz::engine::PointerButton::Primary,
@@ -190,7 +190,7 @@ private:
                 true);
             aFrame.mPointer.mPosition = {320, 530};
         }
-        else if (aTick == 63)
+        else if (aTick == 1'308)
         {
             aFrame.SetKeyDown(
                 pvz::engine::KeyCode::ArrowLeft,
@@ -199,7 +199,7 @@ private:
                 pvz::engine::KeyCode::ArrowLeft,
                 true);
         }
-        else if (aTick == 64)
+        else if (aTick == 1'309)
         {
             aFrame.SetKeyDown(
                 pvz::engine::KeyCode::Space,
@@ -465,14 +465,14 @@ int main(int theArgumentCount, char** theArguments)
         aReplayInputPath.has_value() ||
         aGame.GetScene() ==
             pvz::game::GameScene::AdventureDay &&
-        aGame.GetLastTick() == 64 &&
-        aGame.GetUpdateCount() == 65 &&
+        aGame.GetLastTick() == 1'309 &&
+        aGame.GetUpdateCount() == 1'310 &&
         aFlowState.mGridColumn == 2 &&
         aFlowState.mGridRow == 4 &&
         aFlowState.mOccupiedCells ==
             ((std::uint64_t{1} << 38U) |
              (std::uint64_t{1} << 39U)) &&
-        aBehaviorObservations.size() == 65 &&
+        aBehaviorObservations.size() == 1'310 &&
         aBehaviorObservations.back().mScene ==
             pvz::game::BehaviorScene::AdventurePlaying &&
         aBehaviorObservations.back().mBoardStage ==
@@ -482,8 +482,8 @@ int main(int theArgumentCount, char** theArguments)
         aBehaviorObservations.back().mOccupiedCells ==
             aFlowState.mOccupiedCells &&
         aBehaviorObservations.back().mPlantCount == 2 &&
-        aFinalHash == 14'239'196'991'121'916'159ULL &&
-        aTranscriptHash == 5'816'442'757'865'445'562ULL;
+        aFinalHash == 13'973'055'160'360'038'248ULL &&
+        aTranscriptHash == 4'288'448'528'192'834'510ULL;
 
     pvz::engine::core::BinaryStateWriter aSessionWriter;
     pvz::engine::core::ReplaySessionError aSessionError{};
