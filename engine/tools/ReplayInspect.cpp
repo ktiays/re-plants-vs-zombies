@@ -8,6 +8,7 @@
 #include <fstream>
 #include <iostream>
 #include <limits>
+#include <optional>
 #include <span>
 #include <string_view>
 #include <vector>
@@ -17,6 +18,22 @@ namespace
 
 inline constexpr std::uint64_t kMaximumSessionFileSize =
     320ULL * 1'024ULL * 1'024ULL;
+inline constexpr std::uint32_t kInputReplayMagic = 0x525A5650;
+inline constexpr std::uint32_t kReplaySessionMagic = 0x435A5650;
+
+struct LoadedCapture
+{
+    [[nodiscard]] const pvz::engine::core::InputReplay&
+    GetInputReplay() const
+    {
+        if (mSession.has_value())
+            return mSession->GetInputReplay();
+        return mInputReplay;
+    }
+
+    pvz::engine::core::InputReplay mInputReplay;
+    std::optional<pvz::engine::core::ReplaySession> mSession;
+};
 
 [[nodiscard]] bool LoadFile(
     const std::filesystem::path& thePath,
@@ -69,44 +86,88 @@ inline constexpr std::uint64_t kMaximumSessionFileSize =
     return true;
 }
 
-[[nodiscard]] bool LoadSession(
+[[nodiscard]] bool LoadCapture(
     const std::filesystem::path& thePath,
-    pvz::engine::core::ReplaySession& theSession)
+    LoadedCapture& theCapture)
 {
     std::vector<std::byte> aBytes;
     if (!LoadFile(thePath, aBytes))
         return false;
 
-    pvz::engine::core::BinaryStateReader aReader(aBytes);
-    pvz::engine::core::ReplaySessionError anError{};
-    if (!theSession.Load(aReader, anError))
+    pvz::engine::core::BinaryStateReader aHeaderReader(aBytes);
+    std::uint32_t aMagic{};
+    if (!aHeaderReader.ReadU32(aMagic))
     {
         std::cerr
             << thePath.string()
-            << ": "
-            << pvz::engine::core::
-                   GetReplaySessionErrorMessage(anError)
+            << ": capture header is truncated"
             << '\n';
         return false;
     }
-    return true;
+    if (aMagic == kInputReplayMagic)
+    {
+        pvz::engine::core::BinaryStateReader aReader(aBytes);
+        pvz::engine::core::InputReplayError anError{};
+        if (!theCapture.mInputReplay.Load(aReader, anError))
+        {
+            std::cerr
+                << thePath.string()
+                << ": "
+                << pvz::engine::core::
+                       GetInputReplayErrorMessage(anError)
+                << '\n';
+            return false;
+        }
+        return true;
+    }
+    if (aMagic == kReplaySessionMagic)
+    {
+        theCapture.mSession.emplace();
+        pvz::engine::core::BinaryStateReader aReader(aBytes);
+        pvz::engine::core::ReplaySessionError anError{};
+        if (!theCapture.mSession->Load(aReader, anError))
+        {
+            std::cerr
+                << thePath.string()
+                << ": "
+                << pvz::engine::core::
+                       GetReplaySessionErrorMessage(anError)
+                << '\n';
+            return false;
+        }
+        return true;
+    }
+
+    std::cerr
+        << thePath.string()
+        << ": capture magic is neither PVZR nor PVZC\n";
+    return false;
 }
 
 void PrintSummary(
     std::string_view theLabel,
-    const pvz::engine::core::ReplaySession& theSession)
+    const LoadedCapture& theCapture)
 {
+    const auto& anInput = theCapture.GetInputReplay();
     std::cout
         << theLabel
         << " frames="
-        << theSession.GetInputReplay().GetFrames().size()
-        << " hashes="
-        << theSession.GetStateHashes().size()
-        << " final-state-fnv1a="
-        << theSession.GetFinalStateHash()
-        << " transcript-fnv1a="
-        << theSession.GetTranscriptHash()
-        << '\n';
+        << anInput.GetFrames().size();
+    if (theCapture.mSession.has_value())
+    {
+        std::cout
+            << " hashes="
+            << theCapture.mSession->GetStateHashes().size()
+            << " final-state-fnv1a="
+            << theCapture.mSession->GetFinalStateHash()
+            << " transcript-fnv1a="
+            << theCapture.mSession->GetTranscriptHash();
+    }
+    else
+    {
+        std::cout << " input-only";
+    }
+    std::cout << '\n';
 }
 
 [[nodiscard]] bool FramesEqual(
@@ -131,11 +192,11 @@ void PrintSummary(
 }
 
 [[nodiscard]] std::uint64_t FindFirstInputDifference(
-    const pvz::engine::core::ReplaySession& theLeft,
-    const pvz::engine::core::ReplaySession& theRight)
+    const pvz::engine::core::InputReplay& theLeft,
+    const pvz::engine::core::InputReplay& theRight)
 {
-    const auto aLeft = theLeft.GetInputReplay().GetFrames();
-    const auto aRight = theRight.GetInputReplay().GetFrames();
+    const auto aLeft = theLeft.GetFrames();
+    const auto aRight = theRight.GetFrames();
     const auto aCount = std::min(aLeft.size(), aRight.size());
     for (std::size_t anIndex = 0; anIndex < aCount; ++anIndex)
     {
@@ -173,35 +234,48 @@ int main(int theArgumentCount, char** theArguments)
     {
         std::cerr
             << "usage: pvz_replay_inspect "
-               "capture.pvzc [reference.pvzc]\n";
+               "capture.pvzr-or-pvzc "
+               "[reference.pvzr-or-pvzc]\n";
         return 2;
     }
 
     const std::filesystem::path aLeftPath(theArguments[1]);
-    pvz::engine::core::ReplaySession aLeft;
-    if (!LoadSession(aLeftPath, aLeft))
+    LoadedCapture aLeft;
+    if (!LoadCapture(aLeftPath, aLeft))
         return 2;
     PrintSummary(aLeftPath.string(), aLeft);
     if (theArgumentCount == 2)
         return 0;
 
     const std::filesystem::path aRightPath(theArguments[2]);
-    pvz::engine::core::ReplaySession aRight;
-    if (!LoadSession(aRightPath, aRight))
+    LoadedCapture aRight;
+    if (!LoadCapture(aRightPath, aRight))
         return 2;
     PrintSummary(aRightPath.string(), aRight);
 
     const auto anInputDifference =
-        FindFirstInputDifference(aLeft, aRight);
-    const auto aStateDifference =
-        FindFirstStateDifference(aLeft, aRight);
+        FindFirstInputDifference(
+            aLeft.GetInputReplay(),
+            aRight.GetInputReplay());
     const auto aNoDifference =
         std::numeric_limits<std::uint64_t>::max();
     const bool inputsMatch = anInputDifference == aNoDifference;
-    const bool statesMatch =
-        aStateDifference == aNoDifference &&
-        aLeft.GetTranscriptHash() ==
-            aRight.GetTranscriptHash();
+    const bool statesComparable =
+        aLeft.mSession.has_value() &&
+        aRight.mSession.has_value();
+    auto aStateDifference = aNoDifference;
+    bool statesMatch = true;
+    if (statesComparable)
+    {
+        aStateDifference =
+            FindFirstStateDifference(
+                *aLeft.mSession,
+                *aRight.mSession);
+        statesMatch =
+            aStateDifference == aNoDifference &&
+            aLeft.mSession->GetTranscriptHash() ==
+                aRight.mSession->GetTranscriptHash();
+    }
 
     if (!inputsMatch)
     {
@@ -210,7 +284,7 @@ int main(int theArgumentCount, char** theArguments)
             << anInputDifference
             << '\n';
     }
-    if (!statesMatch)
+    if (statesComparable && !statesMatch)
     {
         if (aStateDifference != aNoDifference)
         {
@@ -226,7 +300,10 @@ int main(int theArgumentCount, char** theArguments)
     }
     if (inputsMatch && statesMatch)
     {
-        std::cout << "captures-match\n";
+        std::cout
+            << (statesComparable
+                    ? "captures-match\n"
+                    : "inputs-match\n");
         return 0;
     }
     return 1;

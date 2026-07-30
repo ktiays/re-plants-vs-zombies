@@ -17,6 +17,7 @@ int gFailureCount{};
 void RunPakArchiveTests();
 void RunBitmapFontResourceManagerTests();
 void RunImageResourceManagerTests();
+void RunInputFrameAccumulatorTests();
 void RunInputReplayTests();
 void RunModuleMusicResourceManagerTests();
 void RunSoundResourceManagerTests();
@@ -160,6 +161,7 @@ int main()
     TestGoldenEncoding();
     TestRoundTrip();
     TestMalformedInput();
+    RunInputFrameAccumulatorTests();
     RunInputReplayTests();
     RunBitmapFontResourceManagerTests();
     RunImageResourceManagerTests();

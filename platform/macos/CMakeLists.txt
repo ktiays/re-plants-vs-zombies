@@ -63,6 +63,7 @@ target_link_libraries(
     PUBLIC
         pvz_engine_api
     PRIVATE
+        pvz_engine_core
         OpenMPT::OpenMPT
         SDL2::SDL2
 )

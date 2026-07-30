@@ -92,12 +92,19 @@ ctest --test-dir out/portable --output-on-failure
 The board gate covers deterministic geometry and render-command alignment. The
 remaining cross-runtime infrastructure is:
 
-- a Windows reference capture tool for behavior and render-command fixtures;
-- a logical-tick capture hook in the Windows reference application; the macOS
-  application and headless runner now emit comparable `.pvzc` sessions;
+- a Windows reference exporter for fixed-width behavior observations and
+  render-command fixtures;
+- the logical-tick input hook is complete: the Windows reference emits `PVZR`,
+  while the macOS application and headless runner emit portable-state `PVZC`
+  sessions; the headless runner can consume the Windows stream;
 - a local image normalizer and difference reporter for user-owned golden
   screenshots;
 - a parity manifest that records coverage and approved deviations per scene.
 
 Until the relevant evidence exists, a migrated visual or gameplay slice should
 be reported as implemented but not parity-validated.
+
+The Windows input hook is deliberately below the Win32 message boundary: it
+observes logical `WidgetManager` input, including legacy demo playback, and
+captures immediately before each actual game update. It does not hash native
+legacy objects. See `WINDOWS_REFERENCE_CAPTURE.md`.

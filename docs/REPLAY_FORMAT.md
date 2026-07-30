@@ -11,6 +11,11 @@ Replays establish cross-platform determinism. They do not by themselves prove
 parity with the legacy game; a reference replay must first be recorded from the
 Windows adapter and then run against the portable game.
 
+The reconstructed Windows adapter records `PVZR` at the legacy
+`WidgetManager`/logical-update boundary. It intentionally records input only:
+the legacy `LawnApp`/`Board` object graph is not serialized or hashed as though
+it were the portable `GameModule` state.
+
 ## Version 1 binary format
 
 All integers are fixed-width and little-endian. No native structure layout,
@@ -83,6 +88,14 @@ Run it directly:
 ./out/portable/game/pvz_game_headless
 ```
 
+Run a Windows-recorded input stream through the portable game:
+
+```sh
+./out/portable/game/pvz_game_headless \
+  --replay /absolute/path/windows-input.pvzr \
+  --write-session /absolute/path/portable-result.pvzc
+```
+
 Write the verified headless session to a local capture:
 
 ```sh
@@ -119,12 +132,18 @@ PVZ_RECORD_SESSION_PATH=/absolute/path/mac-session.pvzc \
 ```
 
 The capture is written atomically when the application exits normally.
-Generated `.pvzc` files are ignored by Git.
+Generated `.pvzr` and `.pvzc` files are ignored by Git.
 
 Inspect one capture:
 
 ```sh
 ./build/macos/engine/pvz_replay_inspect mac-session.pvzc
+```
+
+The inspector also accepts input-only `PVZR` captures:
+
+```sh
+./out/portable/engine/pvz_replay_inspect windows-input.pvzr
 ```
 
 Compare two captures:
@@ -136,4 +155,7 @@ Compare two captures:
 
 The comparator reports the first differing input tick and first differing
 state-hash tick. A comparison returns success only when input frames, all state
-hashes, and the transcript hash match.
+hashes, and the transcript hash match when both inputs are complete sessions.
+For a raw-to-raw or raw-to-session comparison, it compares the input frames and
+reports `inputs-match`; state comparison is unavailable until both operands
+contain state hashes.

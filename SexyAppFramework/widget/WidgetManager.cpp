@@ -8,6 +8,10 @@
 #include "misc/PerfTimer.h"
 #include "misc/Debug.h"
 
+#ifdef PVZ_HAS_REFERENCE_INPUT_CAPTURE
+#include "pvz/platform/windows/LegacyInputCapture.h"
+#endif
+
 using namespace Sexy;
 //using namespace std;
 
@@ -516,6 +520,9 @@ void WidgetManager::RemovePopupCommandWidget()
 
 void WidgetManager::MousePosition(int x, int y)
 {
+#ifdef PVZ_HAS_REFERENCE_INPUT_CAPTURE
+	pvz::platform::windows::RecordLegacyPointerPosition(x, y);
+#endif
 
 	int aLastMouseX = mLastMouseX;
 	int aLastMouseY = mLastMouseY;
@@ -582,6 +589,18 @@ bool WidgetManager::MouseUp(int x, int y, int theClickCount)
 	else
 		aMask = 0x01;
 
+#ifdef PVZ_HAS_REFERENCE_INPUT_CAPTURE
+	if (aMask == 0x01)
+		pvz::platform::windows::RecordLegacyPointerButtonUp(
+			pvz::platform::windows::ReferencePointerButton::Primary);
+	else if (aMask == 0x02)
+		pvz::platform::windows::RecordLegacyPointerButtonUp(
+			pvz::platform::windows::ReferencePointerButton::Secondary);
+	else
+		pvz::platform::windows::RecordLegacyPointerButtonUp(
+			pvz::platform::windows::ReferencePointerButton::Middle);
+#endif
+
 	// Make sure that we thought this button was down anyway - possibly not, if we 
 	//  disabled the widget already or something
 	mActualDownButtons &= ~aMask;
@@ -616,6 +635,18 @@ bool WidgetManager::MouseDown(int x, int y, int theClickCount)
 		mActualDownButtons |= 0x01;
 
 	MousePosition(x, y);
+
+#ifdef PVZ_HAS_REFERENCE_INPUT_CAPTURE
+	if (theClickCount < 0)
+		pvz::platform::windows::RecordLegacyPointerButtonDown(
+			pvz::platform::windows::ReferencePointerButton::Secondary);
+	else if (theClickCount == 3)
+		pvz::platform::windows::RecordLegacyPointerButtonDown(
+			pvz::platform::windows::ReferencePointerButton::Middle);
+	else
+		pvz::platform::windows::RecordLegacyPointerButtonDown(
+			pvz::platform::windows::ReferencePointerButton::Primary);
+#endif
 
 	if ((mPopupCommandWidget != NULL) && (!mPopupCommandWidget->Contains(x, y)))
 		RemovePopupCommandWidget();
@@ -751,6 +782,10 @@ void WidgetManager::MouseWheel(int theDelta)
 {
 	mLastInputUpdateCnt = mUpdateCnt;
 
+#ifdef PVZ_HAS_REFERENCE_INPUT_CAPTURE
+	pvz::platform::windows::RecordLegacyMouseWheel(theDelta);
+#endif
+
 	if (mFocusWidget != NULL)
 		mFocusWidget->MouseWheel(theDelta);
 }
@@ -758,6 +793,12 @@ void WidgetManager::MouseWheel(int theDelta)
 bool WidgetManager::KeyChar(SexyChar theChar)
 {
 	mLastInputUpdateCnt = mUpdateCnt;
+
+#ifdef PVZ_HAS_REFERENCE_INPUT_CAPTURE
+	pvz::platform::windows::RecordLegacyText(
+		static_cast<std::uint32_t>(
+			static_cast<unsigned char>(theChar)));
+#endif
 
 	if (theChar == KEYCODE_TAB)
 	{
@@ -782,6 +823,14 @@ bool WidgetManager::KeyDown(KeyCode key)
 {
 	mLastInputUpdateCnt = mUpdateCnt;
 
+#ifdef PVZ_HAS_REFERENCE_INPUT_CAPTURE
+	const bool aRepeat =
+		key >= 0 && key < 0xFF && mKeyDown[key];
+	pvz::platform::windows::RecordLegacyVirtualKeyDown(
+		static_cast<std::uint32_t>(key),
+		aRepeat);
+#endif
+
 	if ((key >= 0) && (key < 0xFF))
 		mKeyDown[key] = true;
 
@@ -794,6 +843,11 @@ bool WidgetManager::KeyDown(KeyCode key)
 bool WidgetManager::KeyUp(KeyCode key)
 {
 	mLastInputUpdateCnt = mUpdateCnt;
+
+#ifdef PVZ_HAS_REFERENCE_INPUT_CAPTURE
+	pvz::platform::windows::RecordLegacyVirtualKeyUp(
+		static_cast<std::uint32_t>(key));
+#endif
 
 	if ((key >= 0) && (key < 0xFF))
 		mKeyDown[key] = false;

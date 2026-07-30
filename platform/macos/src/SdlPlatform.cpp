@@ -1,18 +1,17 @@
 #include "pvz/platform/macos/SdlPlatform.h"
 
+#include "pvz/engine/core/InputFrameAccumulator.h"
+
 #include <SDL.h>
 #include <SDL_metal.h>
 
 #include <algorithm>
-#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
-#include <span>
 #include <string>
 #include <utility>
-#include <vector>
 
 namespace pvz::platform::macos
 {
@@ -20,21 +19,6 @@ namespace
 {
 
 constexpr engine::SizeI kLogicalSize{800, 600};
-constexpr auto kKeyCount =
-    static_cast<std::size_t>(engine::KeyCode::Count);
-constexpr auto kPointerButtonCount =
-    static_cast<std::size_t>(engine::PointerButton::Count);
-
-[[nodiscard]] std::size_t GetKeyIndex(engine::KeyCode theKey)
-{
-    return static_cast<std::size_t>(theKey);
-}
-
-[[nodiscard]] std::size_t GetPointerButtonIndex(
-    engine::PointerButton theButton)
-{
-    return static_cast<std::size_t>(theButton);
-}
 
 [[nodiscard]] engine::KeyCode MapKey(SDL_Scancode theKey)
 {
@@ -86,7 +70,7 @@ constexpr auto kPointerButtonCount =
 
 void AppendUtf8(
     std::string_view theText,
-    std::vector<char32_t>& theOutput)
+    engine::core::InputFrameAccumulator& theOutput)
 {
     std::size_t anOffset{};
     while (anOffset < theText.size())
@@ -143,7 +127,7 @@ void AppendUtf8(
             aCodePoint <= 0x10FFFF &&
             !(aCodePoint >= 0xD800 && aCodePoint <= 0xDFFF))
         {
-            theOutput.push_back(aCodePoint);
+            theOutput.AppendText(aCodePoint);
             anOffset += aLength;
         }
         else
@@ -155,9 +139,9 @@ void AppendUtf8(
 
 } // namespace
 
-struct SdlPlatform::Implementation final : public engine::IInputFrame
+struct SdlPlatform::Implementation final
 {
-    ~Implementation() override
+    ~Implementation()
     {
         if (mMetalView != nullptr)
             SDL_Metal_DestroyView(mMetalView);
@@ -167,48 +151,6 @@ struct SdlPlatform::Implementation final : public engine::IInputFrame
             SDL_Quit();
     }
 
-    [[nodiscard]] bool IsKeyDown(
-        engine::KeyCode theKey) const override
-    {
-        const auto anIndex = GetKeyIndex(theKey);
-        return anIndex < mKeysDown.size() && mKeysDown[anIndex];
-    }
-
-    [[nodiscard]] bool WasKeyPressed(
-        engine::KeyCode theKey) const override
-    {
-        const auto anIndex = GetKeyIndex(theKey);
-        return anIndex < mKeysPressed.size() && mKeysPressed[anIndex];
-    }
-
-    [[nodiscard]] bool IsPointerButtonDown(
-        engine::PointerButton theButton) const override
-    {
-        const auto anIndex = GetPointerButtonIndex(theButton);
-        return anIndex < mPointerButtonsDown.size() &&
-               mPointerButtonsDown[anIndex];
-    }
-
-    [[nodiscard]] bool WasPointerButtonPressed(
-        engine::PointerButton theButton) const override
-    {
-        const auto anIndex = GetPointerButtonIndex(theButton);
-        return anIndex < mPointerButtonsPressed.size() &&
-               mPointerButtonsPressed[anIndex];
-    }
-
-    [[nodiscard]] engine::PointerState GetPointerState()
-        const override
-    {
-        return mPointer;
-    }
-
-    [[nodiscard]] std::span<const char32_t> GetTextInput()
-        const override
-    {
-        return mTextInput;
-    }
-
     void UpdatePointer(std::int32_t theX, std::int32_t theY)
     {
         int aWindowWidth{};
@@ -216,7 +158,7 @@ struct SdlPlatform::Implementation final : public engine::IInputFrame
         SDL_GetWindowSize(mWindow, &aWindowWidth, &aWindowHeight);
         if (aWindowWidth <= 0 || aWindowHeight <= 0)
         {
-            mPointer.mPosition = {};
+            mInput.SetPointerPosition({});
             return;
         }
 
@@ -233,22 +175,20 @@ struct SdlPlatform::Implementation final : public engine::IInputFrame
             (static_cast<double>(aWindowHeight) -
              static_cast<double>(kLogicalSize.mHeight) * aScale) *
             0.5;
-        mPointer.mPosition = {
-            static_cast<std::int32_t>(std::floor(
-                (static_cast<double>(theX) - anOriginX) / aScale)),
-            static_cast<std::int32_t>(std::floor(
-                (static_cast<double>(theY) - anOriginY) / aScale)),
-        };
+        mInput.SetPointerPosition(
+            {
+                static_cast<std::int32_t>(std::floor(
+                    (static_cast<double>(theX) - anOriginX) /
+                    aScale)),
+                static_cast<std::int32_t>(std::floor(
+                    (static_cast<double>(theY) - anOriginY) /
+                    aScale)),
+            });
     }
 
     SDL_Window* mWindow{};
     SDL_MetalView mMetalView{};
-    std::array<bool, kKeyCount> mKeysDown{};
-    std::array<bool, kKeyCount> mKeysPressed{};
-    std::array<bool, kPointerButtonCount> mPointerButtonsDown{};
-    std::array<bool, kPointerButtonCount> mPointerButtonsPressed{};
-    engine::PointerState mPointer;
-    std::vector<char32_t> mTextInput;
+    engine::core::InputFrameAccumulator mInput;
     std::string mLastError;
     std::uint64_t mPerformanceFrequency{};
     bool mInitialized{};
@@ -353,21 +293,15 @@ void SdlPlatform::PumpEvents()
         case SDL_KEYDOWN:
         {
             const auto aKey = MapKey(anEvent.key.keysym.scancode);
-            const auto anIndex = GetKeyIndex(aKey);
-            if (anIndex < mImplementation->mKeysDown.size())
-            {
-                mImplementation->mKeysDown[anIndex] = true;
-                if (anEvent.key.repeat == 0)
-                    mImplementation->mKeysPressed[anIndex] = true;
-            }
+            mImplementation->mInput.OnKeyDown(
+                aKey,
+                anEvent.key.repeat != 0);
             break;
         }
         case SDL_KEYUP:
         {
             const auto aKey = MapKey(anEvent.key.keysym.scancode);
-            const auto anIndex = GetKeyIndex(aKey);
-            if (anIndex < mImplementation->mKeysDown.size())
-                mImplementation->mKeysDown[anIndex] = false;
+            mImplementation->mInput.OnKeyUp(aKey);
             break;
         }
         case SDL_MOUSEBUTTONDOWN:
@@ -376,15 +310,12 @@ void SdlPlatform::PumpEvents()
             engine::PointerButton aButton{};
             if (MapPointerButton(anEvent.button.button, aButton))
             {
-                const auto anIndex = GetPointerButtonIndex(aButton);
                 const bool isDown =
                     anEvent.type == SDL_MOUSEBUTTONDOWN;
-                mImplementation->mPointerButtonsDown[anIndex] = isDown;
                 if (isDown)
-                {
-                    mImplementation->mPointerButtonsPressed[anIndex] =
-                        true;
-                }
+                    mImplementation->mInput.OnPointerButtonDown(aButton);
+                else
+                    mImplementation->mInput.OnPointerButtonUp(aButton);
             }
             mImplementation->UpdatePointer(
                 anEvent.button.x,
@@ -397,13 +328,13 @@ void SdlPlatform::PumpEvents()
                 anEvent.motion.y);
             break;
         case SDL_MOUSEWHEEL:
-            mImplementation->mPointer.mWheelDelta +=
-                anEvent.wheel.y * 120;
+            mImplementation->mInput.AddWheelDelta(
+                static_cast<std::int64_t>(anEvent.wheel.y) * 120);
             break;
         case SDL_TEXTINPUT:
             AppendUtf8(
                 anEvent.text.text,
-                mImplementation->mTextInput);
+                mImplementation->mInput);
             break;
         case SDL_WINDOWEVENT:
             if (anEvent.window.event == SDL_WINDOWEVENT_MINIMIZED)
@@ -444,15 +375,12 @@ void SdlPlatform::WaitUntil(
 
 const engine::IInputFrame& SdlPlatform::GetFrame() const
 {
-    return *mImplementation;
+    return mImplementation->mInput;
 }
 
 void SdlPlatform::ConsumeTransientEvents()
 {
-    mImplementation->mKeysPressed.fill(false);
-    mImplementation->mPointerButtonsPressed.fill(false);
-    mImplementation->mPointer.mWheelDelta = 0;
-    mImplementation->mTextInput.clear();
+    mImplementation->mInput.ConsumeTransientEvents();
 }
 
 } // namespace pvz::platform::macos

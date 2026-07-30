@@ -1,6 +1,14 @@
 #include "LawnApp.h"
 #include "Resources.h"
 #include "Sexy.TodLib/TodStringFile.h"
+
+#ifdef PVZ_HAS_REFERENCE_INPUT_CAPTURE
+#include "pvz/platform/windows/LegacyInputCapture.h"
+
+#include <iostream>
+#include <string>
+#endif
+
 using namespace Sexy;
 
 bool (*gAppCloseRequest)();				//[0x69E6A0]
@@ -20,8 +28,34 @@ int WINAPI WinMain(_In_ HINSTANCE /* hInstance */, _In_opt_ HINSTANCE /* hPrevIn
 	gLawnApp->Init();
 	gLawnApp->Start();
 	gLawnApp->Shutdown();
+
+	int anExitCode = 0;
+#ifdef PVZ_HAS_REFERENCE_INPUT_CAPTURE
+	if (!pvz::platform::windows::FinalizeLegacyInputCapture())
+	{
+		const std::string anError =
+			"Could not save reference input replay: " +
+			std::string(
+				pvz::platform::windows::GetLegacyInputCaptureError());
+		std::cerr << anError << '\n';
+		OutputDebugStringA((anError + "\n").c_str());
+		anExitCode = 1;
+	}
+	else if (pvz::platform::windows::WasLegacyInputCaptureRequested())
+	{
+		const std::string aSummary =
+			"Reference input replay captured: " +
+			std::to_string(
+				pvz::platform::windows::
+					GetLegacyInputCaptureFrameCount()) +
+			" frames";
+		std::cout << aSummary << '\n';
+		OutputDebugStringA((aSummary + "\n").c_str());
+	}
+#endif
+
 	if (gLawnApp)
 		delete gLawnApp;
 
-	return 0;
+	return anExitCode;
 };

@@ -48,6 +48,10 @@
 #include "widget/Dialog.h"
 #include "SexyAppFramework/resource.h"
 
+#ifdef PVZ_HAS_REFERENCE_INPUT_CAPTURE
+#include "pvz/platform/windows/LegacyInputCapture.h"
+#endif
+
 bool gIsPartnerBuild = false; // GOTY @Patoke: 0x729659
 bool gSlowMo = false;  //0x6A9EAA
 bool gFastMo = false;  //0x6A9EAB
@@ -1388,6 +1392,13 @@ void LawnApp::HandleCmdLineParam(const std::string& theParamName, const std::str
 		mDebugKeysEnabled = true;
 #endif
 	}
+#ifdef PVZ_HAS_REFERENCE_INPUT_CAPTURE
+	else if (theParamName == "-recordreplay")
+	{
+		if (!pvz::platform::windows::ConfigureLegacyInputCapture(theParamValue))
+			mLoadingFailed = true;
+	}
+#endif
 	else
 	{
 		SexyApp::HandleCmdLineParam(theParamName, theParamValue);
@@ -1654,6 +1665,9 @@ void LawnApp::UpdateFrames()
 
 	for (int i = 0; i < aUpdateCount; i++)
 	{
+#ifdef PVZ_HAS_REFERENCE_INPUT_CAPTURE
+		pvz::platform::windows::CaptureLegacyInputTick();
+#endif
 		mAppCounter++;
 		
 		if (mBoard)
@@ -3557,5 +3571,4 @@ void LawnApp::UpdateRegisterInfo()
 {
 
 }
-
 

@@ -76,8 +76,28 @@ After quitting the game, inspect one capture or compare two captures:
 
 ```sh
 ./build/macos/engine/pvz_replay_inspect session.pvzc
-./build/macos/engine/pvz_replay_inspect mac.pvzc windows.pvzc
+./build/macos/engine/pvz_replay_inspect first.pvzc second.pvzc
 ```
+
+The reconstructed Windows reference can record its logical 100 Hz input when
+the portable targets are included in the Windows build:
+
+```bat
+path\to\LawnProject.exe -recordreplay="C:\captures\legacy-input.pvzr"
+```
+
+The output path must not already exist. After exiting the Windows game
+normally, inspect the input or replay it through the portable game:
+
+```sh
+./out/portable/engine/pvz_replay_inspect legacy-input.pvzr
+./out/portable/game/pvz_game_headless \
+  --replay legacy-input.pvzr \
+  --write-session portable-result.pvzc
+```
+
+The exact evidence boundary and comparison workflow are documented in
+[docs/WINDOWS_REFERENCE_CAPTURE.md](docs/WINDOWS_REFERENCE_CAPTURE.md).
 
 Validate migrated game behavior against independent legacy reference fixtures:
 

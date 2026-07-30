@@ -42,6 +42,7 @@ if(PVZ_BUILD_PORTABLE_ENGINE)
     include(CTest)
     add_subdirectory(engine)
     add_subdirectory(game)
+    add_subdirectory(platform/windows/reference)
 endif()
 
 if(PVZ_BUILD_MACOS_APP)

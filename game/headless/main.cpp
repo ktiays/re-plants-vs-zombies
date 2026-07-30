@@ -15,12 +15,17 @@
 #include <iostream>
 #include <optional>
 #include <span>
+#include <string>
 #include <string_view>
+#include <system_error>
 #include <utility>
 #include <vector>
 
 namespace
 {
+
+inline constexpr std::uint64_t kMaximumReplayFileSize =
+    256ULL * 1'024ULL * 1'024ULL;
 
 class HeadlessLogger final : public pvz::engine::ILogger
 {
@@ -206,6 +211,71 @@ private:
     return true;
 }
 
+[[nodiscard]] bool LoadReplayFile(
+    const std::filesystem::path& thePath,
+    pvz::engine::core::InputReplay& theReplay)
+{
+    std::error_code anError;
+    const auto aFileSize =
+        std::filesystem::file_size(thePath, anError);
+    if (anError)
+    {
+        std::cerr
+            << thePath.string()
+            << ": could not read replay size: "
+            << anError.message()
+            << '\n';
+        return false;
+    }
+    if (aFileSize > kMaximumReplayFileSize)
+    {
+        std::cerr
+            << thePath.string()
+            << ": replay exceeds the 256 MiB limit\n";
+        return false;
+    }
+
+    std::ifstream aStream(thePath, std::ios::binary);
+    if (!aStream)
+    {
+        std::cerr
+            << thePath.string()
+            << ": could not open replay\n";
+        return false;
+    }
+    std::vector<std::byte> aBytes(
+        static_cast<std::size_t>(aFileSize));
+    if (!aBytes.empty())
+    {
+        aStream.read(
+            reinterpret_cast<char*>(aBytes.data()),
+            static_cast<std::streamsize>(aBytes.size()));
+    }
+    if (!aStream ||
+        aStream.gcount() !=
+            static_cast<std::streamsize>(aBytes.size()))
+    {
+        std::cerr
+            << thePath.string()
+            << ": could not read complete replay\n";
+        return false;
+    }
+
+    pvz::engine::core::BinaryStateReader aReader(aBytes);
+    pvz::engine::core::InputReplayError aReplayError{};
+    if (!theReplay.Load(aReader, aReplayError))
+    {
+        std::cerr
+            << thePath.string()
+            << ": "
+            << pvz::engine::core::GetInputReplayErrorMessage(
+                   aReplayError)
+            << '\n';
+        return false;
+    }
+    return true;
+}
+
 class HeadlessRenderFrame final : public pvz::engine::IRenderFrame
 {
 public:
@@ -235,19 +305,39 @@ private:
 int main(int theArgumentCount, char** theArguments)
 {
     std::optional<std::filesystem::path> aSessionOutputPath;
-    if (theArgumentCount == 3 &&
-        std::string_view(theArguments[1]) ==
-            "--write-session")
+    std::optional<std::filesystem::path> aReplayInputPath;
+    for (int anArgumentIndex = 1;
+         anArgumentIndex < theArgumentCount;
+         ++anArgumentIndex)
     {
-        aSessionOutputPath =
-            std::filesystem::path(theArguments[2]);
-    }
-    else if (theArgumentCount != 1)
-    {
-        std::cerr
-            << "usage: pvz_game_headless "
-               "[--write-session capture.pvzc]\n";
-        return 2;
+        const std::string_view anArgument(
+            theArguments[anArgumentIndex]);
+        if (anArgument == "--write-session" &&
+            !aSessionOutputPath.has_value() &&
+            anArgumentIndex + 1 < theArgumentCount)
+        {
+            ++anArgumentIndex;
+            aSessionOutputPath =
+                std::filesystem::path(
+                    theArguments[anArgumentIndex]);
+        }
+        else if (anArgument == "--replay" &&
+                 !aReplayInputPath.has_value() &&
+                 anArgumentIndex + 1 < theArgumentCount)
+        {
+            ++anArgumentIndex;
+            aReplayInputPath =
+                std::filesystem::path(
+                    theArguments[anArgumentIndex]);
+        }
+        else
+        {
+            std::cerr
+                << "usage: pvz_game_headless "
+                   "[--replay input.pvzr] "
+                   "[--write-session capture.pvzc]\n";
+            return 2;
+        }
     }
 
     HeadlessServices aServices;
@@ -257,8 +347,12 @@ int main(int theArgumentCount, char** theArguments)
         aRecordingGame(aGame);
     pvz::engine::core::InputReplay aReplay;
 
-    if (!BuildAdventureReplay(aReplay))
+    if (aReplayInputPath.has_value()
+            ? !LoadReplayFile(*aReplayInputPath, aReplay)
+            : !BuildAdventureReplay(aReplay))
+    {
         return 1;
+    }
 
     pvz::engine::core::BinaryStateWriter aReplayWriter;
     pvz::engine::core::InputReplayError aReplayError{};
@@ -305,7 +399,8 @@ int main(int theArgumentCount, char** theArguments)
     const auto aTranscriptHash =
         aRecordedSession.GetTranscriptHash();
     const auto aFlowState = aGame.GetFlowState();
-    const bool hasExpectedState =
+    const bool hasExpectedBuiltInState =
+        aReplayInputPath.has_value() ||
         aGame.GetScene() ==
             pvz::game::GameScene::AdventureDay &&
         aGame.GetLastTick() == 64 &&
@@ -332,7 +427,10 @@ int main(int theArgumentCount, char** theArguments)
     if (!aLoadedSession.Load(
             aSessionReader,
             aSessionError) ||
-        aLoadedSession.GetFinalStateHash() != aFinalHash ||
+        aLoadedSession.GetFinalStateHash() !=
+            (aLoadedReplay.GetFrames().empty()
+                 ? std::uint64_t{}
+                 : aFinalHash) ||
         aLoadedSession.GetTranscriptHash() !=
             aTranscriptHash)
     {
@@ -364,5 +462,5 @@ int main(int theArgumentCount, char** theArguments)
               << " transcript-fnv1a=" << aTranscriptHash
               << '\n';
     aRecordingGame.Shutdown();
-    return hasExpectedState ? 0 : 1;
+    return hasExpectedBuiltInState ? 0 : 1;
 }

@@ -15,6 +15,7 @@ add_library(
         core/src/BitmapFontResourceManager.cpp
         core/src/DeterministicHash.cpp
         core/src/ImageResourceManager.cpp
+        core/src/InputFrameAccumulator.cpp
         core/src/InputReplay.cpp
         core/src/ModuleMusicResourceManager.cpp
         core/src/NullFontResources.cpp
@@ -255,6 +256,7 @@ if(BUILD_TESTING)
         tests/BitmapFontResourceManagerTests.cpp
         tests/EngineApiContractTests.cpp
         tests/ImageResourceManagerTests.cpp
+        tests/InputFrameAccumulatorTests.cpp
         tests/InputReplayTests.cpp
         tests/ModuleMusicResourceManagerTests.cpp
         tests/PakArchiveTests.cpp
