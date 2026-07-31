@@ -104,6 +104,12 @@ Last updated: 2026-07-31
   source-audited 150-sun start, 100-sun Peashooter, 750-tick packet recharge,
   center-row placement rule, non-destructive occupied-cell rejection, and
   keyboard/pointer seed selection behind engine-neutral input
+- [x] Deterministic Level 1 first-wave combat vertical slice: the portable game
+  owns the two-plant tutorial gate, falling 25-sun pickups, 99-tick first-wave
+  countdown, normal-zombie and Peashooter state, fixed-point movement, lane
+  targeting, pea collision/damage, four-tick eating cadence, and first-wave
+  completion; source-ranged RNG choices remain provisional until Windows
+  runtime capture is restored
 - [x] Local reference-first parity harness: independent, revisioned legacy
   board fixtures exhaustively cover day, pool, and roof geometry, pointer
   mapping, background cropping, and engine-neutral selection render commands
@@ -116,10 +122,10 @@ Last updated: 2026-07-31
   transform interpolation, disappearing-frame truncation, atlas-cell
   selection, alpha, and independent x/y skew produce backend-neutral affine
   sprite quads consumed directly by Metal
-- [x] Version-5 portable game state persists scene, menu, transition, notice,
+- [x] Version-6 portable game state persists scene, menu, transition, notice,
   grid selection, the 45-cell occupancy bitset, fixed-width reanimation tick,
-  sun, packet recharge, and seed selection through explicit fields; versions
-  1 through 4 remain readable
+  sun, packet recharge, seed selection, and bounded combat entities through
+  explicit fields; versions 1 through 5 remain readable
 - [x] Fixed-width audio firewall: decoded PCM descriptors, sound and voice
   handles, playback parameters, resource diagnostics, decoder/device
   protocols, and the game-facing sound service expose no backend or
@@ -480,10 +486,13 @@ keys or pointer selection in the menu; and seed-packet selection followed by
 pointer or arrow-key plus Enter/Space placement on the lawn. Escape returns
 from the lawn to the menu. Adventure is the only enabled mode in this slice.
 Level 1 now enforces the source-audited initial sun, Peashooter cost and packet
-recharge, center-row restriction, and occupied-cell rejection. Combat,
-collectible sun, zombies, waves, and win/loss rules remain later gameplay work.
-These new rules pass source-audited local differential and replay tests; real
-Windows runtime confirmation remains pending while the reference machine is
+recharge, center-row restriction, and occupied-cell rejection. Its first-wave
+vertical slice also includes the two-plant tutorial gate, collectible sky sun,
+one normal zombie, Peashooter targeting, peas, damage, eating, and deterministic
+first-wave completion. The remaining three waves, lawn-mower/loss behavior,
+level award, and full random-sequence parity remain later gameplay work. These
+rules pass source-audited local differential and replay tests; real Windows
+runtime confirmation remains pending while the reference machine is
 unavailable.
 
 The same startup path resolves `SOUND_LOADINGBAR_FLOWER` through

@@ -57,6 +57,7 @@ public:
         std::uint8_t theColumn,
         std::uint8_t theRow,
         std::uint64_t& theOccupiedCells);
+    void AddSun(std::uint16_t theAmount);
     void CancelSelection();
 
     [[nodiscard]] LevelOneBoardState GetState() const;

@@ -40,6 +40,7 @@ add_library(
         src/GameFlow.cpp
         src/GameModule.cpp
         src/LevelOneBoard.cpp
+        src/LevelOneCombat.cpp
         src/ParameterTrack.cpp
         src/ParticleDefinition.cpp
         src/ReanimationDefinition.cpp
@@ -125,6 +126,7 @@ if(BUILD_TESTING)
         tests/LegacyDataSyncTests.cpp
         tests/LegacySaveFormatTests.cpp
         tests/LevelOneBoardTests.cpp
+        tests/LevelOneCombatTests.cpp
         tests/ParameterTrackTests.cpp
         tests/ParticleDefinitionTests.cpp
         tests/PlayerInfoSerializationTests.cpp

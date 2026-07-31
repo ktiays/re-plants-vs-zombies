@@ -1,6 +1,7 @@
 #include "pvz/engine/core/XmlDocument.h"
 #include "pvz/game/ReanimationPlayer.h"
 
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <span>
@@ -242,6 +243,17 @@ void TestPlaybackInterpolationAndAffineQuad()
             "reanimation emits portable transformed quads");
     }
 
+    aPlayer.SetHiddenTrackPrefixes(
+        std::array<std::string_view, 1>{"DISAPPEAR"});
+    std::vector<pvz::engine::SpriteDraw> aFilteredSprites;
+    aPlayer.AppendSprites(
+        {100.0F, 200.0F},
+        {255, 255, 255, 200},
+        aFilteredSprites);
+    Expect(
+        aFilteredSprites.size() == 1,
+        "case-insensitive track prefixes hide variant layers");
+
     for (std::uint32_t aTick = 0; aTick < 10; ++aTick)
         aPlayer.Update();
     Expect(
@@ -307,6 +319,32 @@ void TestPlaybackInterpolationAndAffineQuad()
                 aSprites[0]
                     .mDestinationQuad.mBottomRight.mX),
         "restored tick reproduces deterministic geometry");
+
+    pvz::game::ReanimationPlayer aFullClipPlayer;
+    Expect(
+        aFullClipPlayer.Bind(aClip),
+        "player binds the complete definition timeline");
+    Expect(
+        aFullClipPlayer.SetFramesPerSecond(5.0F),
+        "full-clip playback accepts an explicit frame rate");
+    for (std::uint32_t aTick = 0; aTick < 20; ++aTick)
+        aFullClipPlayer.Update();
+    std::vector<pvz::engine::SpriteDraw> aFullClipSprites;
+    aFullClipPlayer.AppendSprites(
+        {100.0F, 200.0F},
+        {255, 255, 255, 200},
+        aFullClipSprites);
+    Expect(
+        aFullClipSprites.size() == 1 &&
+            NearlyEqual(
+                aFullClipSprites[0]
+                    .mDestinationQuad.mBottomRight.mX,
+                aRestoredSprites[0]
+                    .mDestinationQuad.mBottomRight.mX),
+        "explicit frame rate advances a full clip deterministically");
+    Expect(
+        !aFullClipPlayer.SetFramesPerSecond(0.0F),
+        "non-positive frame rate is rejected");
 
     aClip.Release(anImages);
 }

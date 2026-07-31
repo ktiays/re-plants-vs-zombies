@@ -1,4 +1,5 @@
 #include "fixtures/LegacyBoardGeometryFixture.h"
+#include "fixtures/LegacyLevelOneCombatFixture.h"
 
 #include "pvz/engine/EngineServices.h"
 #include "pvz/engine/core/NullFontResources.h"
@@ -8,6 +9,7 @@
 #include "pvz/game/GameFlow.h"
 #include "pvz/game/GameModule.h"
 #include "pvz/game/LevelOneBoard.h"
+#include "pvz/game/LevelOneCombat.h"
 
 #include <array>
 #include <cstddef>
@@ -21,6 +23,8 @@ namespace
 {
 
 namespace legacy = pvz::game::test::legacy_reference;
+namespace legacy_combat =
+    pvz::game::test::legacy_combat_reference;
 
 std::uint32_t gFailureCount{};
 
@@ -318,6 +322,64 @@ void TestLevelOneRulesMatchLegacyReference()
             aPacketRect.mSize.mWidth == 50 &&
             aPacketRect.mSize.mHeight == 70,
         "Peashooter packet rectangle matches the legacy seed bank");
+}
+
+void TestLevelOneCombatMatchesLegacyReference()
+{
+    using Combat = pvz::game::LevelOneCombat;
+    Expect(
+        Combat::kTutorialSunCountdown ==
+                legacy_combat::kTutorialSunCountdown &&
+            Combat::kFirstWaveCountdown ==
+                legacy_combat::kFirstWaveCountdown &&
+            Combat::kSunValue == legacy_combat::kSunValue,
+        "combat tutorial gates match the independent legacy fixture");
+    Expect(
+        Combat::kPlantHealth ==
+                legacy_combat::kPlantHealth &&
+            Combat::kNormalZombieHealth ==
+                legacy_combat::kNormalZombieHealth &&
+            Combat::kPeaDamage ==
+                legacy_combat::kPeaDamage &&
+            Combat::kEatInterval ==
+                legacy_combat::kEatInterval &&
+            Combat::kEatDamage ==
+                legacy_combat::kEatDamage &&
+            Combat::kNormalZombieAttackRectX ==
+                legacy_combat::kNormalZombieAttackRectX &&
+            Combat::kNormalZombieAttackRectWidth ==
+                legacy_combat::kNormalZombieAttackRectWidth,
+        "combat health and damage match the independent legacy fixture");
+
+    Combat aCombat;
+    static_cast<void>(aCombat.AddPeashooter(2, 2));
+    for (std::uint16_t aTick = 0;
+         aTick < legacy_combat::kTutorialSunCountdown;
+         ++aTick)
+    {
+        aCombat.Update();
+    }
+    Expect(
+        aCombat.GetState().mSunCount == 1,
+        "tutorial sun spawn boundary matches the legacy fixture");
+
+    static_cast<void>(aCombat.AddPeashooter(3, 2));
+    for (std::uint16_t aTick = 0;
+         aTick < legacy_combat::kFirstWaveCountdown;
+         ++aTick)
+    {
+        aCombat.Update();
+    }
+    const auto aState = aCombat.GetState();
+    Expect(
+        aState.mZombieCount ==
+                legacy_combat::kNormalZombiesPerWave[0] &&
+            aState.mZombies[0].mXMilliPixels ==
+                legacy_combat::kPortableSpawnXMilliPixels &&
+            aState.mZombies[0].mSpeedMilliPixelsPerTick ==
+                legacy_combat::
+                    kPortableSpeedMilliPixelsPerTick,
+        "first-wave entity state matches the audited deterministic fixture");
 }
 
 class SilentLogger final : public pvz::engine::ILogger
@@ -744,6 +806,7 @@ int main()
     TestBoardGeometryMatchesLegacyReference();
     TestAdventureInputMatchesLegacyReference();
     TestLevelOneRulesMatchLegacyReference();
+    TestLevelOneCombatMatchesLegacyReference();
     TestAdventureRenderCommandsMatchLegacyReference();
 
     if (gFailureCount != 0)

@@ -82,6 +82,14 @@ LevelOnePlacementResult LevelOneBoard::PlacePeashooter(
     return LevelOnePlacementResult::Planted;
 }
 
+void LevelOneBoard::AddSun(std::uint16_t theAmount)
+{
+    const auto aSun = static_cast<std::uint32_t>(
+        mState.mSun) + theAmount;
+    mState.mSun = static_cast<std::uint16_t>(
+        aSun > kMaximumSun ? kMaximumSun : aSun);
+}
+
 void LevelOneBoard::CancelSelection()
 {
     mState.mSeedSelection =

@@ -7,6 +7,7 @@
 #include "pvz/game/ReanimationDefinition.h"
 
 #include <cstdint>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -83,11 +84,17 @@ class ReanimationPlayer
 {
 public:
     [[nodiscard]] bool Bind(
+        const ReanimationClip& theClip);
+    [[nodiscard]] bool Bind(
         const ReanimationClip& theClip,
         std::string_view theLayerName);
     void Reset();
     void Update();
     void RestoreTick(std::uint64_t theTick);
+    [[nodiscard]] bool SetFramesPerSecond(
+        float theFramesPerSecond);
+    void SetHiddenTrackPrefixes(
+        std::span<const std::string_view> thePrefixes);
 
     [[nodiscard]] bool IsBound() const;
     [[nodiscard]] std::uint64_t GetTick() const;
@@ -100,6 +107,8 @@ private:
     const ReanimationClip* mClip{};
     ReanimationLayer mLayer;
     std::uint64_t mTick{};
+    float mFramesPerSecond{};
+    std::vector<std::string> mHiddenTrackPrefixes;
 };
 
 [[nodiscard]] const char* GetReanimationClipErrorMessage(

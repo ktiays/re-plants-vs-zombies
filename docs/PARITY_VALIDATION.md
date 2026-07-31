@@ -81,7 +81,7 @@ selection in the reconstructed legacy source. Portable tests cover:
 - selection requirements and non-destructive occupied-cell rejection;
 - center-row-only planting for the first level;
 - the exact refresh boundary, which becomes ready only after counter 750;
-- fixed-width, transactional version-5 persistence with versions 1 through 4
+- fixed-width, transactional version-6 persistence with versions 1 through 5
   retained as readable inputs;
 - a 1,310-tick replay whose final sun, recharge, occupancy, state hash, and
   rolling transcript hash are fixed.
@@ -90,6 +90,33 @@ This is source-audited and locally differential-tested, but not yet confirmed
 by a new Windows runtime capture because the reference device is temporarily
 unavailable. It remains explicitly pending runtime verification rather than
 being reported as full parity.
+
+## Current Level 1 first-wave combat gate
+
+The combat fixture is independent of `LevelOneCombat` and records values
+audited from `Board::SetTutorialState`, `Board::PickZombieWaves`,
+`Board::UpdateZombieSpawning`, `Plant::UpdateShooter`,
+`Plant::UpdateShooting`, `Plant::Fire`, `Projectile::UpdateNormalMotion`,
+`Projectile::FindCollisionTarget`, `Zombie::CheckIfPreyCaught`, and
+`Zombie::EatPlant`. Portable differential tests cover:
+
+- the two-plant tutorial transition, 400-tick tutorial sun boundary, 25-sun
+  value, and 99-tick first-wave countdown;
+- the complete Level 1 normal-zombie composition of 1, 1, 1, and 2, while the
+  executable slice currently runs only the first wave;
+- 300 plant health, 270 normal-zombie health, 20 pea damage, 3.33-pixel pea
+  movement, 150-tick launch rate, 33-tick firing sequence, and four damage
+  every four zombie-age ticks;
+- a deterministic first-wave simulation, an engine-input integration path from
+  sun collection through zombie spawn, and transactional round-trip coverage
+  for the fixed 712-byte combat record;
+- independently collectible overlapping sky suns, proving that the spawn
+  countdown continues while an earlier pickup remains active.
+
+Legacy spawn position, walk speed, shot reset, and sun coordinates use the
+global Windows random stream. Until a runtime seed/capture is available, the
+portable fixture uses explicit fixed values inside the audited legacy ranges.
+Those choices are documented provisional inputs, not claimed RNG parity.
 
 Run this gate locally:
 

@@ -384,9 +384,17 @@ public:
         mPressedKeys[static_cast<std::size_t>(theKey)] = true;
     }
 
+    void PressPointer(pvz::engine::PointI thePosition)
+    {
+        mPointer.mPosition = thePosition;
+        mPressedButtons[static_cast<std::size_t>(
+            pvz::engine::PointerButton::Primary)] = true;
+    }
+
     void Clear()
     {
         mPressedKeys.fill(false);
+        mPressedButtons.fill(false);
     }
 
     [[nodiscard]] bool IsKeyDown(
@@ -412,14 +420,14 @@ public:
     [[nodiscard]] bool WasPointerButtonPressed(
         pvz::engine::PointerButton theButton) const override
     {
-        static_cast<void>(theButton);
-        return false;
+        return mPressedButtons[static_cast<std::size_t>(
+            theButton)];
     }
 
     [[nodiscard]] pvz::engine::PointerState GetPointerState()
         const override
     {
-        return {};
+        return mPointer;
     }
 
     [[nodiscard]] std::span<const char32_t> GetTextInput() const override
@@ -432,6 +440,12 @@ private:
         bool,
         static_cast<std::size_t>(pvz::engine::KeyCode::Count)>
         mPressedKeys{};
+    std::array<
+        bool,
+        static_cast<std::size_t>(
+            pvz::engine::PointerButton::Count)>
+        mPressedButtons{};
+    pvz::engine::PointerState mPointer{};
 };
 
 class TestRenderFrame final : public pvz::engine::IRenderFrame
@@ -529,7 +543,7 @@ void TestLifecycleAndState()
 
     pvz::engine::core::BinaryStateWriter aWriter;
     Expect(aGame.SaveState(aWriter), "initialized game saves state");
-    Expect(aWriter.GetBytesWritten() == 53, "state schema has stable size");
+    Expect(aWriter.GetBytesWritten() == 765, "state schema has stable size");
 
     TestServices aRestoredServices;
     pvz::game::GameModule aRestoredGame;
@@ -764,6 +778,47 @@ void TestPreviousStateSchemasRemainReadable()
             aGame.GetLevelOneBoardState().mSun == 150,
         "version-four intro state defaults Level 1 economy");
 
+    pvz::engine::core::BinaryStateWriter aVersionFiveWriter;
+    Expect(
+        aVersionFiveWriter.WriteU32(0x475A5650) &&
+            aVersionFiveWriter.WriteU16(5) &&
+            aVersionFiveWriter.WriteU64(225) &&
+            aVersionFiveWriter.WriteU64(250) &&
+            aVersionFiveWriter.WriteBool(false) &&
+            aVersionFiveWriter.WriteU8(
+                static_cast<std::uint8_t>(
+                    pvz::game::GameScene::AdventureDay)) &&
+            aVersionFiveWriter.WriteU8(
+                static_cast<std::uint8_t>(
+                    pvz::game::MainMenuItem::Adventure)) &&
+            aVersionFiveWriter.WriteU16(0) &&
+            aVersionFiveWriter.WriteU16(0) &&
+            aVersionFiveWriter.WriteU8(2) &&
+            aVersionFiveWriter.WriteU8(2) &&
+            aVersionFiveWriter.WriteU64(
+                std::uint64_t{1} << 20U) &&
+            aVersionFiveWriter.WriteU64(444) &&
+            aVersionFiveWriter.WriteU16(50) &&
+            aVersionFiveWriter.WriteU16(10) &&
+            aVersionFiveWriter.WriteBool(true) &&
+            aVersionFiveWriter.WriteU8(
+                static_cast<std::uint8_t>(
+                    pvz::game::LevelOneSeedSelection::None)),
+        "version-five state fixture writes");
+    pvz::engine::core::BinaryStateReader aVersionFiveReader(
+        aVersionFiveWriter.GetBytes());
+    Expect(
+        aGame.LoadState(aVersionFiveReader) &&
+            aGame.GetLastTick() == 225 &&
+            aGame.GetScene() ==
+                pvz::game::GameScene::AdventureDay &&
+            aGame.GetLevelOneCombatState().mPhase ==
+                pvz::game::LevelOneCombatPhase::
+                    AwaitingSecondPlant &&
+            aGame.GetLevelOneCombatState().mPlantCount == 1 &&
+            aGame.GetLevelOneCombatState().mPlants[0].mColumn == 2,
+        "version-five occupancy reconstructs combat entities");
+
     aGame.Shutdown();
 }
 
@@ -851,15 +906,60 @@ void TestSceneMusicTransitions()
                 (std::uint64_t{1} << 18U) &&
             aRestoredGame.GetLevelOneBoardState().mSun == 50 &&
             aRestoredGame.GetLevelOneBoardState()
-                .mSeedRefreshing,
-        "versioned module state restores planting economy");
+                .mSeedRefreshing &&
+            aRestoredGame.GetLevelOneCombatState().mPhase ==
+                pvz::game::LevelOneCombatPhase::
+                    AwaitingSecondPlant &&
+            aRestoredGame.GetLevelOneCombatState().mPlantCount == 1,
+        "versioned module state restores economy and combat entities");
     Expect(
         aRestoredServices.GetTestMusicResources()
                 .mPlayback.mPosition.mOrder == 0,
         "state restore synchronizes adventure music");
 
+    pvz::engine::TickIndex aCombatTick = 1'311;
+    while (aGame.GetLevelOneCombatState().mSunsSpawned < 1)
+        aGame.Update(pvz::engine::GameTick{aCombatTick++}, anInput);
+    anInput.PressPointer({405, 90});
+    aGame.Update(pvz::engine::GameTick{aCombatTick++}, anInput);
+    anInput.Clear();
+    Expect(
+        aGame.GetLevelOneBoardState().mSun == 75,
+        "first falling sun is collected through engine-neutral input");
+
+    while (aGame.GetLevelOneCombatState().mSunsSpawned < 2)
+        aGame.Update(pvz::engine::GameTick{aCombatTick++}, anInput);
+    anInput.PressPointer({405, 90});
+    aGame.Update(pvz::engine::GameTick{aCombatTick++}, anInput);
+    anInput.Clear();
+    while (aGame.GetLevelOneBoardState().mSeedRefreshing)
+        aGame.Update(pvz::engine::GameTick{aCombatTick++}, anInput);
+    Expect(
+        aGame.GetLevelOneBoardState().mSun == 100,
+        "two tutorial suns fund the second Peashooter");
+
+    anInput.PressPointer({100, 20});
+    aGame.Update(pvz::engine::GameTick{aCombatTick++}, anInput);
+    anInput.Clear();
+    anInput.PressPointer({160, 330});
+    aGame.Update(pvz::engine::GameTick{aCombatTick++}, anInput);
+    anInput.Clear();
+    Expect(
+        aGame.GetLevelOneCombatState().mPhase ==
+                pvz::game::LevelOneCombatPhase::Active &&
+            aGame.GetFlowState().mOccupiedCells ==
+                ((std::uint64_t{1} << 18U) |
+                 (std::uint64_t{1} << 19U)),
+        "normal play reaches active combat after the second plant");
+
+    while (!aGame.GetLevelOneCombatState().mFirstWaveSpawned)
+        aGame.Update(pvz::engine::GameTick{aCombatTick++}, anInput);
+    Expect(
+        aGame.GetLevelOneCombatState().mZombieCount == 1,
+        "GameModule starts the first normal-zombie wave");
+
     anInput.PressKey(pvz::engine::KeyCode::Escape);
-    aGame.Update(pvz::engine::GameTick{1'311}, anInput);
+    aGame.Update(pvz::engine::GameTick{aCombatTick++}, anInput);
     anInput.Clear();
     Expect(
         aGame.GetScene() == pvz::game::GameScene::MainMenu &&
@@ -869,15 +969,17 @@ void TestSceneMusicTransitions()
         "escape restores title music in main menu");
 
     anInput.PressKey(pvz::engine::KeyCode::Enter);
-    aGame.Update(pvz::engine::GameTick{1'312}, anInput);
+    aGame.Update(pvz::engine::GameTick{aCombatTick}, anInput);
     anInput.Clear();
     Expect(
         aGame.GetScene() ==
                 pvz::game::GameScene::StartingAdventure &&
             aGame.GetFlowState().mOccupiedCells == 0 &&
             aGame.GetLevelOneBoardState().mSun == 150 &&
-            !aGame.GetLevelOneBoardState().mSeedRefreshing,
-        "new Adventure run resets Level 1 occupancy and economy");
+            !aGame.GetLevelOneBoardState().mSeedRefreshing &&
+            aGame.GetLevelOneCombatState().mPlantCount == 0 &&
+            !aGame.GetLevelOneCombatState().mFirstWaveSpawned,
+        "new Adventure run resets occupancy, economy, and combat");
 
     aRestoredGame.Shutdown();
     aGame.Shutdown();
@@ -890,6 +992,7 @@ void RunLegacySaveFormatTests();
 void RunDefinitionLoaderTests();
 void RunGameFlowTests();
 void RunLevelOneBoardTests();
+void RunLevelOneCombatTests();
 void RunPlayerInfoSerializationTests();
 void RunReanimationDefinitionTests();
 void RunReanimationPlayerTests();
@@ -905,6 +1008,7 @@ int main()
     TestSceneMusicTransitions();
     RunGameFlowTests();
     RunLevelOneBoardTests();
+    RunLevelOneCombatTests();
     RunLegacyDataSyncTests();
     RunLegacySaveFormatTests();
     RunDefinitionLoaderTests();

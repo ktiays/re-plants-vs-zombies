@@ -4,6 +4,7 @@
 #include "pvz/game/BehaviorObservation.h"
 #include "pvz/game/GameFlow.h"
 #include "pvz/game/LevelOneBoard.h"
+#include "pvz/game/LevelOneCombat.h"
 #include "pvz/game/ReanimationPlayer.h"
 
 #include <array>
@@ -37,6 +38,7 @@ public:
     [[nodiscard]] GameScene GetScene() const;
     [[nodiscard]] GameFlowState GetFlowState() const;
     [[nodiscard]] LevelOneBoardState GetLevelOneBoardState() const;
+    [[nodiscard]] LevelOneCombatState GetLevelOneCombatState() const;
     [[nodiscard]] BehaviorObservation GetBehaviorObservation() const;
     [[nodiscard]] std::uint64_t GetReanimationTick() const;
 
@@ -69,11 +71,13 @@ private:
     engine::IEngineServices* mServices{};
     GameFlow mFlow;
     LevelOneBoard mLevelOneBoard;
+    LevelOneCombat mLevelOneCombat;
     engine::ImageResource mTitleScreen;
     engine::ImageResource mTitleLogo;
     engine::ImageResource mDayBackground;
     engine::ImageResource mSeedBank;
     engine::ImageResource mSeedPacket;
+    engine::ImageResource mProjectilePea;
     std::array<engine::ImageResource, 4> mMenuButtons;
     std::array<engine::ImageResource, 4> mMenuButtonHighlights;
     engine::ImageHandle mWhitePixel;
@@ -83,6 +87,10 @@ private:
     engine::MusicResource mTitleMusic;
     ReanimationClip mPeashooterClip;
     ReanimationPlayer mPeashooterPlayer;
+    ReanimationClip mZombieClip;
+    ReanimationPlayer mZombiePlayer;
+    ReanimationClip mSunClip;
+    ReanimationPlayer mSunPlayer;
     std::vector<engine::SpriteDraw> mUiTextSprites;
     mutable std::vector<engine::SpriteDraw> mReanimationSprites;
     engine::TickIndex mLastTick{};

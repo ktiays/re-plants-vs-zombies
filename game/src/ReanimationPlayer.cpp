@@ -43,6 +43,25 @@ namespace
     return true;
 }
 
+[[nodiscard]] bool StartsWithAsciiInsensitive(
+    std::string_view theText,
+    std::string_view thePrefix)
+{
+    if (theText.size() < thePrefix.size())
+        return false;
+    for (std::size_t anIndex = 0;
+         anIndex < thePrefix.size();
+         ++anIndex)
+    {
+        if (LowercaseAscii(theText[anIndex]) !=
+            LowercaseAscii(thePrefix[anIndex]))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 [[nodiscard]] std::string MakeReanimationSourcePath(
     std::string_view theImageId)
 {
@@ -389,6 +408,33 @@ const engine::ImageResource* ReanimationClip::FindImage(
 }
 
 bool ReanimationPlayer::Bind(
+    const ReanimationClip& theClip)
+{
+    if (!theClip.IsLoaded() ||
+        theClip.mDefinition.mTracks.empty() ||
+        theClip.mDefinition.mTracks.front().mTransforms.empty() ||
+        theClip.mDefinition.mTracks.front().mTransforms.size() >
+            std::numeric_limits<std::uint32_t>::max())
+    {
+        Reset();
+        return false;
+    }
+
+    mClip = &theClip;
+    mLayer = {
+        .mFrameStart = 0,
+        .mFrameCount =
+            static_cast<std::uint32_t>(
+                theClip.mDefinition.mTracks.front()
+                    .mTransforms.size()),
+    };
+    mTick = 0;
+    mFramesPerSecond = 0.0F;
+    mHiddenTrackPrefixes.clear();
+    return true;
+}
+
+bool ReanimationPlayer::Bind(
     const ReanimationClip& theClip,
     std::string_view theLayerName)
 {
@@ -402,6 +448,8 @@ bool ReanimationPlayer::Bind(
     mClip = &theClip;
     mLayer = aLayer;
     mTick = 0;
+    mFramesPerSecond = 0.0F;
+    mHiddenTrackPrefixes.clear();
     return true;
 }
 
@@ -410,6 +458,8 @@ void ReanimationPlayer::Reset()
     mClip = nullptr;
     mLayer = {};
     mTick = 0;
+    mFramesPerSecond = 0.0F;
+    mHiddenTrackPrefixes.clear();
 }
 
 void ReanimationPlayer::Update()
@@ -421,6 +471,28 @@ void ReanimationPlayer::Update()
 void ReanimationPlayer::RestoreTick(std::uint64_t theTick)
 {
     mTick = theTick;
+}
+
+bool ReanimationPlayer::SetFramesPerSecond(
+    float theFramesPerSecond)
+{
+    if (mClip == nullptr ||
+        !std::isfinite(theFramesPerSecond) ||
+        theFramesPerSecond <= 0.0F)
+    {
+        return false;
+    }
+    mFramesPerSecond = theFramesPerSecond;
+    return true;
+}
+
+void ReanimationPlayer::SetHiddenTrackPrefixes(
+    std::span<const std::string_view> thePrefixes)
+{
+    mHiddenTrackPrefixes.clear();
+    mHiddenTrackPrefixes.reserve(thePrefixes.size());
+    for (const auto aPrefix : thePrefixes)
+        mHiddenTrackPrefixes.emplace_back(aPrefix);
 }
 
 bool ReanimationPlayer::IsBound() const
@@ -441,9 +513,13 @@ void ReanimationPlayer::AppendSprites(
     if (mClip == nullptr || mLayer.mFrameCount == 0)
         return;
 
+    const auto aFramesPerSecond =
+        mFramesPerSecond > 0.0F
+            ? mFramesPerSecond
+            : mClip->mDefinition.mFramesPerSecond;
     const double anElapsedAnimationFrames =
         static_cast<double>(mTick) *
-        static_cast<double>(mClip->mDefinition.mFramesPerSecond) /
+        static_cast<double>(aFramesPerSecond) /
         static_cast<double>(engine::kSimulationFrequencyHz);
     const double anAnimationTime = std::fmod(
         anElapsedAnimationFrames /
@@ -474,6 +550,18 @@ void ReanimationPlayer::AppendSprites(
 
     for (const auto& aTrack : mClip->mDefinition.mTracks)
     {
+        const auto isHidden = std::any_of(
+            mHiddenTrackPrefixes.begin(),
+            mHiddenTrackPrefixes.end(),
+            [&aTrack](const std::string& thePrefix)
+            {
+                return StartsWithAsciiInsensitive(
+                    aTrack.mName,
+                    thePrefix);
+            });
+        if (isHidden)
+            continue;
+
         const auto aTransform = InterpolateTransform(
             aTrack.mTransforms[aFrameBefore],
             aTrack.mTransforms[aFrameAfter],

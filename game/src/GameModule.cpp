@@ -19,7 +19,8 @@ inline constexpr std::uint16_t kLegacyStateVersion = 1;
 inline constexpr std::uint16_t kFlowStateVersion = 2;
 inline constexpr std::uint16_t kReanimationStateVersion = 3;
 inline constexpr std::uint16_t kAdventureIntroStateVersion = 4;
-inline constexpr std::uint16_t kStateVersion = 5;
+inline constexpr std::uint16_t kLevelOneStateVersion = 5;
+inline constexpr std::uint16_t kStateVersion = 6;
 inline constexpr std::uint32_t kTitleMusicOrder = 0x98;
 inline constexpr std::uint32_t kAdventureMusicOrder = 0;
 inline constexpr float kLogicalWidth = 800.0F;
@@ -149,6 +150,7 @@ engine::LifecycleResult GameModule::Initialize(
     mServices = &theServices;
     mFlow.Reset();
     mLevelOneBoard.Reset();
+    mLevelOneCombat.Reset();
     mLastTick = 0;
     mUpdateCount = 0;
     mInitialized = true;
@@ -172,6 +174,7 @@ engine::LifecycleResult GameModule::Initialize(
     LoadImage("IMAGE_BACKGROUND1", mDayBackground);
     LoadImage("IMAGE_SEEDBANK", mSeedBank);
     LoadImage("IMAGE_SEEDPACKET_LARGER", mSeedPacket);
+    LoadImage("IMAGE_PROJECTILEPEA", mProjectilePea);
     for (std::size_t anIndex = 0;
          anIndex < kMenuButtonIds.size();
          ++anIndex)
@@ -207,6 +210,60 @@ engine::LifecycleResult GameModule::Initialize(
         else
         {
             mPeashooterClip.Release(
+                mServices->GetImageResources());
+        }
+    }
+
+    if (mZombieClip.Load(
+            mServices->GetXmlDocuments(),
+            mServices->GetImageResources(),
+            "reanim\\Zombie.reanim",
+            aReanimationDiagnostic))
+    {
+        if (mZombiePlayer.Bind(mZombieClip, "anim_walk"))
+        {
+            constexpr std::array<std::string_view, 10>
+                kNormalZombieHiddenTrackPrefixes{
+                    "anim_cone",
+                    "anim_bucket",
+                    "anim_screendoor",
+                    "Zombie_flaghand",
+                    "Zombie_duckytube",
+                    "anim_tongue",
+                    "Zombie_mustache",
+                    "Zombie_outerarm_screendoor",
+                    "Zombie_innerarm_screendoor",
+                    "Zombie_innerarm_screendoor_hand",
+                };
+            mZombiePlayer.SetHiddenTrackPrefixes(
+                kNormalZombieHiddenTrackPrefixes);
+            mServices->GetLogger().Log(
+                engine::LogLevel::Information,
+                "Portable normal Zombie reanimation loaded");
+        }
+        else
+        {
+            mZombieClip.Release(
+                mServices->GetImageResources());
+        }
+    }
+
+    if (mSunClip.Load(
+            mServices->GetXmlDocuments(),
+            mServices->GetImageResources(),
+            "reanim\\Sun.reanim",
+            aReanimationDiagnostic))
+    {
+        if (mSunPlayer.Bind(mSunClip) &&
+            mSunPlayer.SetFramesPerSecond(6.0F))
+        {
+            mServices->GetLogger().Log(
+                engine::LogLevel::Information,
+                "Portable sun reanimation loaded");
+        }
+        else
+        {
+            mSunClip.Release(
                 mServices->GetImageResources());
         }
     }
@@ -299,9 +356,22 @@ void GameModule::Update(
     const auto aPreviousScene = mFlow.GetScene();
     const auto aPreviousMenuItem = mFlow.GetSelectedMenuItem();
     const auto aPreviousBoardState = mLevelOneBoard.GetState();
+    const auto aPreviousCombatState =
+        mLevelOneCombat.GetState();
     const bool hadNotice = mFlow.GetNoticeTicks() > 0;
     if (aPreviousScene == GameScene::AdventureDay)
+    {
         mLevelOneBoard.Update();
+        mLevelOneCombat.Update();
+        const auto aDestroyedCells =
+            mLevelOneCombat.ConsumeDestroyedCells();
+        if (aDestroyedCells != 0)
+        {
+            mFlow.SetOccupiedCells(
+                mFlow.GetState().mOccupiedCells &
+                ~aDestroyedCells);
+        }
+    }
     mFlow.Update(theInput);
 
     const auto aCurrentScene = mFlow.GetScene();
@@ -309,40 +379,67 @@ void GameModule::Update(
         aCurrentScene == GameScene::StartingAdventure)
     {
         mLevelOneBoard.Reset();
+        mLevelOneCombat.Reset();
     }
     if (aPreviousScene != GameScene::AdventureDay &&
         aCurrentScene == GameScene::AdventureDay)
     {
         mFlow.SetOccupiedCells(0);
+        mLevelOneCombat.Reset();
     }
     if (aCurrentScene == GameScene::AdventureDay)
     {
         const auto aPointer =
             theInput.GetPointerState().mPosition;
+        bool collectedSun = false;
+        if (theInput.WasPointerButtonPressed(
+                engine::PointerButton::Primary))
+        {
+            collectedSun =
+                mLevelOneCombat.TryCollectSun(aPointer);
+            if (collectedSun)
+            {
+                mLevelOneBoard.AddSun(
+                    mLevelOneCombat.ConsumeCollectedSun());
+            }
+        }
         if (theInput.WasPointerButtonPressed(
                 engine::PointerButton::Secondary))
         {
             mLevelOneBoard.CancelSelection();
         }
-        if (theInput.WasPointerButtonPressed(
+        if (!collectedSun &&
+            theInput.WasPointerButtonPressed(
                 engine::PointerButton::Primary) &&
             Contains(LevelOneBoard::GetSeedPacketRect(), aPointer))
         {
             static_cast<void>(
                 mLevelOneBoard.SelectPeashooter());
         }
-        else if (mFlow.WasGridActivationRequested())
+        else if (!collectedSun &&
+                 mFlow.WasGridActivationRequested())
         {
             if (mLevelOneBoard.IsPeashooterSelected())
             {
                 auto anOccupiedCells =
                     mFlow.GetState().mOccupiedCells;
-                static_cast<void>(
+                const auto aColumn =
+                    mFlow.GetGridColumn();
+                const auto aRow = mFlow.GetGridRow();
+                const auto aPlacement =
                     mLevelOneBoard.PlacePeashooter(
-                        mFlow.GetGridColumn(),
-                        mFlow.GetGridRow(),
-                        anOccupiedCells));
+                        aColumn,
+                        aRow,
+                        anOccupiedCells);
                 mFlow.SetOccupiedCells(anOccupiedCells);
+                if (aPlacement ==
+                    LevelOnePlacementResult::Planted)
+                {
+                    static_cast<void>(
+                        mLevelOneCombat.AddPeashooter(
+                            aColumn,
+                            aRow));
+                }
             }
             else if (WasKeyboardActivated(theInput))
             {
@@ -355,13 +452,19 @@ void GameModule::Update(
     mLastTick = theTick.mIndex;
     ++mUpdateCount;
     if (aCurrentScene == GameScene::AdventureDay)
+    {
         mPeashooterPlayer.Update();
+        mZombiePlayer.Update();
+        mSunPlayer.Update();
+    }
 
     if (aPreviousScene != aCurrentScene)
         HandleSceneChange(aPreviousScene, aCurrentScene);
 
     const bool hasNotice = mFlow.GetNoticeTicks() > 0;
     const auto aCurrentBoardState = mLevelOneBoard.GetState();
+    const auto aCurrentCombatState =
+        mLevelOneCombat.GetState();
     if (aPreviousScene != aCurrentScene ||
         aPreviousMenuItem != mFlow.GetSelectedMenuItem() ||
         hadNotice != hasNotice ||
@@ -369,7 +472,9 @@ void GameModule::Update(
         aPreviousBoardState.mSeedRefreshing !=
             aCurrentBoardState.mSeedRefreshing ||
         aPreviousBoardState.mSeedSelection !=
-            aCurrentBoardState.mSeedSelection)
+            aCurrentBoardState.mSeedSelection ||
+        aPreviousCombatState.mPhase !=
+            aCurrentCombatState.mPhase)
     {
         RebuildUiText();
     }
@@ -430,6 +535,7 @@ bool GameModule::LoadState(engine::IStateReader& theReader)
          aVersion != kFlowStateVersion &&
          aVersion != kReanimationStateVersion &&
          aVersion != kAdventureIntroStateVersion &&
+         aVersion != kLevelOneStateVersion &&
          aVersion != kStateVersion))
     {
         return false;
@@ -439,6 +545,7 @@ bool GameModule::LoadState(engine::IStateReader& theReader)
     if (aVersion == kFlowStateVersion ||
         aVersion == kReanimationStateVersion ||
         aVersion == kAdventureIntroStateVersion ||
+        aVersion == kLevelOneStateVersion ||
         aVersion == kStateVersion)
     {
         std::uint8_t aScene{};
@@ -466,6 +573,7 @@ bool GameModule::LoadState(engine::IStateReader& theReader)
     }
     if ((aVersion == kReanimationStateVersion ||
          aVersion == kAdventureIntroStateVersion ||
+         aVersion == kLevelOneStateVersion ||
          aVersion == kStateVersion) &&
         !theReader.ReadU64(aReanimationTick))
     {
@@ -473,7 +581,8 @@ bool GameModule::LoadState(engine::IStateReader& theReader)
     }
     LevelOneBoard aLevelOneBoard;
     aLevelOneBoard.Reset();
-    if (aVersion == kStateVersion)
+    if (aVersion == kLevelOneStateVersion ||
+        aVersion == kStateVersion)
     {
         std::uint8_t aSeedSelection{};
         if (!theReader.ReadU16(aLevelOneBoardState.mSun) ||
@@ -495,12 +604,52 @@ bool GameModule::LoadState(engine::IStateReader& theReader)
         }
     }
 
+    LevelOneCombat aLevelOneCombat;
+    aLevelOneCombat.Reset();
+    if (aVersion == kStateVersion)
+    {
+        if (!aLevelOneCombat.LoadState(theReader) ||
+            aLevelOneCombat.GetOccupiedCells() !=
+                aFlow.GetState().mOccupiedCells)
+        {
+            return false;
+        }
+    }
+    else
+    {
+        const auto anOccupiedCells =
+            aFlow.GetState().mOccupiedCells;
+        for (std::uint8_t aRow = 0; aRow < 5; ++aRow)
+        {
+            for (std::uint8_t aColumn = 0;
+                 aColumn < 9;
+                 ++aColumn)
+            {
+                const auto anIndex =
+                    static_cast<std::uint32_t>(aRow) * 9U +
+                    aColumn;
+                if (aRow == LevelOneCombat::kLaneRow &&
+                    (anOccupiedCells &
+                     (std::uint64_t{1} << anIndex)) != 0 &&
+                    !aLevelOneCombat.AddPeashooter(
+                        aColumn,
+                        aRow))
+                {
+                    return false;
+                }
+            }
+        }
+    }
+
     mLastTick = aLastTick;
     mUpdateCount = anUpdateCount;
     mSuspended = aSuspended;
     mFlow = aFlow;
     mLevelOneBoard = aLevelOneBoard;
+    mLevelOneCombat = aLevelOneCombat;
     mPeashooterPlayer.RestoreTick(aReanimationTick);
+    mZombiePlayer.RestoreTick(aReanimationTick);
+    mSunPlayer.RestoreTick(aReanimationTick);
     RebuildUiText();
     SynchronizeMusic();
     return true;
@@ -537,7 +686,8 @@ bool GameModule::SaveState(engine::IStateWriter& theWriter) const
             aLevelOneBoardState.mSeedRefreshing) &&
         theWriter.WriteU8(
             static_cast<std::uint8_t>(
-                aLevelOneBoardState.mSeedSelection));
+                aLevelOneBoardState.mSeedSelection)) &&
+        mLevelOneCombat.SaveState(theWriter);
 }
 
 void GameModule::Suspend()
@@ -580,6 +730,12 @@ void GameModule::Shutdown()
     mPeashooterPlayer.Reset();
     mPeashooterClip.Release(
         mServices->GetImageResources());
+    mZombiePlayer.Reset();
+    mZombieClip.Release(
+        mServices->GetImageResources());
+    mSunPlayer.Reset();
+    mSunClip.Release(
+        mServices->GetImageResources());
     for (auto& aResource : mMenuButtonHighlights)
     {
         if (aResource.mImage.IsValid())
@@ -594,6 +750,11 @@ void GameModule::Shutdown()
     }
     if (mSeedPacket.mImage.IsValid())
         mServices->GetImageResources().Release(mSeedPacket.mImage);
+    if (mProjectilePea.mImage.IsValid())
+    {
+        mServices->GetImageResources().Release(
+            mProjectilePea.mImage);
+    }
     if (mSeedBank.mImage.IsValid())
         mServices->GetImageResources().Release(mSeedBank.mImage);
     if (mDayBackground.mImage.IsValid())
@@ -625,10 +786,12 @@ void GameModule::Shutdown()
     mReanimationSprites.clear();
     mFlow.Reset();
     mLevelOneBoard.Reset();
+    mLevelOneCombat.Reset();
     mUiFont = {};
     mLoadingVoice = {};
     mLoadingSound = {};
     mTitleMusic = {};
+    mProjectilePea = {};
     mSeedPacket = {};
     mSeedBank = {};
     mDayBackground = {};
@@ -673,6 +836,11 @@ GameFlowState GameModule::GetFlowState() const
 LevelOneBoardState GameModule::GetLevelOneBoardState() const
 {
     return mLevelOneBoard.GetState();
+}
+
+LevelOneCombatState GameModule::GetLevelOneCombatState() const
+{
+    return mLevelOneCombat.GetState();
 }
 
 BehaviorObservation GameModule::GetBehaviorObservation() const
@@ -758,17 +926,42 @@ void GameModule::RebuildUiText()
     case GameScene::AdventureDay:
     {
         const auto aBoardState = mLevelOneBoard.GetState();
+        const auto aCombatState = mLevelOneCombat.GetState();
         AppendCenteredTextAtX(
             ToText(aBoardState.mSun),
             44.0F,
             78.0F,
             {0, 0, 0, 255});
+        std::u32string_view aPrompt =
+            U"CLICK SEED PACKET OR PRESS SPACE";
+        if (aCombatState.mPhase ==
+            LevelOneCombatPhase::Lost)
+        {
+            aPrompt = U"THE ZOMBIES ATE YOUR BRAINS";
+        }
+        else if (aCombatState.mPhase ==
+                 LevelOneCombatPhase::FirstWaveCleared)
+        {
+            aPrompt = U"FIRST WAVE CLEARED";
+        }
+        else if (mLevelOneBoard.IsPeashooterSelected())
+        {
+            aPrompt =
+                U"CLICK CENTER ROW TO PLANT - ESC RETURNS TO MENU";
+        }
+        else if (aBoardState.mSeedRefreshing)
+        {
+            aPrompt =
+                U"PEASHOOTER RECHARGING - COLLECT FALLING SUN";
+        }
+        else if (aCombatState.mPhase ==
+                 LevelOneCombatPhase::AwaitingSecondPlant)
+        {
+            aPrompt =
+                U"PLANT A SECOND PEASHOOTER TO START THE WAVE";
+        }
         AppendCenteredText(
-            mLevelOneBoard.IsPeashooterSelected()
-                ? U"CLICK CENTER ROW TO PLANT - ESC RETURNS TO MENU"
-                : aBoardState.mSeedRefreshing
-                    ? U"PEASHOOTER RECHARGING - ESC RETURNS TO MENU"
-                    : U"CLICK SEED PACKET OR PRESS SPACE",
+            aPrompt,
             585.0F,
             {255, 255, 255, 255});
         break;
@@ -1064,6 +1257,7 @@ void GameModule::RenderAdventureDay(
     const auto aSeedPacketRect =
         LevelOneBoard::GetSeedPacketRect();
     const auto aBoardState = mLevelOneBoard.GetState();
+    const auto aCombatState = mLevelOneCombat.GetState();
     if (mSeedPacket.mImage.IsValid())
     {
         const auto aPacketColor =
@@ -1186,8 +1380,6 @@ void GameModule::RenderAdventureDay(
                     mReanimationSprites);
             }
         }
-        if (!mReanimationSprites.empty())
-            theFrame.SubmitSprites(mReanimationSprites);
     }
     else if (mWhitePixel.IsValid())
     {
@@ -1219,6 +1411,118 @@ void GameModule::RenderAdventureDay(
                     },
                     {80, 235, 70, 125});
             }
+        }
+    }
+
+    for (const auto& aZombie : aCombatState.mZombies)
+    {
+        if (!aZombie.mActive)
+            continue;
+        const auto aCell =
+            GameFlow::GetGridCellRect(0, aZombie.mRow);
+        const auto aZombieX =
+            static_cast<float>(
+                aZombie.mXMilliPixels) /
+            1'000.0F;
+        const auto aZombieY =
+            static_cast<float>(aCell.mOrigin.mY - 30);
+        if (mZombiePlayer.IsBound())
+        {
+            mZombiePlayer.AppendSprites(
+                {aZombieX, aZombieY},
+                {255, 255, 255, 255},
+                mReanimationSprites);
+        }
+        else if (mWhitePixel.IsValid())
+        {
+            aDraws[aDrawCount++] = MakeSolidDraw(
+                mWhitePixel,
+                {
+                    {
+                        aZombieX +
+                            static_cast<float>(
+                                LevelOneCombat::
+                                    kNormalZombieRectX),
+                        aZombieY,
+                    },
+                    {
+                        static_cast<float>(
+                            LevelOneCombat::
+                                kNormalZombieRectWidth),
+                        115.0F,
+                    },
+                },
+                {120, 155, 95, 255});
+        }
+    }
+
+    for (const auto& aSun : aCombatState.mSuns)
+    {
+        if (!aSun.mActive)
+            continue;
+        const auto aSunX =
+            static_cast<float>(
+                aSun.mXMilliPixels) /
+            1'000.0F;
+        const auto aSunY =
+            static_cast<float>(
+                aSun.mYMilliPixels) /
+            1'000.0F;
+        if (mSunPlayer.IsBound())
+        {
+            mSunPlayer.AppendSprites(
+                {aSunX + 30.0F, aSunY + 30.0F},
+                {255, 255, 255, 255},
+                mReanimationSprites);
+        }
+        else if (mWhitePixel.IsValid())
+        {
+            aDraws[aDrawCount++] = MakeSolidDraw(
+                mWhitePixel,
+                {{aSunX, aSunY}, {60.0F, 60.0F}},
+                {255, 225, 45, 230});
+        }
+    }
+
+    if (!mReanimationSprites.empty())
+        theFrame.SubmitSprites(mReanimationSprites);
+
+    for (const auto& aProjectile :
+         aCombatState.mProjectiles)
+    {
+        if (!aProjectile.mActive)
+            continue;
+        const auto aProjectileX =
+            static_cast<float>(
+                aProjectile.mXMilliPixels) /
+            1'000.0F;
+        const auto aProjectileY =
+            static_cast<float>(
+                aProjectile.mYMilliPixels) /
+            1'000.0F;
+        if (mProjectilePea.mImage.IsValid())
+        {
+            aDraws[aDrawCount++] = MakeImageDraw(
+                mProjectilePea,
+                {
+                    {aProjectileX, aProjectileY},
+                    {
+                        static_cast<float>(
+                            mProjectilePea.mSize.mWidth),
+                        static_cast<float>(
+                            mProjectilePea.mSize.mHeight),
+                    },
+                });
+        }
+        else if (mWhitePixel.IsValid())
+        {
+            aDraws[aDrawCount++] = MakeSolidDraw(
+                mWhitePixel,
+                {
+                    {aProjectileX, aProjectileY},
+                    {18.0F, 18.0F},
+                },
+                {90, 220, 65, 255});
         }
     }
 

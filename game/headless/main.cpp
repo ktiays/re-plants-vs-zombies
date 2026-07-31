@@ -462,6 +462,8 @@ int main(int theArgumentCount, char** theArguments)
     const auto aFlowState = aGame.GetFlowState();
     const auto aLevelOneBoardState =
         aGame.GetLevelOneBoardState();
+    const auto aLevelOneCombatState =
+        aGame.GetLevelOneCombatState();
     const auto aBehaviorObservations =
         aBehaviorCapture.GetObservations();
     const bool hasExpectedBuiltInState =
@@ -479,6 +481,12 @@ int main(int theArgumentCount, char** theArguments)
         aLevelOneBoardState.mSeedRefreshing &&
         aLevelOneBoardState.mSeedSelection ==
             pvz::game::LevelOneSeedSelection::None &&
+        aLevelOneCombatState.mPhase ==
+            pvz::game::LevelOneCombatPhase::
+                AwaitingSecondPlant &&
+        aLevelOneCombatState.mTick == 3 &&
+        aLevelOneCombatState.mPlantCount == 1 &&
+        aLevelOneCombatState.mSunCountdown == 399 &&
         aBehaviorObservations.size() == 1'310 &&
         aBehaviorObservations.back().mScene ==
             pvz::game::BehaviorScene::AdventurePlaying &&
@@ -489,8 +497,8 @@ int main(int theArgumentCount, char** theArguments)
         aBehaviorObservations.back().mOccupiedCells ==
             aFlowState.mOccupiedCells &&
         aBehaviorObservations.back().mPlantCount == 1 &&
-        aFinalHash == 3'541'531'589'357'418'867ULL &&
-        aTranscriptHash == 8'757'419'703'052'977'084ULL;
+        aFinalHash == 17'517'935'322'065'780'340ULL &&
+        aTranscriptHash == 15'011'143'718'636'161'125ULL;
 
     pvz::engine::core::BinaryStateWriter aSessionWriter;
     pvz::engine::core::ReplaySessionError aSessionError{};
