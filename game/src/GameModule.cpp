@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <string>
 #include <string_view>
 
 namespace pvz::game
@@ -17,7 +18,8 @@ inline constexpr std::uint32_t kStateMagic = 0x475A5650;
 inline constexpr std::uint16_t kLegacyStateVersion = 1;
 inline constexpr std::uint16_t kFlowStateVersion = 2;
 inline constexpr std::uint16_t kReanimationStateVersion = 3;
-inline constexpr std::uint16_t kStateVersion = 4;
+inline constexpr std::uint16_t kAdventureIntroStateVersion = 4;
+inline constexpr std::uint16_t kStateVersion = 5;
 inline constexpr std::uint32_t kTitleMusicOrder = 0x98;
 inline constexpr std::uint32_t kAdventureMusicOrder = 0;
 inline constexpr float kLogicalWidth = 800.0F;
@@ -91,6 +93,51 @@ inline constexpr std::array<std::string_view, 4>
     };
 }
 
+[[nodiscard]] bool Contains(
+    const engine::RectI& theRect,
+    engine::PointI thePoint)
+{
+    const auto aRight =
+        theRect.mOrigin.mX +
+        static_cast<std::int32_t>(theRect.mSize.mWidth);
+    const auto aBottom =
+        theRect.mOrigin.mY +
+        static_cast<std::int32_t>(theRect.mSize.mHeight);
+    return
+        thePoint.mX >= theRect.mOrigin.mX &&
+        thePoint.mX < aRight &&
+        thePoint.mY >= theRect.mOrigin.mY &&
+        thePoint.mY < aBottom;
+}
+
+[[nodiscard]] bool WasKeyboardActivated(
+    const engine::IInputFrame& theInput)
+{
+    return
+        theInput.WasKeyPressed(engine::KeyCode::Enter) ||
+        theInput.WasKeyPressed(engine::KeyCode::Space);
+}
+
+[[nodiscard]] std::u32string ToText(std::uint16_t theValue)
+{
+    std::u32string aText;
+    if (theValue == 0)
+        return U"0";
+
+    std::array<char32_t, 5> aDigits{};
+    std::size_t aCount{};
+    while (theValue > 0)
+    {
+        aDigits[aCount++] = static_cast<char32_t>(
+            U'0' + theValue % 10U);
+        theValue = static_cast<std::uint16_t>(
+            theValue / 10U);
+    }
+    while (aCount > 0)
+        aText.push_back(aDigits[--aCount]);
+    return aText;
+}
+
 } // namespace
 
 engine::LifecycleResult GameModule::Initialize(
@@ -101,6 +148,7 @@ engine::LifecycleResult GameModule::Initialize(
 
     mServices = &theServices;
     mFlow.Reset();
+    mLevelOneBoard.Reset();
     mLastTick = 0;
     mUpdateCount = 0;
     mInitialized = true;
@@ -123,6 +171,7 @@ engine::LifecycleResult GameModule::Initialize(
     LoadImage("IMAGE_PVZ_LOGO", mTitleLogo);
     LoadImage("IMAGE_BACKGROUND1", mDayBackground);
     LoadImage("IMAGE_SEEDBANK", mSeedBank);
+    LoadImage("IMAGE_SEEDPACKET_LARGER", mSeedPacket);
     for (std::size_t anIndex = 0;
          anIndex < kMenuButtonIds.size();
          ++anIndex)
@@ -249,20 +298,78 @@ void GameModule::Update(
 
     const auto aPreviousScene = mFlow.GetScene();
     const auto aPreviousMenuItem = mFlow.GetSelectedMenuItem();
+    const auto aPreviousBoardState = mLevelOneBoard.GetState();
     const bool hadNotice = mFlow.GetNoticeTicks() > 0;
+    if (aPreviousScene == GameScene::AdventureDay)
+        mLevelOneBoard.Update();
     mFlow.Update(theInput);
+
+    const auto aCurrentScene = mFlow.GetScene();
+    if (aPreviousScene != GameScene::StartingAdventure &&
+        aCurrentScene == GameScene::StartingAdventure)
+    {
+        mLevelOneBoard.Reset();
+    }
+    if (aPreviousScene != GameScene::AdventureDay &&
+        aCurrentScene == GameScene::AdventureDay)
+    {
+        mFlow.SetOccupiedCells(0);
+    }
+    if (aCurrentScene == GameScene::AdventureDay)
+    {
+        const auto aPointer =
+            theInput.GetPointerState().mPosition;
+        if (theInput.WasPointerButtonPressed(
+                engine::PointerButton::Secondary))
+        {
+            mLevelOneBoard.CancelSelection();
+        }
+        if (theInput.WasPointerButtonPressed(
+                engine::PointerButton::Primary) &&
+            Contains(LevelOneBoard::GetSeedPacketRect(), aPointer))
+        {
+            static_cast<void>(
+                mLevelOneBoard.SelectPeashooter());
+        }
+        else if (mFlow.WasGridActivationRequested())
+        {
+            if (mLevelOneBoard.IsPeashooterSelected())
+            {
+                auto anOccupiedCells =
+                    mFlow.GetState().mOccupiedCells;
+                static_cast<void>(
+                    mLevelOneBoard.PlacePeashooter(
+                        mFlow.GetGridColumn(),
+                        mFlow.GetGridRow(),
+                        anOccupiedCells));
+                mFlow.SetOccupiedCells(anOccupiedCells);
+            }
+            else if (WasKeyboardActivated(theInput))
+            {
+                static_cast<void>(
+                    mLevelOneBoard.SelectPeashooter());
+            }
+        }
+    }
+
     mLastTick = theTick.mIndex;
     ++mUpdateCount;
-    if (mFlow.GetScene() == GameScene::AdventureDay)
+    if (aCurrentScene == GameScene::AdventureDay)
         mPeashooterPlayer.Update();
 
-    if (aPreviousScene != mFlow.GetScene())
-        HandleSceneChange(aPreviousScene, mFlow.GetScene());
+    if (aPreviousScene != aCurrentScene)
+        HandleSceneChange(aPreviousScene, aCurrentScene);
 
     const bool hasNotice = mFlow.GetNoticeTicks() > 0;
-    if (aPreviousScene != mFlow.GetScene() ||
+    const auto aCurrentBoardState = mLevelOneBoard.GetState();
+    if (aPreviousScene != aCurrentScene ||
         aPreviousMenuItem != mFlow.GetSelectedMenuItem() ||
-        hadNotice != hasNotice)
+        hadNotice != hasNotice ||
+        aPreviousBoardState.mSun != aCurrentBoardState.mSun ||
+        aPreviousBoardState.mSeedRefreshing !=
+            aCurrentBoardState.mSeedRefreshing ||
+        aPreviousBoardState.mSeedSelection !=
+            aCurrentBoardState.mSeedSelection)
     {
         RebuildUiText();
     }
@@ -307,6 +414,7 @@ bool GameModule::LoadState(engine::IStateReader& theReader)
     std::uint64_t anUpdateCount{};
     bool aSuspended{};
     std::uint64_t aReanimationTick{};
+    LevelOneBoardState aLevelOneBoardState;
 
     if (!theReader.ReadU32(aMagic) ||
         !theReader.ReadU16(aVersion) ||
@@ -321,6 +429,7 @@ bool GameModule::LoadState(engine::IStateReader& theReader)
         (aVersion != kLegacyStateVersion &&
          aVersion != kFlowStateVersion &&
          aVersion != kReanimationStateVersion &&
+         aVersion != kAdventureIntroStateVersion &&
          aVersion != kStateVersion))
     {
         return false;
@@ -329,6 +438,7 @@ bool GameModule::LoadState(engine::IStateReader& theReader)
     GameFlow aFlow;
     if (aVersion == kFlowStateVersion ||
         aVersion == kReanimationStateVersion ||
+        aVersion == kAdventureIntroStateVersion ||
         aVersion == kStateVersion)
     {
         std::uint8_t aScene{};
@@ -346,7 +456,7 @@ bool GameModule::LoadState(engine::IStateReader& theReader)
         }
         aState.mScene = static_cast<GameScene>(aScene);
         aState.mMenuItem = static_cast<MainMenuItem>(aMenuItem);
-        if (aVersion != kStateVersion &&
+        if (aVersion < kAdventureIntroStateVersion &&
             aState.mScene == GameScene::AdventureIntro)
         {
             return false;
@@ -355,16 +465,41 @@ bool GameModule::LoadState(engine::IStateReader& theReader)
             return false;
     }
     if ((aVersion == kReanimationStateVersion ||
+         aVersion == kAdventureIntroStateVersion ||
          aVersion == kStateVersion) &&
         !theReader.ReadU64(aReanimationTick))
     {
         return false;
+    }
+    LevelOneBoard aLevelOneBoard;
+    aLevelOneBoard.Reset();
+    if (aVersion == kStateVersion)
+    {
+        std::uint8_t aSeedSelection{};
+        if (!theReader.ReadU16(aLevelOneBoardState.mSun) ||
+            !theReader.ReadU16(
+                aLevelOneBoardState.mSeedRefreshCounter) ||
+            !theReader.ReadBool(
+                aLevelOneBoardState.mSeedRefreshing) ||
+            !theReader.ReadU8(aSeedSelection))
+        {
+            return false;
+        }
+        aLevelOneBoardState.mSeedSelection =
+            static_cast<LevelOneSeedSelection>(
+                aSeedSelection);
+        if (!aLevelOneBoard.RestoreState(
+                aLevelOneBoardState))
+        {
+            return false;
+        }
     }
 
     mLastTick = aLastTick;
     mUpdateCount = anUpdateCount;
     mSuspended = aSuspended;
     mFlow = aFlow;
+    mLevelOneBoard = aLevelOneBoard;
     mPeashooterPlayer.RestoreTick(aReanimationTick);
     RebuildUiText();
     SynchronizeMusic();
@@ -377,6 +512,8 @@ bool GameModule::SaveState(engine::IStateWriter& theWriter) const
         return false;
 
     const auto aState = mFlow.GetState();
+    const auto aLevelOneBoardState =
+        mLevelOneBoard.GetState();
     return
         theWriter.WriteU32(kStateMagic) &&
         theWriter.WriteU16(kStateVersion) &&
@@ -392,7 +529,15 @@ bool GameModule::SaveState(engine::IStateWriter& theWriter) const
         theWriter.WriteU8(aState.mGridColumn) &&
         theWriter.WriteU8(aState.mGridRow) &&
         theWriter.WriteU64(aState.mOccupiedCells) &&
-        theWriter.WriteU64(mPeashooterPlayer.GetTick());
+        theWriter.WriteU64(mPeashooterPlayer.GetTick()) &&
+        theWriter.WriteU16(aLevelOneBoardState.mSun) &&
+        theWriter.WriteU16(
+            aLevelOneBoardState.mSeedRefreshCounter) &&
+        theWriter.WriteBool(
+            aLevelOneBoardState.mSeedRefreshing) &&
+        theWriter.WriteU8(
+            static_cast<std::uint8_t>(
+                aLevelOneBoardState.mSeedSelection));
 }
 
 void GameModule::Suspend()
@@ -447,6 +592,8 @@ void GameModule::Shutdown()
             mServices->GetImageResources().Release(aResource.mImage);
         aResource = {};
     }
+    if (mSeedPacket.mImage.IsValid())
+        mServices->GetImageResources().Release(mSeedPacket.mImage);
     if (mSeedBank.mImage.IsValid())
         mServices->GetImageResources().Release(mSeedBank.mImage);
     if (mDayBackground.mImage.IsValid())
@@ -477,10 +624,12 @@ void GameModule::Shutdown()
     mUiTextSprites.clear();
     mReanimationSprites.clear();
     mFlow.Reset();
+    mLevelOneBoard.Reset();
     mUiFont = {};
     mLoadingVoice = {};
     mLoadingSound = {};
     mTitleMusic = {};
+    mSeedPacket = {};
     mSeedBank = {};
     mDayBackground = {};
     mTitleLogo = {};
@@ -519,6 +668,11 @@ GameScene GameModule::GetScene() const
 GameFlowState GameModule::GetFlowState() const
 {
     return mFlow.GetState();
+}
+
+LevelOneBoardState GameModule::GetLevelOneBoardState() const
+{
+    return mLevelOneBoard.GetState();
 }
 
 BehaviorObservation GameModule::GetBehaviorObservation() const
@@ -602,11 +756,23 @@ void GameModule::RebuildUiText()
             {255, 255, 255, 255});
         break;
     case GameScene::AdventureDay:
+    {
+        const auto aBoardState = mLevelOneBoard.GetState();
+        AppendCenteredTextAtX(
+            ToText(aBoardState.mSun),
+            44.0F,
+            78.0F,
+            {0, 0, 0, 255});
         AppendCenteredText(
-            U"CLICK OR ENTER TO PLACE - ESC RETURNS TO MENU",
+            mLevelOneBoard.IsPeashooterSelected()
+                ? U"CLICK CENTER ROW TO PLANT - ESC RETURNS TO MENU"
+                : aBoardState.mSeedRefreshing
+                    ? U"PEASHOOTER RECHARGING - ESC RETURNS TO MENU"
+                    : U"CLICK SEED PACKET OR PRESS SPACE",
             585.0F,
             {255, 255, 255, 255});
         break;
+    }
     case GameScene::Count:
         break;
     }
@@ -636,6 +802,46 @@ void GameModule::AppendCenteredText(
                     0.5F,
                 .mY = theBaseline,
             },
+            theColor,
+            mUiTextSprites));
+}
+
+void GameModule::AppendCenteredTextAtX(
+    std::u32string_view theText,
+    float theCenterX,
+    float theBaseline,
+    engine::ColorRgba8 theColor)
+{
+    engine::TextMetrics aTextMetrics;
+    if (!mServices->GetFontResources().MeasureText(
+            mUiFont.mFont,
+            theText,
+            aTextMetrics))
+    {
+        return;
+    }
+    AppendText(
+        theText,
+        {
+            theCenterX -
+                static_cast<float>(
+                    aTextMetrics.mAdvance) *
+                    0.5F,
+            theBaseline,
+        },
+        theColor);
+}
+
+void GameModule::AppendText(
+    std::u32string_view theText,
+    engine::PointF theBaseline,
+    engine::ColorRgba8 theColor)
+{
+    static_cast<void>(
+        mServices->GetFontResources().AppendTextSprites(
+            mUiFont.mFont,
+            theText,
+            theBaseline,
             theColor,
             mUiTextSprites));
 }
@@ -848,12 +1054,106 @@ void GameModule::RenderAdventureDay(
         aDraws[aDrawCount++] = MakeImageDraw(
             mSeedBank,
             {
-                {0.0F, 0.0F},
+                {10.0F, 0.0F},
                 {
                     static_cast<float>(mSeedBank.mSize.mWidth),
                     static_cast<float>(mSeedBank.mSize.mHeight),
                 },
             });
+    }
+    const auto aSeedPacketRect =
+        LevelOneBoard::GetSeedPacketRect();
+    const auto aBoardState = mLevelOneBoard.GetState();
+    if (mSeedPacket.mImage.IsValid())
+    {
+        const auto aPacketColor =
+            mLevelOneBoard.CanSelectPeashooter() ||
+                    mLevelOneBoard.IsPeashooterSelected()
+                ? engine::ColorRgba8{255, 255, 255, 255}
+                : engine::ColorRgba8{125, 125, 125, 255};
+        aDraws[aDrawCount++] = MakeImageDraw(
+            mSeedPacket,
+            ToRectF(aSeedPacketRect),
+            aPacketColor);
+    }
+    if (mWhitePixel.IsValid() &&
+        aBoardState.mSeedRefreshing)
+    {
+        const auto aRemainingTicks =
+            LevelOneBoard::kPeashooterRefreshTime -
+            aBoardState.mSeedRefreshCounter;
+        const auto anOverlayHeight =
+            static_cast<float>(aSeedPacketRect.mSize.mHeight) *
+            static_cast<float>(aRemainingTicks) /
+            static_cast<float>(
+                LevelOneBoard::kPeashooterRefreshTime);
+        aDraws[aDrawCount++] = MakeSolidDraw(
+            mWhitePixel,
+            {
+                {
+                    static_cast<float>(
+                        aSeedPacketRect.mOrigin.mX),
+                    static_cast<float>(
+                        aSeedPacketRect.mOrigin.mY),
+                },
+                {
+                    static_cast<float>(
+                        aSeedPacketRect.mSize.mWidth),
+                    anOverlayHeight,
+                },
+            },
+            {0, 0, 0, 145});
+    }
+    if (mWhitePixel.IsValid() &&
+        mLevelOneBoard.IsPeashooterSelected())
+    {
+        constexpr float kPacketLineWidth = 2.0F;
+        const auto aPacketX =
+            static_cast<float>(aSeedPacketRect.mOrigin.mX);
+        const auto aPacketY =
+            static_cast<float>(aSeedPacketRect.mOrigin.mY);
+        const auto aPacketWidth =
+            static_cast<float>(aSeedPacketRect.mSize.mWidth);
+        const auto aPacketHeight =
+            static_cast<float>(aSeedPacketRect.mSize.mHeight);
+        const engine::ColorRgba8 aPacketSelectionColor{
+            255, 255, 255, 245};
+        aDraws[aDrawCount++] = MakeSolidDraw(
+            mWhitePixel,
+            {
+                {aPacketX, aPacketY},
+                {aPacketWidth, kPacketLineWidth},
+            },
+            aPacketSelectionColor);
+        aDraws[aDrawCount++] = MakeSolidDraw(
+            mWhitePixel,
+            {
+                {
+                    aPacketX,
+                    aPacketY + aPacketHeight -
+                        kPacketLineWidth,
+                },
+                {aPacketWidth, kPacketLineWidth},
+            },
+            aPacketSelectionColor);
+        aDraws[aDrawCount++] = MakeSolidDraw(
+            mWhitePixel,
+            {
+                {aPacketX, aPacketY},
+                {kPacketLineWidth, aPacketHeight},
+            },
+            aPacketSelectionColor);
+        aDraws[aDrawCount++] = MakeSolidDraw(
+            mWhitePixel,
+            {
+                {
+                    aPacketX + aPacketWidth -
+                        kPacketLineWidth,
+                    aPacketY,
+                },
+                {kPacketLineWidth, aPacketHeight},
+            },
+            aPacketSelectionColor);
     }
     if (aDrawCount > 0)
     {
@@ -939,8 +1239,25 @@ void GameModule::RenderAdventureDay(
                 static_cast<float>(aCell.mSize.mWidth);
             const auto aHeight =
                 static_cast<float>(aCell.mSize.mHeight);
-            const engine::ColorRgba8 aSelectionColor{
+            engine::ColorRgba8 aSelectionColor{
                 255, 225, 45, 230};
+            if (mLevelOneBoard.IsPeashooterSelected())
+            {
+                if (mFlow.IsGridCellOccupied(aColumn, aRow))
+                {
+                    aSelectionColor = {255, 145, 35, 230};
+                }
+                else if (LevelOneBoard::IsPlantableCell(
+                             aColumn,
+                             aRow))
+                {
+                    aSelectionColor = {80, 235, 70, 230};
+                }
+                else
+                {
+                    aSelectionColor = {245, 75, 55, 230};
+                }
+            }
             aDraws[aDrawCount++] = MakeSolidDraw(
                 mWhitePixel,
                 {{anX, aY}, {aWidth, kLineWidth}},

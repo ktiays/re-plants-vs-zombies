@@ -188,24 +188,25 @@ private:
             aFrame.SetPointerButtonPressed(
                 pvz::engine::PointerButton::Primary,
                 true);
-            aFrame.mPointer.mPosition = {320, 530};
+            aFrame.mPointer.mPosition = {100, 20};
         }
         else if (aTick == 1'308)
         {
-            aFrame.SetKeyDown(
-                pvz::engine::KeyCode::ArrowLeft,
+            aFrame.SetPointerButtonDown(
+                pvz::engine::PointerButton::Primary,
                 true);
-            aFrame.SetKeyPressed(
-                pvz::engine::KeyCode::ArrowLeft,
+            aFrame.SetPointerButtonPressed(
+                pvz::engine::PointerButton::Primary,
                 true);
+            aFrame.mPointer.mPosition = {320, 330};
         }
         else if (aTick == 1'309)
         {
             aFrame.SetKeyDown(
-                pvz::engine::KeyCode::Space,
+                pvz::engine::KeyCode::ArrowLeft,
                 true);
             aFrame.SetKeyPressed(
-                pvz::engine::KeyCode::Space,
+                pvz::engine::KeyCode::ArrowLeft,
                 true);
         }
         if (!AppendReplayFrame(theReplay, std::move(aFrame)))
@@ -459,6 +460,8 @@ int main(int theArgumentCount, char** theArguments)
     const auto aTranscriptHash =
         aRecordedSession.GetTranscriptHash();
     const auto aFlowState = aGame.GetFlowState();
+    const auto aLevelOneBoardState =
+        aGame.GetLevelOneBoardState();
     const auto aBehaviorObservations =
         aBehaviorCapture.GetObservations();
     const bool hasExpectedBuiltInState =
@@ -468,22 +471,26 @@ int main(int theArgumentCount, char** theArguments)
         aGame.GetLastTick() == 1'309 &&
         aGame.GetUpdateCount() == 1'310 &&
         aFlowState.mGridColumn == 2 &&
-        aFlowState.mGridRow == 4 &&
+        aFlowState.mGridRow == 2 &&
         aFlowState.mOccupiedCells ==
-            ((std::uint64_t{1} << 38U) |
-             (std::uint64_t{1} << 39U)) &&
+            (std::uint64_t{1} << 21U) &&
+        aLevelOneBoardState.mSun == 50 &&
+        aLevelOneBoardState.mSeedRefreshCounter == 1 &&
+        aLevelOneBoardState.mSeedRefreshing &&
+        aLevelOneBoardState.mSeedSelection ==
+            pvz::game::LevelOneSeedSelection::None &&
         aBehaviorObservations.size() == 1'310 &&
         aBehaviorObservations.back().mScene ==
             pvz::game::BehaviorScene::AdventurePlaying &&
         aBehaviorObservations.back().mBoardStage ==
             pvz::game::BehaviorBoardStage::Day &&
         aBehaviorObservations.back().mGridColumn == 2 &&
-        aBehaviorObservations.back().mGridRow == 4 &&
+        aBehaviorObservations.back().mGridRow == 2 &&
         aBehaviorObservations.back().mOccupiedCells ==
             aFlowState.mOccupiedCells &&
-        aBehaviorObservations.back().mPlantCount == 2 &&
-        aFinalHash == 13'973'055'160'360'038'248ULL &&
-        aTranscriptHash == 4'288'448'528'192'834'510ULL;
+        aBehaviorObservations.back().mPlantCount == 1 &&
+        aFinalHash == 3'541'531'589'357'418'867ULL &&
+        aTranscriptHash == 8'757'419'703'052'977'084ULL;
 
     pvz::engine::core::BinaryStateWriter aSessionWriter;
     pvz::engine::core::ReplaySessionError aSessionError{};

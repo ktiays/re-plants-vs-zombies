@@ -31,9 +31,10 @@ Last updated: 2026-07-31
 - [x] Versioned fixed-width input replay: sequential 100 Hz frames capture
   persistent and transient keyboard/pointer state, logical coordinates, wheel,
   and bounded Unicode text; malformed streams fail transactionally
-- [x] Deterministic headless Adventure replay: 65 ticks cover title, menu,
-  transition, pointer placement, and keyboard placement while final-state and
-  rolling per-tick transcript hashes provide a cross-platform comparison gate
+- [x] Deterministic headless Adventure replay: 1,310 ticks cover title, menu,
+  selector transition, first-level intro, seed selection, legal pointer
+  placement, sun spending, and packet recharge while final-state and rolling
+  per-tick transcript hashes provide a cross-platform comparison gate
 - [x] Engine-neutral runtime recording decorator and versioned `.pvzc` session
   files combine exact logical-tick input, per-tick state hashes, and transcript
   hashes; malformed sessions fail transactionally
@@ -99,6 +100,10 @@ Last updated: 2026-07-31
 - [x] Portable input-driven game flow: title activation, keyboard/pointer menu
   selection, unavailable-mode feedback, a fixed-duration Adventure transition,
   and an interactive 9-by-5 daytime lawn scaffold use only engine protocols
+- [x] First deterministic Level 1 gameplay rules: the portable game owns the
+  source-audited 150-sun start, 100-sun Peashooter, 750-tick packet recharge,
+  center-row placement rule, non-destructive occupied-cell rejection, and
+  keyboard/pointer seed selection behind engine-neutral input
 - [x] Local reference-first parity harness: independent, revisioned legacy
   board fixtures exhaustively cover day, pool, and roof geometry, pointer
   mapping, background cropping, and engine-neutral selection render commands
@@ -111,10 +116,10 @@ Last updated: 2026-07-31
   transform interpolation, disappearing-frame truncation, atlas-cell
   selection, alpha, and independent x/y skew produce backend-neutral affine
   sprite quads consumed directly by Metal
-- [x] Version-3 portable game state persists scene, menu, transition, notice,
-  grid selection, the 45-cell occupancy bitset, and the fixed-width
-  reanimation tick through explicit fields; version-1 and version-2 states
-  remain readable
+- [x] Version-5 portable game state persists scene, menu, transition, notice,
+  grid selection, the 45-cell occupancy bitset, fixed-width reanimation tick,
+  sun, packet recharge, and seed selection through explicit fields; versions
+  1 through 4 remain readable
 - [x] Fixed-width audio firewall: decoded PCM descriptors, sound and voice
   handles, playback parameters, resource diagnostics, decoder/device
   protocols, and the game-facing sound service expose no backend or
@@ -459,7 +464,8 @@ logo through `IImageResources`, loads `FONT_BRIANNETOD16` through
 `IFontResources`, and submits both images and generated glyph sprites through
 the renderer protocol. The same game module advances to a selector menu using
 the shipped static button layers and then to the daytime lawn using
-`IMAGE_BACKGROUND1` and `IMAGE_SEEDBANK`. Occupied cells render the shipped
+`IMAGE_BACKGROUND1`, `IMAGE_SEEDBANK`, and `IMAGE_SEEDPACKET_LARGER`. Occupied
+cells render the shipped
 `reanim\PeaShooterSingle.reanim` `anim_full_idle` layer. The portable player
 turns the legacy transform model, including independent x/y skew, into ordinary
 engine affine sprite quads; only the macOS renderer knows that Metal consumes
@@ -470,12 +476,15 @@ remains independent of the codec libraries and uses null image-, font-, sound-,
 and music-resource implementations.
 
 The current controls are Enter, Space, or primary click on the title; arrow
-keys or pointer selection in the menu; and pointer or arrow-key selection plus
-Enter/Space on the lawn. Escape returns from the lawn to the menu. Adventure is
-the only enabled mode in this slice. The animated Peashooter validates portable
-definition evaluation, image ownership, fixed-tick state, and affine rendering;
-plant behavior, zombies, sun economy, waves, and win/loss rules remain later
-gameplay-porting work.
+keys or pointer selection in the menu; and seed-packet selection followed by
+pointer or arrow-key plus Enter/Space placement on the lawn. Escape returns
+from the lawn to the menu. Adventure is the only enabled mode in this slice.
+Level 1 now enforces the source-audited initial sun, Peashooter cost and packet
+recharge, center-row restriction, and occupied-cell rejection. Combat,
+collectible sun, zombies, waves, and win/loss rules remain later gameplay work.
+These new rules pass source-audited local differential and replay tests; real
+Windows runtime confirmation remains pending while the reference machine is
+unavailable.
 
 The same startup path resolves `SOUND_LOADINGBAR_FLOWER` through
 `ISoundResources`, decodes it through `IAudioDecoder`, uploads fixed-width

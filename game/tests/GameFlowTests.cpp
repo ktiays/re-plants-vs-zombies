@@ -241,15 +241,22 @@ void TestBoardInteraction()
     Expect(
         aFlow.GetGridColumn() == 3 &&
             aFlow.GetGridRow() == 2 &&
-            aFlow.IsGridCellOccupied(3, 2),
-        "board click selects and toggles a portable grid cell");
+            aFlow.WasGridActivationRequested() &&
+            !aFlow.IsGridCellOccupied(3, 2),
+        "board click selects and requests portable grid activation");
+
+    aFlow.SetOccupiedCells(std::uint64_t{1} << 21U);
+    Expect(
+        aFlow.IsGridCellOccupied(3, 2),
+        "gameplay model can synchronize portable occupancy");
 
     anInput.PressKey(pvz::engine::KeyCode::Enter);
     aFlow.Update(anInput);
     anInput.Clear();
     Expect(
-        !aFlow.IsGridCellOccupied(3, 2),
-        "enter toggles selected grid cell");
+        aFlow.WasGridActivationRequested() &&
+            aFlow.IsGridCellOccupied(3, 2),
+        "enter requests activation without removing an existing plant");
 
     anInput.PressKey(pvz::engine::KeyCode::ArrowLeft);
     aFlow.Update(anInput);
@@ -271,9 +278,7 @@ void TestStateValidation()
     pvz::game::GameFlow aFlow;
     TestInputFrame anInput;
     EnterAdventureDay(aFlow, anInput);
-    anInput.PressKey(pvz::engine::KeyCode::Space);
-    aFlow.Update(anInput);
-    anInput.Clear();
+    aFlow.SetOccupiedCells(1);
 
     const auto aState = aFlow.GetState();
     pvz::game::GameFlow aRestoredFlow;

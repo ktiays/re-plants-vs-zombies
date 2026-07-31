@@ -174,15 +174,19 @@ The macOS application now provides a portable, input-driven path from the
 title screen to a main menu and then to the first daytime lawn scene. Adventure
 is the currently enabled mode; Minigames, Puzzle, and Survival remain visible
 but report that their gameplay is still being ported. This is an engine and
-game-flow milestone, not yet a complete playable Plants vs. Zombies level.
+early gameplay-flow milestone, not yet a complete Plants vs. Zombies level.
 
 - Press Enter, Space, or click to leave the title screen.
 - Use the arrow keys or pointer to select a menu item.
 - Select Adventure to enter the daytime lawn.
-- Click a lawn cell, or use the arrow keys and Enter/Space, to toggle the
-  current placement. With retail data mounted, occupied cells render animated
-  Peashooters from `PeaShooterSingle.reanim`; headless or incomplete resource
-  sets retain the colored fallback marker.
+- Level 1 starts with the legacy 150 sun and one 100-sun Peashooter packet.
+  Click the packet, then click an empty cell in the center lawn row. Keyboard
+  control uses Space/Enter once to select the packet and again to plant at the
+  arrow-key focus. Dirt rows and occupied cells reject placement.
+- A planted packet enters the legacy 750-tick recharge cycle. With retail data
+  mounted, occupied cells render animated Peashooters from
+  `PeaShooterSingle.reanim`; headless or incomplete resource sets retain the
+  colored fallback marker.
 - Press Escape on the lawn to return to the menu.
 
 ## Installation

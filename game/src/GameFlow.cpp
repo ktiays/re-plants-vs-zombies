@@ -92,10 +92,12 @@ void GameFlow::Reset()
     mState = {};
     mLastPointerPosition = {};
     mHasPointerPosition = false;
+    mGridActivationRequested = false;
 }
 
 void GameFlow::Update(const engine::IInputFrame& theInput)
 {
+    mGridActivationRequested = false;
     if (mState.mNoticeTicks > 0)
         --mState.mNoticeTicks;
 
@@ -157,6 +159,11 @@ std::uint8_t GameFlow::GetGridRow() const
     return mState.mGridRow;
 }
 
+bool GameFlow::WasGridActivationRequested() const
+{
+    return mGridActivationRequested;
+}
+
 bool GameFlow::IsGridCellOccupied(
     std::uint8_t theColumn,
     std::uint8_t theRow) const
@@ -173,6 +180,13 @@ bool GameFlow::IsGridCellOccupied(
     return
         (mState.mOccupiedCells &
          (std::uint64_t{1} << anIndex)) != 0;
+}
+
+void GameFlow::SetOccupiedCells(
+    std::uint64_t theOccupiedCells)
+{
+    mState.mOccupiedCells =
+        theOccupiedCells & kOccupiedCellMask;
 }
 
 GameFlowState GameFlow::GetState() const
@@ -213,6 +227,7 @@ bool GameFlow::RestoreState(const GameFlowState& theState)
     mState = theState;
     mLastPointerPosition = {};
     mHasPointerPosition = false;
+    mGridActivationRequested = false;
     return true;
 }
 
@@ -355,7 +370,7 @@ void GameFlow::UpdateAdventureDay(
     else if (theInput.WasKeyPressed(engine::KeyCode::ArrowDown))
         MoveGridSelection(0, 1);
     if (WasActivated(theInput))
-        ToggleSelectedGridCell();
+        RequestSelectedGridCellActivation();
 }
 
 void GameFlow::SelectRelative(std::int32_t theOffset)
@@ -386,7 +401,7 @@ void GameFlow::ActivateMenuItem()
 
 void GameFlow::SelectGridCell(
     engine::PointI thePosition,
-    bool theToggle)
+    bool theRequestActivation)
 {
     GridCoordinate aCoordinate;
     if (!BoardGeometry::TryPixelToGrid(
@@ -398,8 +413,8 @@ void GameFlow::SelectGridCell(
     }
     mState.mGridColumn = aCoordinate.mColumn;
     mState.mGridRow = aCoordinate.mRow;
-    if (theToggle)
-        ToggleSelectedGridCell();
+    if (theRequestActivation)
+        RequestSelectedGridCellActivation();
 }
 
 void GameFlow::MoveGridSelection(
@@ -424,19 +439,14 @@ void GameFlow::MoveGridSelection(
         kBoardRowCount);
 }
 
-void GameFlow::ToggleSelectedGridCell()
+void GameFlow::RequestSelectedGridCellActivation()
 {
     if (mState.mGridColumn >= kBoardColumnCount ||
         mState.mGridRow >= kBoardRowCount)
     {
         return;
     }
-    const auto anIndex =
-        static_cast<std::uint32_t>(mState.mGridRow) *
-            kBoardColumnCount +
-        mState.mGridColumn;
-    mState.mOccupiedCells ^=
-        std::uint64_t{1} << anIndex;
+    mGridActivationRequested = true;
 }
 
 } // namespace pvz::game

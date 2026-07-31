@@ -3,6 +3,7 @@
 #include "pvz/engine/Game.h"
 #include "pvz/game/BehaviorObservation.h"
 #include "pvz/game/GameFlow.h"
+#include "pvz/game/LevelOneBoard.h"
 #include "pvz/game/ReanimationPlayer.h"
 
 #include <array>
@@ -35,6 +36,7 @@ public:
     [[nodiscard]] std::uint64_t GetUpdateCount() const;
     [[nodiscard]] GameScene GetScene() const;
     [[nodiscard]] GameFlowState GetFlowState() const;
+    [[nodiscard]] LevelOneBoardState GetLevelOneBoardState() const;
     [[nodiscard]] BehaviorObservation GetBehaviorObservation() const;
     [[nodiscard]] std::uint64_t GetReanimationTick() const;
 
@@ -43,6 +45,15 @@ private:
     void AppendCenteredText(
         std::u32string_view theText,
         float theBaseline,
+        engine::ColorRgba8 theColor);
+    void AppendCenteredTextAtX(
+        std::u32string_view theText,
+        float theCenterX,
+        float theBaseline,
+        engine::ColorRgba8 theColor);
+    void AppendText(
+        std::u32string_view theText,
+        engine::PointF theBaseline,
         engine::ColorRgba8 theColor);
     void HandleSceneChange(
         GameScene thePreviousScene,
@@ -57,10 +68,12 @@ private:
 
     engine::IEngineServices* mServices{};
     GameFlow mFlow;
+    LevelOneBoard mLevelOneBoard;
     engine::ImageResource mTitleScreen;
     engine::ImageResource mTitleLogo;
     engine::ImageResource mDayBackground;
     engine::ImageResource mSeedBank;
+    engine::ImageResource mSeedPacket;
     std::array<engine::ImageResource, 4> mMenuButtons;
     std::array<engine::ImageResource, 4> mMenuButtonHighlights;
     engine::ImageHandle mWhitePixel;

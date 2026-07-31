@@ -51,9 +51,11 @@ public:
     [[nodiscard]] std::uint16_t GetNoticeTicks() const;
     [[nodiscard]] std::uint8_t GetGridColumn() const;
     [[nodiscard]] std::uint8_t GetGridRow() const;
+    [[nodiscard]] bool WasGridActivationRequested() const;
     [[nodiscard]] bool IsGridCellOccupied(
         std::uint8_t theColumn,
         std::uint8_t theRow) const;
+    void SetOccupiedCells(std::uint64_t theOccupiedCells);
     [[nodiscard]] GameFlowState GetState() const;
     [[nodiscard]] bool RestoreState(const GameFlowState& theState);
 
@@ -73,15 +75,18 @@ private:
     void UpdateAdventureDay(const engine::IInputFrame& theInput);
     void SelectRelative(std::int32_t theOffset);
     void ActivateMenuItem();
-    void SelectGridCell(engine::PointI thePosition, bool theToggle);
+    void SelectGridCell(
+        engine::PointI thePosition,
+        bool theRequestActivation);
     void MoveGridSelection(
         std::int32_t theColumnOffset,
         std::int32_t theRowOffset);
-    void ToggleSelectedGridCell();
+    void RequestSelectedGridCellActivation();
 
     GameFlowState mState;
     engine::PointI mLastPointerPosition{};
     bool mHasPointerPosition{};
+    bool mGridActivationRequested{};
 };
 
 static_assert(sizeof(GameScene) == 1);

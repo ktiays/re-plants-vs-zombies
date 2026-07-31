@@ -69,17 +69,18 @@ security primitives.
 
 ## Current representative replay
 
-The headless executable runs a 65-frame fixture:
+The headless executable runs a 1,310-frame fixture:
 
 1. Activate the title screen.
 2. Start Adventure from the main menu.
-3. Advance the fixed 60-tick transition.
-4. Place in column 3, row 4 using logical pointer input.
-5. Move left to column 2.
-6. Place again using the keyboard.
+3. Advance the 450-tick selector transition and 855-tick Level 1 intro.
+4. Select the Peashooter packet using logical pointer input.
+5. Plant in column 3, row 2, spending 100 of the initial 150 sun.
+6. Move the grid focus left to column 2 while packet recharge advances.
 
 The executable validates the final scene, tick count, selection, occupied-cell
-bits, final state hash, and full transcript hash. Any mismatch returns a
+bits, sun, packet recharge state, final state hash, and full transcript hash.
+Any mismatch returns a
 non-zero status, making the existing headless CTest entry a deterministic local
 gate.
 

@@ -529,7 +529,7 @@ void TestLifecycleAndState()
 
     pvz::engine::core::BinaryStateWriter aWriter;
     Expect(aGame.SaveState(aWriter), "initialized game saves state");
-    Expect(aWriter.GetBytesWritten() == 47, "state schema has stable size");
+    Expect(aWriter.GetBytesWritten() == 53, "state schema has stable size");
 
     TestServices aRestoredServices;
     pvz::game::GameModule aRestoredGame;
@@ -552,6 +552,9 @@ void TestLifecycleAndState()
         aRestoredGame.GetReanimationTick() ==
             aGame.GetReanimationTick(),
         "portable reanimation tick round-trips");
+    Expect(
+        aRestoredGame.GetLevelOneBoardState().mSun == 150,
+        "portable Level 1 economy state round-trips");
 
     aGame.Shutdown();
     Expect(!aGame.IsInitialized(), "shutdown clears initialized state");
@@ -594,6 +597,41 @@ void TestInvalidSchemaIsTransactional()
     Expect(
         aGame.GetUpdateCount() == 0,
         "invalid schema does not modify update count");
+
+    pvz::engine::core::BinaryStateWriter anInvalidBoardWriter;
+    Expect(
+        anInvalidBoardWriter.WriteU32(0x475A5650) &&
+            anInvalidBoardWriter.WriteU16(5) &&
+            anInvalidBoardWriter.WriteU64(200) &&
+            anInvalidBoardWriter.WriteU64(300) &&
+            anInvalidBoardWriter.WriteBool(false) &&
+            anInvalidBoardWriter.WriteU8(
+                static_cast<std::uint8_t>(
+                    pvz::game::GameScene::AdventureDay)) &&
+            anInvalidBoardWriter.WriteU8(
+                static_cast<std::uint8_t>(
+                    pvz::game::MainMenuItem::Adventure)) &&
+            anInvalidBoardWriter.WriteU16(0) &&
+            anInvalidBoardWriter.WriteU16(0) &&
+            anInvalidBoardWriter.WriteU8(0) &&
+            anInvalidBoardWriter.WriteU8(2) &&
+            anInvalidBoardWriter.WriteU64(0) &&
+            anInvalidBoardWriter.WriteU64(50) &&
+            anInvalidBoardWriter.WriteU16(150) &&
+            anInvalidBoardWriter.WriteU16(751) &&
+            anInvalidBoardWriter.WriteBool(true) &&
+            anInvalidBoardWriter.WriteU8(
+                static_cast<std::uint8_t>(
+                    pvz::game::LevelOneSeedSelection::None)),
+        "invalid Level 1 state fixture writes");
+    pvz::engine::core::BinaryStateReader anInvalidBoardReader(
+        anInvalidBoardWriter.GetBytes());
+    Expect(
+        !aGame.LoadState(anInvalidBoardReader) &&
+            aGame.GetLastTick() == 0 &&
+            aGame.GetUpdateCount() == 0 &&
+            aGame.GetLevelOneBoardState().mSun == 150,
+        "invalid Level 1 state is rejected transactionally");
     aGame.Shutdown();
 }
 
@@ -621,7 +659,8 @@ void TestPreviousStateSchemasRemainReadable()
             aGame.GetLastTick() == 25 &&
             aGame.GetUpdateCount() == 50 &&
             aGame.GetScene() == pvz::game::GameScene::Title &&
-            aGame.GetReanimationTick() == 0,
+            aGame.GetReanimationTick() == 0 &&
+            aGame.GetLevelOneBoardState().mSun == 150,
         "version-one state defaults newer portable fields");
 
     pvz::engine::core::BinaryStateWriter aVersionTwoWriter;
@@ -688,8 +727,42 @@ void TestPreviousStateSchemasRemainReadable()
             aGame.GetFlowState().mGridColumn == 4 &&
             aGame.GetFlowState().mGridRow == 2 &&
             aGame.GetFlowState().mOccupiedCells == 2 &&
-            aGame.GetReanimationTick() == 123,
+            aGame.GetReanimationTick() == 123 &&
+            aGame.GetLevelOneBoardState().mSun == 150,
         "version-three state remains readable");
+
+    pvz::engine::core::BinaryStateWriter aVersionFourWriter;
+    Expect(
+        aVersionFourWriter.WriteU32(0x475A5650) &&
+            aVersionFourWriter.WriteU16(4) &&
+            aVersionFourWriter.WriteU64(175) &&
+            aVersionFourWriter.WriteU64(200) &&
+            aVersionFourWriter.WriteBool(false) &&
+            aVersionFourWriter.WriteU8(
+                static_cast<std::uint8_t>(
+                    pvz::game::GameScene::AdventureIntro)) &&
+            aVersionFourWriter.WriteU8(
+                static_cast<std::uint8_t>(
+                    pvz::game::MainMenuItem::Adventure)) &&
+            aVersionFourWriter.WriteU16(100) &&
+            aVersionFourWriter.WriteU16(0) &&
+            aVersionFourWriter.WriteU8(0xFF) &&
+            aVersionFourWriter.WriteU8(0xFF) &&
+            aVersionFourWriter.WriteU64(0) &&
+            aVersionFourWriter.WriteU64(321),
+        "version-four state fixture writes");
+    pvz::engine::core::BinaryStateReader aVersionFourReader(
+        aVersionFourWriter.GetBytes());
+    Expect(
+        aGame.LoadState(aVersionFourReader) &&
+            aGame.GetLastTick() == 175 &&
+            aGame.GetUpdateCount() == 200 &&
+            aGame.GetScene() ==
+                pvz::game::GameScene::AdventureIntro &&
+            aGame.GetFlowState().mTransitionTicks == 100 &&
+            aGame.GetReanimationTick() == 321 &&
+            aGame.GetLevelOneBoardState().mSun == 150,
+        "version-four intro state defaults Level 1 economy");
 
     aGame.Shutdown();
 }
@@ -742,8 +815,21 @@ void TestSceneMusicTransitions()
             aServices.GetTestMusicResources().mPlayCount == 2,
         "first-level intro enters playable day board");
 
-    anInput.PressKey(pvz::engine::KeyCode::Space);
+    anInput.PressKey(pvz::engine::KeyCode::ArrowDown);
     aGame.Update(pvz::engine::GameTick{1'307}, anInput);
+    anInput.Clear();
+    anInput.PressKey(pvz::engine::KeyCode::ArrowDown);
+    aGame.Update(pvz::engine::GameTick{1'308}, anInput);
+    anInput.Clear();
+    anInput.PressKey(pvz::engine::KeyCode::Space);
+    aGame.Update(pvz::engine::GameTick{1'309}, anInput);
+    anInput.Clear();
+    Expect(
+        aGame.GetLevelOneBoardState().mSeedSelection ==
+            pvz::game::LevelOneSeedSelection::Peashooter,
+        "keyboard selects the ready Peashooter packet");
+    anInput.PressKey(pvz::engine::KeyCode::Space);
+    aGame.Update(pvz::engine::GameTick{1'310}, anInput);
     anInput.Clear();
     pvz::engine::core::BinaryStateWriter aWriter;
     Expect(
@@ -761,15 +847,19 @@ void TestSceneMusicTransitions()
         aRestoredGame.LoadState(aReader) &&
             aRestoredGame.GetScene() ==
                 pvz::game::GameScene::AdventureDay &&
-            aRestoredGame.GetFlowState().mOccupiedCells == 1,
-        "versioned module state restores board flow");
+            aRestoredGame.GetFlowState().mOccupiedCells ==
+                (std::uint64_t{1} << 18U) &&
+            aRestoredGame.GetLevelOneBoardState().mSun == 50 &&
+            aRestoredGame.GetLevelOneBoardState()
+                .mSeedRefreshing,
+        "versioned module state restores planting economy");
     Expect(
         aRestoredServices.GetTestMusicResources()
                 .mPlayback.mPosition.mOrder == 0,
         "state restore synchronizes adventure music");
 
     anInput.PressKey(pvz::engine::KeyCode::Escape);
-    aGame.Update(pvz::engine::GameTick{1'308}, anInput);
+    aGame.Update(pvz::engine::GameTick{1'311}, anInput);
     anInput.Clear();
     Expect(
         aGame.GetScene() == pvz::game::GameScene::MainMenu &&
@@ -777,6 +867,17 @@ void TestSceneMusicTransitions()
             aServices.GetTestMusicResources()
                     .mPlayback.mPosition.mOrder == 0x98,
         "escape restores title music in main menu");
+
+    anInput.PressKey(pvz::engine::KeyCode::Enter);
+    aGame.Update(pvz::engine::GameTick{1'312}, anInput);
+    anInput.Clear();
+    Expect(
+        aGame.GetScene() ==
+                pvz::game::GameScene::StartingAdventure &&
+            aGame.GetFlowState().mOccupiedCells == 0 &&
+            aGame.GetLevelOneBoardState().mSun == 150 &&
+            !aGame.GetLevelOneBoardState().mSeedRefreshing,
+        "new Adventure run resets Level 1 occupancy and economy");
 
     aRestoredGame.Shutdown();
     aGame.Shutdown();
@@ -788,6 +889,7 @@ void RunLegacyDataSyncTests();
 void RunLegacySaveFormatTests();
 void RunDefinitionLoaderTests();
 void RunGameFlowTests();
+void RunLevelOneBoardTests();
 void RunPlayerInfoSerializationTests();
 void RunReanimationDefinitionTests();
 void RunReanimationPlayerTests();
@@ -802,6 +904,7 @@ int main()
     TestPreviousStateSchemasRemainReadable();
     TestSceneMusicTransitions();
     RunGameFlowTests();
+    RunLevelOneBoardTests();
     RunLegacyDataSyncTests();
     RunLegacySaveFormatTests();
     RunDefinitionLoaderTests();

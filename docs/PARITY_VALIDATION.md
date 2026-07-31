@@ -66,8 +66,30 @@ gate. Its fixture is independent of portable `BoardGeometry` and records:
 
 The test exhaustively compares every grid coordinate, exercises pointer mapping
 from independently supplied positions, and drives `GameModule` through title,
-menu, transition, placement, and rendering. It then validates the background
-crop and four selection-outline commands against the legacy fixture.
+menu, transition, grid focus, and rendering. It then validates the background
+crop, seed-bank and packet destinations, and four selection-outline commands
+against the legacy fixture.
+
+## Current Level 1 gameplay gate
+
+The first seed-bank and placement slice is checked independently from rendering.
+The fixture values were audited from `Board::InitLevel`,
+`Plant.cpp::gPlantDefs`, `SeedPacket::Update`, and the Level 1 background-row
+selection in the reconstructed legacy source. Portable tests cover:
+
+- 150 initial sun and the 100-sun Peashooter cost;
+- selection requirements and non-destructive occupied-cell rejection;
+- center-row-only planting for the first level;
+- the exact refresh boundary, which becomes ready only after counter 750;
+- fixed-width, transactional version-5 persistence with versions 1 through 4
+  retained as readable inputs;
+- a 1,310-tick replay whose final sun, recharge, occupancy, state hash, and
+  rolling transcript hash are fixed.
+
+This is source-audited and locally differential-tested, but not yet confirmed
+by a new Windows runtime capture because the reference device is temporarily
+unavailable. It remains explicitly pending runtime verification rather than
+being reported as full parity.
 
 Run this gate locally:
 
@@ -89,11 +111,11 @@ ctest --test-dir out/portable --output-on-failure
 
 ## Next infrastructure milestones
 
-The board gate covers deterministic geometry and render-command alignment. The
-remaining cross-runtime infrastructure is:
+The board gates cover deterministic geometry, render-command alignment, and the
+first Level 1 economy rules. The remaining cross-runtime infrastructure is:
 
-- a Windows reference exporter for fixed-width behavior observations and
-  render-command fixtures;
+- extension of the Windows behavior observation schema to cover seed-bank
+  economy, followed by a fresh runtime capture of the Level 1 slice;
 - the logical-tick input hook is complete: the Windows reference emits `PVZR`,
   while the macOS application and headless runner emit portable-state `PVZC`
   sessions; the headless runner can consume the Windows stream;

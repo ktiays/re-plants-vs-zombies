@@ -7,6 +7,7 @@
 #include "pvz/game/BoardGeometry.h"
 #include "pvz/game/GameFlow.h"
 #include "pvz/game/GameModule.h"
+#include "pvz/game/LevelOneBoard.h"
 
 #include <array>
 #include <cstddef>
@@ -286,10 +287,37 @@ void TestAdventureInputMatchesLegacyReference()
             Expect(
                 aFlow.GetGridColumn() == aColumn &&
                     aFlow.GetGridRow() == aRow &&
-                    aFlow.IsGridCellOccupied(aColumn, aRow),
+                    aFlow.WasGridActivationRequested() &&
+                    !aFlow.IsGridCellOccupied(aColumn, aRow),
                 "Adventure input maps a legacy fixture point correctly");
         }
     }
+}
+
+void TestLevelOneRulesMatchLegacyReference()
+{
+    // Audited from Lawn/Board.cpp::InitLevel,
+    // Lawn/Plant.cpp::gPlantDefs and SeedPacket::Update.
+    Expect(
+        pvz::game::LevelOneBoard::kInitialSun == 150,
+        "Level 1 initial sun matches the legacy source");
+    Expect(
+        pvz::game::LevelOneBoard::kPeashooterCost == 100,
+        "Peashooter cost matches the legacy source");
+    Expect(
+        pvz::game::LevelOneBoard::kPeashooterRefreshTime == 750,
+        "Peashooter refresh matches the legacy source");
+    Expect(
+        pvz::game::LevelOneBoard::kPlantableRow == 2,
+        "Level 1 plantable row matches the legacy source");
+    const auto aPacketRect =
+        pvz::game::LevelOneBoard::GetSeedPacketRect();
+    Expect(
+        aPacketRect.mOrigin.mX == 95 &&
+            aPacketRect.mOrigin.mY == 8 &&
+            aPacketRect.mSize.mWidth == 50 &&
+            aPacketRect.mSize.mHeight == 70,
+        "Peashooter packet rectangle matches the legacy seed bank");
 }
 
 class SilentLogger final : public pvz::engine::ILogger
@@ -426,6 +454,14 @@ public:
             theResource = {
                 .mImage = {11, 1},
                 .mSize = {446, 87},
+            };
+            return true;
+        }
+        if (theResourceId == "IMAGE_SEEDPACKET_LARGER")
+        {
+            theResource = {
+                .mImage = {12, 1},
+                .mSize = {50, 70},
             };
             return true;
         }
@@ -597,6 +633,8 @@ void TestAdventureRenderCommandsMatchLegacyReference()
     aGame.Render(aFrame);
 
     bool hasExpectedBackground{};
+    bool hasExpectedSeedBank{};
+    bool hasExpectedSeedPacket{};
     std::uint32_t aSelectionDrawCount{};
     bool hasTop{};
     bool hasBottom{};
@@ -620,6 +658,26 @@ void TestAdventureRenderCommandsMatchLegacyReference()
                     0.0F,
                     800.0F,
                     600.0F);
+        }
+        else if (aDraw.mImage.mIndex == 11)
+        {
+            hasExpectedSeedBank =
+                IsDestination(
+                    aDraw,
+                    10.0F,
+                    0.0F,
+                    446.0F,
+                    87.0F);
+        }
+        else if (aDraw.mImage.mIndex == 12)
+        {
+            hasExpectedSeedPacket =
+                IsDestination(
+                    aDraw,
+                    95.0F,
+                    8.0F,
+                    50.0F,
+                    70.0F);
         }
         const bool isSelection =
             aDraw.mColor.mRed == 255 &&
@@ -667,6 +725,9 @@ void TestAdventureRenderCommandsMatchLegacyReference()
         hasExpectedBackground,
         "day background crop matches BOARD_OFFSET reference");
     Expect(
+        hasExpectedSeedBank && hasExpectedSeedPacket,
+        "Level 1 seed-bank layout matches the legacy reference");
+    Expect(
         aSelectionDrawCount == 4 &&
             hasTop &&
             hasBottom &&
@@ -682,6 +743,7 @@ int main()
 {
     TestBoardGeometryMatchesLegacyReference();
     TestAdventureInputMatchesLegacyReference();
+    TestLevelOneRulesMatchLegacyReference();
     TestAdventureRenderCommandsMatchLegacyReference();
 
     if (gFailureCount != 0)
