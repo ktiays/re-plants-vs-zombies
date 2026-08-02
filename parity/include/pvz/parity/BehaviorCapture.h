@@ -37,6 +37,10 @@ enum class BehaviorCaptureError : std::uint8_t
     InvalidBoardStage,
     InvalidGridCoordinate,
     InvalidOccupiedCells,
+    InvalidSeedSelection,
+    InvalidTutorialPhase,
+    InvalidSeedRefresh,
+    InvalidFirstSunState,
     TrailingData,
 };
 
@@ -48,6 +52,8 @@ enum class BehaviorCaptureError : std::uint8_t
 class BehaviorCapture
 {
 public:
+    static constexpr std::uint16_t kCurrentFormatVersion = 2;
+
     void SetProducer(BehaviorProducer theProducer);
     void SetInputReplay(
         engine::core::InputReplay theInputReplay);
@@ -64,12 +70,14 @@ public:
         BehaviorCaptureError& theError);
 
     [[nodiscard]] BehaviorProducer GetProducer() const;
+    [[nodiscard]] std::uint16_t GetFormatVersion() const;
     [[nodiscard]] const engine::core::InputReplay&
         GetInputReplay() const;
     [[nodiscard]] std::span<const game::BehaviorObservation>
         GetObservations() const;
 
 private:
+    std::uint16_t mFormatVersion{kCurrentFormatVersion};
     BehaviorProducer mProducer{BehaviorProducer::Unknown};
     engine::core::InputReplay mInputReplay;
     std::vector<game::BehaviorObservation> mObservations;

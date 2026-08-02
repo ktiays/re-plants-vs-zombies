@@ -68,37 +68,30 @@ void Expect(bool theCondition, std::string_view theMessage)
 void TestGoldenBytesAndRoundTrip()
 {
     const auto aBytes = SaveCapture(MakeCapture());
-    constexpr std::array<std::uint8_t, 85> kExpected{
-        0x50, 0x56, 0x5A, 0x42,
-        0x01, 0x00,
-        0x64, 0x00, 0x00, 0x00,
-        0x01,
-        0x2A, 0x00, 0x00, 0x00,
-        0x50, 0x56, 0x5A, 0x52,
-        0x01, 0x00,
-        0x64, 0x00, 0x00, 0x00,
-        0x01, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00,
-        0x00, 0x00,
-        0x00,
-        0x00,
-        0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00,
-        0x01, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00,
-        0x01,
-        0x00,
-        0xFF,
-        0xFF,
-        0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00,
-    };
+    constexpr auto kExpected = []
+    {
+        std::array<std::uint8_t, 97> aResult{};
+        aResult[0] = 0x50;
+        aResult[1] = 0x56;
+        aResult[2] = 0x5A;
+        aResult[3] = 0x42;
+        aResult[4] = 0x02;
+        aResult[6] = 0x64;
+        aResult[10] = 0x01;
+        aResult[11] = 0x2A;
+        aResult[15] = 0x50;
+        aResult[16] = 0x56;
+        aResult[17] = 0x5A;
+        aResult[18] = 0x52;
+        aResult[19] = 0x01;
+        aResult[21] = 0x64;
+        aResult[25] = 0x01;
+        aResult[57] = 0x01;
+        aResult[69] = 0x01;
+        aResult[71] = 0xFF;
+        aResult[72] = 0xFF;
+        return aResult;
+    }();
     Expect(
         aBytes.size() == kExpected.size(),
         "behavior golden byte size should remain stable");
@@ -132,6 +125,18 @@ void TestGoldenBytesAndRoundTrip()
         anObservations[0].mScene ==
             pvz::game::BehaviorScene::Title,
         "observation should round trip");
+
+    auto aLegacyBytes = aBytes;
+    aLegacyBytes[4] = std::byte{1};
+    aLegacyBytes.resize(aLegacyBytes.size() - 12);
+    pvz::engine::core::BinaryStateReader aLegacyReader(
+        aLegacyBytes);
+    pvz::parity::BehaviorCapture aLegacyCapture;
+    Expect(
+        aLegacyCapture.Load(aLegacyReader, anError) &&
+        aLegacyCapture.GetFormatVersion() == 1 &&
+        aLegacyCapture.GetObservations().size() == 1,
+        "version 1 behavior capture should remain readable");
 }
 
 void ExpectLoadError(
@@ -167,7 +172,7 @@ void TestMalformedCaptures()
         "invalid behavior magic should fail");
 
     aBytes = aGolden;
-    aBytes[4] = std::byte{2};
+    aBytes[4] = std::byte{3};
     ExpectLoadError(
         std::move(aBytes),
         pvz::parity::BehaviorCaptureError::UnsupportedVersion,
@@ -265,6 +270,35 @@ void TestMalformedCaptures()
         "out-of-range occupancy bit should fail");
 
     aBytes = aGolden;
+    aBytes[92] = std::byte{3};
+    ExpectLoadError(
+        std::move(aBytes),
+        pvz::parity::BehaviorCaptureError::InvalidSeedSelection,
+        "invalid seed selection should fail");
+
+    aBytes = aGolden;
+    aBytes[93] = std::byte{6};
+    ExpectLoadError(
+        std::move(aBytes),
+        pvz::parity::BehaviorCaptureError::InvalidTutorialPhase,
+        "invalid tutorial phase should fail");
+
+    aBytes = aGolden;
+    aBytes[87] = std::byte{1};
+    ExpectLoadError(
+        std::move(aBytes),
+        pvz::parity::BehaviorCaptureError::InvalidSeedRefresh,
+        "invalid seed refresh state should fail");
+
+    aBytes = aGolden;
+    aBytes[94] = std::byte{1};
+    aBytes[96] = std::byte{1};
+    ExpectLoadError(
+        std::move(aBytes),
+        pvz::parity::BehaviorCaptureError::InvalidFirstSunState,
+        "invalid first-sun state should fail");
+
+    aBytes = aGolden;
     aBytes.push_back(std::byte{0});
     ExpectLoadError(
         std::move(aBytes),
@@ -339,6 +373,42 @@ void TestFirstBehaviorDifference()
         pvz::parity::GetBehaviorFieldName(
             aDifference.mField) == "grid-column",
         "behavior comparison should identify exact first field");
+
+    aRight = aLeft;
+    aRight[1].mSun = 25;
+    aDifference =
+        pvz::parity::FindFirstBehaviorDifference(
+            aLeft,
+            aRight);
+    Expect(
+        aDifference.mTick == 1 &&
+        aDifference.mField ==
+            pvz::parity::BehaviorField::Sun &&
+        pvz::parity::GetBehaviorFieldName(
+            aDifference.mField) == "sun",
+        "behavior comparison should cover economy fields");
+
+    aDifference =
+        pvz::parity::FindFirstBehaviorDifference(
+            aLeft,
+            aRight,
+            1);
+    Expect(
+        aDifference.mField ==
+            pvz::parity::BehaviorField::None,
+        "version 1 comparison should use the common schema prefix");
+
+    aRight = aLeft;
+    aRight[1].mFirstSunSpawned = true;
+    aDifference =
+        pvz::parity::FindFirstBehaviorDifference(
+            aLeft,
+            aRight);
+    Expect(
+        aDifference.mTick == 1 &&
+        aDifference.mField ==
+            pvz::parity::BehaviorField::FirstSunSpawned,
+        "behavior comparison should cover the first-sun gate");
 
     aDifference =
         pvz::parity::FindFirstBehaviorDifference(

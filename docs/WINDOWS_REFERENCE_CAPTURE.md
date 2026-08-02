@@ -30,7 +30,10 @@ In behavior mode, a normalized observation is recorded after that same update:
 - scene and board stage;
 - current valid grid focus, or the fixed `0xFF` no-focus sentinel;
 - a 54-bit 9 by 6 occupancy mask built from live on-board plants;
-- an explicit 32-bit live plant count, which preserves stacked-plant cases.
+- an explicit 32-bit live plant count, which preserves stacked-plant cases;
+- version 2 Level 1 economy fields: spendable sun, fixed-width packet recharge
+  state, seed selection, tutorial phase, and the deterministic first falling-
+  sun countdown/spawn gate.
 
 These values are converted field by field. Legacy pointers, `DataArray`
 metadata, object padding, and native integer widths never enter the file.
@@ -141,6 +144,23 @@ The behavior inspector returns success only when the nested input frames and
 all normalized observations match. On failure it reports the first input tick
 or the first behavior tick and field.
 
+## Latest runtime evidence
+
+On 2026-08-02, the isolated x64 Windows build and the macOS headless replay
+both passed all eight tests. A fresh-profile Level 1 version 2 capture then
+replayed 8,765 logical ticks with identical inputs and normalized observations:
+
+- title to main menu at tick 2,510;
+- Adventure intro at tick 6,162 and playable lawn at tick 7,017;
+- Peashooter selection at tick 7,513 and placement at tick 7,564;
+- sun changed from 150 to 50, packet recharge advanced from 1 through 750,
+  and the deterministic first falling sun spawned at tick 7,963;
+- `pvz_behavior_inspect` returned `behavior-captures-match`.
+
+The local Windows evidence artifact was 560,993 bytes with SHA-256
+`3c2fb029868d0c220209faf1e9f7f72e89fbc978e055432966c1cd2673bb27c3`.
+The portable artifact had the same size; its producer byte differs by design.
+
 The headless runner rejects malformed, oversized, non-100-Hz, or
 non-sequential streams before running the game. `pvz_replay_inspect` can compare
 two raw input streams, a raw stream with the input nested in a session, or two
@@ -158,8 +178,9 @@ hash and the rolling transcript hash.
 ## Evidence boundary
 
 `PVZR` proves what logical input reached each legacy update. `PVZB` adds the
-first cross-runtime behavior layer without pretending the object graphs are
-equivalent. The initial schema is intentionally small; future gameplay slices
-must extend it through a new format version and independent exporters rather
-than adding legacy memory hashes. Screenshot comparison remains a separate
-rendering gate because a behavior match does not prove pixel parity.
+cross-runtime behavior layer without pretending the object graphs are
+equivalent. Version 1 covers lifecycle, focus, and occupancy; version 2 adds
+the deterministic Level 1 economy slice. Future gameplay slices must extend
+the format and independent exporters rather than adding legacy memory hashes.
+Screenshot comparison remains a separate rendering gate because a behavior
+match does not prove pixel parity.

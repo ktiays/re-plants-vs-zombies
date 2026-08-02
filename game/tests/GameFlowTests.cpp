@@ -266,6 +266,15 @@ void TestBoardInteraction()
             aFlow.GetGridRow() == 2,
         "arrow keys move grid selection");
 
+    anInput.PressPointer({100, 20});
+    aFlow.Update(anInput);
+    anInput.Clear();
+    Expect(
+        aFlow.GetGridColumn() == 0xFF &&
+            aFlow.GetGridRow() == 0xFF &&
+            !aFlow.WasGridActivationRequested(),
+        "clicking outside the lawn clears pointer grid focus");
+
     anInput.PressKey(pvz::engine::KeyCode::Escape);
     aFlow.Update(anInput);
     Expect(

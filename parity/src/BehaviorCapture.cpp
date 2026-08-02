@@ -13,11 +13,12 @@ namespace
 {
 
 inline constexpr std::uint32_t kCaptureMagic = 0x425A5650;
-inline constexpr std::uint16_t kCaptureVersion = 1;
+inline constexpr std::uint16_t kLegacyCaptureVersion = 1;
 inline constexpr std::uint32_t kMaximumObservationCount = 1'000'000;
 inline constexpr std::uint32_t kMaximumInputReplaySize =
     256U * 1'024U * 1'024U;
-inline constexpr std::uint64_t kObservationByteCount = 24;
+inline constexpr std::uint64_t kLegacyObservationByteCount = 24;
+inline constexpr std::uint64_t kObservationByteCount = 36;
 
 [[nodiscard]] bool ValidateObservation(
     const game::BehaviorObservation& theObservation,
@@ -59,6 +60,35 @@ inline constexpr std::uint64_t kObservationByteCount = 24;
          ~game::kBehaviorOccupiedCellMask) != 0)
     {
         theError = BehaviorCaptureError::InvalidOccupiedCells;
+        return false;
+    }
+    if (theObservation.mSeedSelection >=
+        game::BehaviorSeedSelection::Count)
+    {
+        theError = BehaviorCaptureError::InvalidSeedSelection;
+        return false;
+    }
+    if (theObservation.mTutorialPhase >=
+        game::BehaviorTutorialPhase::Count)
+    {
+        theError = BehaviorCaptureError::InvalidTutorialPhase;
+        return false;
+    }
+    if ((theObservation.mSeedRefreshing &&
+         (theObservation.mSeedRefreshTime == 0 ||
+          theObservation.mSeedRefreshCounter >
+              theObservation.mSeedRefreshTime)) ||
+        (!theObservation.mSeedRefreshing &&
+         (theObservation.mSeedRefreshCounter != 0 ||
+          theObservation.mSeedRefreshTime != 0)))
+    {
+        theError = BehaviorCaptureError::InvalidSeedRefresh;
+        return false;
+    }
+    if (theObservation.mFirstSunSpawned &&
+        theObservation.mFirstSunCountdown != 0)
+    {
+        theError = BehaviorCaptureError::InvalidFirstSunState;
         return false;
     }
     theError = BehaviorCaptureError::None;
@@ -157,6 +187,14 @@ std::string_view GetBehaviorCaptureErrorMessage(
         return "behavior capture grid coordinate is invalid";
     case BehaviorCaptureError::InvalidOccupiedCells:
         return "behavior capture occupied-cell mask is invalid";
+    case BehaviorCaptureError::InvalidSeedSelection:
+        return "behavior capture seed selection is invalid";
+    case BehaviorCaptureError::InvalidTutorialPhase:
+        return "behavior capture tutorial phase is invalid";
+    case BehaviorCaptureError::InvalidSeedRefresh:
+        return "behavior capture seed refresh state is invalid";
+    case BehaviorCaptureError::InvalidFirstSunState:
+        return "behavior capture first-sun state is invalid";
     case BehaviorCaptureError::TrailingData:
         return "behavior capture has trailing data";
     }
@@ -197,6 +235,7 @@ bool BehaviorCapture::AppendObservation(
 
 void BehaviorCapture::Clear()
 {
+    mFormatVersion = kCurrentFormatVersion;
     mProducer = BehaviorProducer::Unknown;
     mInputReplay.Clear();
     mObservations.clear();
@@ -232,7 +271,7 @@ bool BehaviorCapture::Save(
     }
 
     if (!theWriter.WriteU32(kCaptureMagic) ||
-        !theWriter.WriteU16(kCaptureVersion) ||
+        !theWriter.WriteU16(kCurrentFormatVersion) ||
         !theWriter.WriteU32(engine::kSimulationFrequencyHz) ||
         !theWriter.WriteU8(
             static_cast<std::uint8_t>(mProducer)) ||
@@ -260,7 +299,24 @@ bool BehaviorCapture::Save(
             !theWriter.WriteU8(anObservation.mGridRow) ||
             !theWriter.WriteU64(
                 anObservation.mOccupiedCells) ||
-            !theWriter.WriteU32(anObservation.mPlantCount))
+            !theWriter.WriteU32(anObservation.mPlantCount) ||
+            !theWriter.WriteU16(anObservation.mSun) ||
+            !theWriter.WriteU16(
+                anObservation.mSeedRefreshCounter) ||
+            !theWriter.WriteU16(
+                anObservation.mSeedRefreshTime) ||
+            !theWriter.WriteBool(
+                anObservation.mSeedRefreshing) ||
+            !theWriter.WriteU8(
+                static_cast<std::uint8_t>(
+                    anObservation.mSeedSelection)) ||
+            !theWriter.WriteU8(
+                static_cast<std::uint8_t>(
+                    anObservation.mTutorialPhase)) ||
+            !theWriter.WriteU16(
+                anObservation.mFirstSunCountdown) ||
+            !theWriter.WriteBool(
+                anObservation.mFirstSunSpawned))
         {
             theError = BehaviorCaptureError::IoError;
             return false;
@@ -293,7 +349,8 @@ bool BehaviorCapture::Load(
         theError = BehaviorCaptureError::InvalidMagic;
         return false;
     }
-    if (aVersion != kCaptureVersion)
+    if (aVersion != kLegacyCaptureVersion &&
+        aVersion != kCurrentFormatVersion)
     {
         theError = BehaviorCaptureError::UnsupportedVersion;
         return false;
@@ -354,9 +411,13 @@ bool BehaviorCapture::Load(
         theError = BehaviorCaptureError::CountMismatch;
         return false;
     }
+    const auto anObservationByteCount =
+        aVersion == kLegacyCaptureVersion
+        ? kLegacyObservationByteCount
+        : kObservationByteCount;
     if (theReader.GetBytesRemaining() <
         static_cast<std::uint64_t>(anObservationCount) *
-            kObservationByteCount)
+            anObservationByteCount)
     {
         theError = BehaviorCaptureError::IoError;
         return false;
@@ -371,6 +432,8 @@ bool BehaviorCapture::Load(
         game::BehaviorObservation anObservation;
         std::uint8_t aScene{};
         std::uint8_t aBoardStage{};
+        std::uint8_t aSeedSelection{};
+        std::uint8_t aTutorialPhase{};
         if (!theReader.ReadU64(anObservation.mTick) ||
             !theReader.ReadU8(aScene) ||
             !theReader.ReadU8(aBoardStage) ||
@@ -383,10 +446,34 @@ bool BehaviorCapture::Load(
             theError = BehaviorCaptureError::IoError;
             return false;
         }
+        if (aVersion == kCurrentFormatVersion &&
+            (!theReader.ReadU16(anObservation.mSun) ||
+             !theReader.ReadU16(
+                 anObservation.mSeedRefreshCounter) ||
+             !theReader.ReadU16(
+                 anObservation.mSeedRefreshTime) ||
+             !theReader.ReadBool(
+                 anObservation.mSeedRefreshing) ||
+             !theReader.ReadU8(aSeedSelection) ||
+             !theReader.ReadU8(aTutorialPhase) ||
+             !theReader.ReadU16(
+                 anObservation.mFirstSunCountdown) ||
+             !theReader.ReadBool(
+                 anObservation.mFirstSunSpawned)))
+        {
+            theError = BehaviorCaptureError::IoError;
+            return false;
+        }
         anObservation.mScene =
             static_cast<game::BehaviorScene>(aScene);
         anObservation.mBoardStage =
             static_cast<game::BehaviorBoardStage>(aBoardStage);
+        anObservation.mSeedSelection =
+            static_cast<game::BehaviorSeedSelection>(
+                aSeedSelection);
+        anObservation.mTutorialPhase =
+            static_cast<game::BehaviorTutorialPhase>(
+                aTutorialPhase);
         if (!ValidateObservation(
                 anObservation,
                 static_cast<std::uint64_t>(anIndex),
@@ -401,6 +488,7 @@ bool BehaviorCapture::Load(
         theError = BehaviorCaptureError::TrailingData;
         return false;
     }
+    mFormatVersion = aVersion;
     mProducer = static_cast<BehaviorProducer>(aProducer);
     mInputReplay = std::move(anInputReplay);
     mObservations = std::move(anObservations);
@@ -411,6 +499,11 @@ bool BehaviorCapture::Load(
 BehaviorProducer BehaviorCapture::GetProducer() const
 {
     return mProducer;
+}
+
+std::uint16_t BehaviorCapture::GetFormatVersion() const
+{
+    return mFormatVersion;
 }
 
 const engine::core::InputReplay&

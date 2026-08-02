@@ -47,8 +47,9 @@ Last updated: 2026-07-31
   compares raw input with portable sessions
 - [x] Versioned fixed-width `PVZB` behavior captures combine exact logical
   input with post-update normalized scene, board stage, grid focus, occupied
-  cells, and plant count; independent legacy and portable exporters plus the
-  behavior inspector report the first differing tick and field
+  cells, plant count, and version 2 Level 1 economy state; independent legacy
+  and portable exporters plus the behavior inspector report the first
+  differing tick and field while version 1 captures remain readable
 - [x] Engine-owned rendering, input, logging, state, and resource protocols
 - [x] Portable PAK indexing, normalization, validation, and resource reads
 - [x] Validation against the supplied retail PAK: 3,198 entries and
@@ -158,8 +159,8 @@ Last updated: 2026-07-31
   Adventure transition, starts the daytime music at order zero, and restores
   the title music when returning to the menu solely through `IMusicResources`
 - [ ] Complete Windows runtime behavior and screenshot baselines for the
-  reconstructed legacy target (the first normalized gameplay observation
-  schema and capture hook are complete)
+  reconstructed legacy target (the 8,765-tick Level 1 economy behavior
+  baseline matches; combat RNG decisions and screenshot coverage remain)
 - [ ] Migration of the remaining gameplay `Board`, `Challenge`, data-array, and
   effect snapshots from raw object blocks to fieldwise fixed-width schemas
 - [x] Mapping portable XML tokens into runtime definitions used by effects
@@ -491,9 +492,11 @@ vertical slice also includes the two-plant tutorial gate, collectible sky sun,
 one normal zombie, Peashooter targeting, peas, damage, eating, and deterministic
 first-wave completion. The remaining three waves, lawn-mower/loss behavior,
 level award, and full random-sequence parity remain later gameplay work. These
-rules pass source-audited local differential and replay tests; real Windows
-runtime confirmation remains pending while the reference machine is
-unavailable.
+rules pass source-audited local differential and replay tests. Real Windows
+runtime confirmation now covers the complete title-to-first-plant economy
+slice and deterministic first-sun trigger. Post-trigger sun choices, zombie
+speed/placement, and full combat remain pending a game-semantic random-decision
+capture instead of relying on the legacy renderer-coupled global RNG stream.
 
 The same startup path resolves `SOUND_LOADINGBAR_FLOWER` through
 `ISoundResources`, decodes it through `IAudioDecoder`, uploads fixed-width

@@ -2,12 +2,14 @@
 
 #include "Lawn/Board.h"
 #include "Lawn/CursorObject.h"
+#include "Lawn/SeedPacket.h"
 #include "Lawn/Widget/TitleScreen.h"
 #include "LawnApp.h"
 #include "pvz/platform/windows/LegacyInputCapture.h"
 #include "widget/WidgetManager.h"
 
 #include <cstdint>
+#include <limits>
 
 namespace pvz::platform::windows
 {
@@ -135,6 +137,79 @@ void ObservePlants(
     }
 }
 
+[[nodiscard]] std::uint16_t NormalizeU16(int theValue)
+{
+    if (theValue <= 0)
+        return 0;
+    constexpr auto aMaximum =
+        std::numeric_limits<std::uint16_t>::max();
+    if (theValue >= static_cast<int>(aMaximum))
+        return aMaximum;
+    return static_cast<std::uint16_t>(theValue);
+}
+
+[[nodiscard]] game::BehaviorTutorialPhase GetTutorialPhase(
+    TutorialState theState)
+{
+    switch (theState)
+    {
+    case TutorialState::TUTORIAL_OFF:
+        return game::BehaviorTutorialPhase::None;
+    case TutorialState::TUTORIAL_LEVEL_1_PICK_UP_PEASHOOTER:
+        return game::BehaviorTutorialPhase::LevelOnePickUpPeashooter;
+    case TutorialState::TUTORIAL_LEVEL_1_PLANT_PEASHOOTER:
+        return game::BehaviorTutorialPhase::LevelOnePlantPeashooter;
+    case TutorialState::TUTORIAL_LEVEL_1_REFRESH_PEASHOOTER:
+        return game::BehaviorTutorialPhase::LevelOneRefreshPeashooter;
+    case TutorialState::TUTORIAL_LEVEL_1_COMPLETED:
+        return game::BehaviorTutorialPhase::LevelOneCompleted;
+    default:
+        return game::BehaviorTutorialPhase::Other;
+    }
+}
+
+void ObserveLevelOneState(
+    Board& theBoard,
+    game::BehaviorObservation& theObservation)
+{
+    theObservation.mSun = NormalizeU16(theBoard.mSunMoney);
+    theObservation.mTutorialPhase =
+        GetTutorialPhase(theBoard.mTutorialState);
+
+    if (theBoard.mSeedBank != nullptr &&
+        theBoard.mSeedBank->mNumPackets > 0)
+    {
+        const auto& aPacket =
+            theBoard.mSeedBank->mSeedPackets[0];
+        if (aPacket.mRefreshing)
+        {
+            theObservation.mSeedRefreshing = true;
+            theObservation.mSeedRefreshCounter =
+                NormalizeU16(aPacket.mRefreshCounter);
+            theObservation.mSeedRefreshTime =
+                NormalizeU16(aPacket.mRefreshTime);
+        }
+        if (theBoard.mCursorObject != nullptr &&
+            theBoard.mCursorObject->mSeedBankIndex >= 0)
+        {
+            theObservation.mSeedSelection =
+                aPacket.mPacketType ==
+                        SeedType::SEED_PEASHOOTER
+                ? game::BehaviorSeedSelection::Peashooter
+                : game::BehaviorSeedSelection::Other;
+        }
+    }
+
+    theObservation.mFirstSunSpawned =
+        theBoard.mNumSunsFallen > 0;
+    if (theObservation.mPlantCount > 0 &&
+        !theObservation.mFirstSunSpawned)
+    {
+        theObservation.mFirstSunCountdown =
+            NormalizeU16(theBoard.mSunCountDown);
+    }
+}
+
 } // namespace
 
 void CaptureLegacyBehaviorTick(LawnApp& theApp)
@@ -172,6 +247,14 @@ void CaptureLegacyBehaviorTick(LawnApp& theApp)
             ObserveGridFocus(*theApp.mBoard, anObservation);
         }
         ObservePlants(*theApp.mBoard, anObservation);
+        if (anObservation.mScene ==
+                game::BehaviorScene::AdventurePlaying &&
+            theApp.mBoard->mLevel == 1)
+        {
+            ObserveLevelOneState(
+                *theApp.mBoard,
+                anObservation);
+        }
     }
     RecordLegacyBehaviorObservation(anObservation);
 }

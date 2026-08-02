@@ -141,14 +141,20 @@ ctest --test-dir out/portable --output-on-failure
 The board gates cover deterministic geometry, render-command alignment, and the
 first Level 1 economy rules. The remaining cross-runtime infrastructure is:
 
-- extension of the Windows behavior observation schema to cover seed-bank
-  economy, followed by a fresh runtime capture of the Level 1 slice;
+- a game-semantic random-decision stream for post-tutorial sun placement,
+  wave composition, and zombie speed without coupling portable logic to the
+  legacy renderer's global RNG consumption;
 - the logical-tick input hook is complete: the Windows reference emits `PVZR`,
   while the macOS application and headless runner emit portable-state `PVZC`
   sessions; the headless runner can consume the Windows stream;
 - a local image normalizer and difference reporter for user-owned golden
   screenshots;
 - a parity manifest that records coverage and approved deviations per scene.
+
+The version 2 seed-bank economy gate and its fresh Windows runtime capture are
+complete. It compares spendable sun, packet recharge, seed selection, tutorial
+phase, and the deterministic first falling-sun trigger. See
+`WINDOWS_REFERENCE_CAPTURE.md` for the 8,765-tick evidence record.
 
 Until the relevant evidence exists, a migrated visual or gameplay slice should
 be reported as implemented but not parity-validated.

@@ -477,16 +477,16 @@ int main(int theArgumentCount, char** theArguments)
         aFlowState.mOccupiedCells ==
             (std::uint64_t{1} << 21U) &&
         aLevelOneBoardState.mSun == 50 &&
-        aLevelOneBoardState.mSeedRefreshCounter == 1 &&
+        aLevelOneBoardState.mSeedRefreshCounter == 2 &&
         aLevelOneBoardState.mSeedRefreshing &&
         aLevelOneBoardState.mSeedSelection ==
             pvz::game::LevelOneSeedSelection::None &&
         aLevelOneCombatState.mPhase ==
             pvz::game::LevelOneCombatPhase::
                 AwaitingSecondPlant &&
-        aLevelOneCombatState.mTick == 3 &&
+        aLevelOneCombatState.mTick == 4 &&
         aLevelOneCombatState.mPlantCount == 1 &&
-        aLevelOneCombatState.mSunCountdown == 399 &&
+        aLevelOneCombatState.mSunCountdown == 398 &&
         aBehaviorObservations.size() == 1'310 &&
         aBehaviorObservations.back().mScene ==
             pvz::game::BehaviorScene::AdventurePlaying &&
@@ -497,8 +497,8 @@ int main(int theArgumentCount, char** theArguments)
         aBehaviorObservations.back().mOccupiedCells ==
             aFlowState.mOccupiedCells &&
         aBehaviorObservations.back().mPlantCount == 1 &&
-        aFinalHash == 17'517'935'322'065'780'340ULL &&
-        aTranscriptHash == 15'011'143'718'636'161'125ULL;
+        aFinalHash == 17'741'208'059'383'384'452ULL &&
+        aTranscriptHash == 912'691'141'119'886'216ULL;
 
     pvz::engine::core::BinaryStateWriter aSessionWriter;
     pvz::engine::core::ReplaySessionError aSessionError{};

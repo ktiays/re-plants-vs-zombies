@@ -65,6 +65,13 @@ void TestBehaviorCaptureBridge()
     anObservation.mOccupiedCells =
         std::uint64_t{1} << 19U;
     anObservation.mPlantCount = 1;
+    anObservation.mSun = 50;
+    anObservation.mSeedRefreshCounter = 25;
+    anObservation.mSeedRefreshTime = 750;
+    anObservation.mSeedRefreshing = true;
+    anObservation.mTutorialPhase =
+        pvz::game::BehaviorTutorialPhase::
+            LevelOneRefreshPeashooter;
     pvz::platform::windows::RecordLegacyBehaviorObservation(
         anObservation);
 
@@ -113,11 +120,16 @@ void TestBehaviorCaptureBridge()
         Expect(
             aCapture.GetProducer() ==
                 pvz::parity::BehaviorProducer::LegacyWindows &&
+            aCapture.GetFormatVersion() == 2 &&
             aCapture.GetInputReplay().GetFrames().size() == 1 &&
             anObservations.size() == 1 &&
             anObservations[0].mGridColumn == 1 &&
             anObservations[0].mGridRow == 2 &&
-            anObservations[0].mPlantCount == 1,
+            anObservations[0].mPlantCount == 1 &&
+            anObservations[0].mSun == 50 &&
+            anObservations[0].mSeedRefreshCounter == 25 &&
+            anObservations[0].mSeedRefreshTime == 750 &&
+            anObservations[0].mSeedRefreshing,
             "reference behavior fields round trip");
     }
 

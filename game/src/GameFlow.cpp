@@ -409,6 +409,8 @@ void GameFlow::SelectGridCell(
             thePosition,
             aCoordinate))
     {
+        mState.mGridColumn = kNoGridCoordinate;
+        mState.mGridRow = kNoGridCoordinate;
         return;
     }
     mState.mGridColumn = aCoordinate.mColumn;

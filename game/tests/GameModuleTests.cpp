@@ -886,6 +886,19 @@ void TestSceneMusicTransitions()
     anInput.PressKey(pvz::engine::KeyCode::Space);
     aGame.Update(pvz::engine::GameTick{1'310}, anInput);
     anInput.Clear();
+    const auto anEconomyObservation =
+        aGame.GetBehaviorObservation();
+    Expect(
+        anEconomyObservation.mSun == 50 &&
+            anEconomyObservation.mSeedRefreshCounter == 1 &&
+            anEconomyObservation.mSeedRefreshTime == 750 &&
+            anEconomyObservation.mSeedRefreshing &&
+            anEconomyObservation.mTutorialPhase ==
+                pvz::game::BehaviorTutorialPhase::
+                    LevelOneRefreshPeashooter &&
+            anEconomyObservation.mFirstSunCountdown == 399 &&
+            !anEconomyObservation.mFirstSunSpawned,
+        "behavior observation exports post-input Level 1 economy state");
     pvz::engine::core::BinaryStateWriter aWriter;
     Expect(
         aGame.SaveState(aWriter),
@@ -920,6 +933,10 @@ void TestSceneMusicTransitions()
     pvz::engine::TickIndex aCombatTick = 1'311;
     while (aGame.GetLevelOneCombatState().mSunsSpawned < 1)
         aGame.Update(pvz::engine::GameTick{aCombatTick++}, anInput);
+    Expect(
+        aGame.GetBehaviorObservation().mFirstSunSpawned &&
+            aGame.GetBehaviorObservation().mFirstSunCountdown == 0,
+        "behavior observation normalizes the deterministic first-sun gate");
     anInput.PressPointer({405, 90});
     aGame.Update(pvz::engine::GameTick{aCombatTick++}, anInput);
     anInput.Clear();

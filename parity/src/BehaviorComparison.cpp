@@ -26,6 +26,22 @@ std::string_view GetBehaviorFieldName(BehaviorField theField)
         return "occupied-cells";
     case BehaviorField::PlantCount:
         return "plant-count";
+    case BehaviorField::Sun:
+        return "sun";
+    case BehaviorField::SeedRefreshCounter:
+        return "seed-refresh-counter";
+    case BehaviorField::SeedRefreshTime:
+        return "seed-refresh-time";
+    case BehaviorField::SeedRefreshing:
+        return "seed-refreshing";
+    case BehaviorField::SeedSelection:
+        return "seed-selection";
+    case BehaviorField::TutorialPhase:
+        return "tutorial-phase";
+    case BehaviorField::FirstSunCountdown:
+        return "first-sun-countdown";
+    case BehaviorField::FirstSunSpawned:
+        return "first-sun-spawned";
     case BehaviorField::ObservationCount:
         return "observation-count";
     }
@@ -34,7 +50,8 @@ std::string_view GetBehaviorFieldName(BehaviorField theField)
 
 BehaviorDifference FindFirstBehaviorDifference(
     std::span<const game::BehaviorObservation> theLeft,
-    std::span<const game::BehaviorObservation> theRight)
+    std::span<const game::BehaviorObservation> theRight,
+    std::uint16_t theCommonFormatVersion)
 {
     const auto aCount = std::min(theLeft.size(), theRight.size());
     for (std::size_t anIndex = 0; anIndex < aCount; ++anIndex)
@@ -56,6 +73,33 @@ BehaviorDifference FindFirstBehaviorDifference(
             return {aTick, BehaviorField::OccupiedCells};
         if (aLeft.mPlantCount != aRight.mPlantCount)
             return {aTick, BehaviorField::PlantCount};
+        if (theCommonFormatVersion < 2)
+            continue;
+        if (aLeft.mSun != aRight.mSun)
+            return {aTick, BehaviorField::Sun};
+        if (aLeft.mSeedRefreshCounter !=
+            aRight.mSeedRefreshCounter)
+        {
+            return {aTick, BehaviorField::SeedRefreshCounter};
+        }
+        if (aLeft.mSeedRefreshTime != aRight.mSeedRefreshTime)
+            return {aTick, BehaviorField::SeedRefreshTime};
+        if (aLeft.mSeedRefreshing != aRight.mSeedRefreshing)
+            return {aTick, BehaviorField::SeedRefreshing};
+        if (aLeft.mSeedSelection != aRight.mSeedSelection)
+            return {aTick, BehaviorField::SeedSelection};
+        if (aLeft.mTutorialPhase != aRight.mTutorialPhase)
+            return {aTick, BehaviorField::TutorialPhase};
+        if (aLeft.mFirstSunCountdown !=
+            aRight.mFirstSunCountdown)
+        {
+            return {aTick, BehaviorField::FirstSunCountdown};
+        }
+        if (aLeft.mFirstSunSpawned !=
+            aRight.mFirstSunSpawned)
+        {
+            return {aTick, BehaviorField::FirstSunSpawned};
+        }
     }
     if (theLeft.size() != theRight.size())
     {

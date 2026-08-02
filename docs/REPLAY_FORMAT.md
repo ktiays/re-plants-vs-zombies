@@ -171,7 +171,7 @@ For a raw-to-raw or raw-to-session comparison, it compares the input frames and
 reports `inputs-match`; state comparison is unavailable until both operands
 contain state hashes.
 
-## Version 1 behavior capture
+## Versioned behavior capture
 
 A `.pvzb` capture combines the complete input replay with one normalized
 post-update observation per frame:
@@ -179,14 +179,14 @@ post-update observation per frame:
 | Field | Type | Meaning |
 | --- | --- | --- |
 | Magic | `uint32` | `0x425A5650` (`PVZB`) |
-| Version | `uint16` | `1` |
+| Version | `uint16` | `1` or `2`; new captures write `2` |
 | Simulation frequency | `uint32` | `100` |
 | Producer | `uint8` | Unknown, portable game, or legacy Windows |
 | Replay byte count | `uint32` | At most 256 MiB |
 | Replay bytes | byte array | Complete versioned `PVZR` stream |
 | Observation count | `uint32` | Must equal replay frame count |
 
-Each 24-byte observation contains:
+Version 1 uses a 24-byte observation:
 
 | Field | Type | Meaning |
 | --- | --- | --- |
@@ -198,7 +198,27 @@ Each 24-byte observation contains:
 | Occupied cells | `uint64` | Low 54 bits represent the 9 by 6 board |
 | Plant count | `uint32` | Live board plants; may exceed occupied bits for stacked plants |
 
-The producer is provenance only and is not compared. The Windows exporter
+Version 2 appends twelve fixed-width bytes, for a 36-byte observation:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| Sun | `uint16` | Current Level 1 spendable sun |
+| Seed refresh counter | `uint16` | Current Peashooter packet recharge progress, or zero while idle |
+| Seed refresh time | `uint16` | Peashooter packet recharge duration, or zero while idle |
+| Seed refreshing | `uint8` boolean | Whether the Peashooter packet is recharging |
+| Seed selection | `uint8` enum | None, Peashooter, or another legacy seed |
+| Tutorial phase | `uint8` enum | Normalized Level 1 pick-up, placement, refresh, or completion phase |
+| First-sun countdown | `uint16` | Deterministic tutorial countdown before the first falling sun; zero afterward |
+| First sun spawned | `uint8` boolean | Whether the deterministic first falling-sun gate has fired |
+
+The first-sun fields deliberately stop at the deterministic gate. Later sun
+delay, position, and ground-height choices use the legacy global RNG and are
+not treated as exact input-replay state until a game-semantic random-decision
+stream is available. This prevents renderer or loading RNG consumption from
+being mistaken for portable gameplay drift.
+
+The producer is provenance only and is not compared. When versions differ,
+the inspector compares the common schema prefix. The Windows exporter
 converts legacy enums and live `DataArray<Plant>` objects field by field; it
 does not persist array metadata, pointers, padding, or native object memory.
 The portable exporter derives the same schema from `GameModule`.

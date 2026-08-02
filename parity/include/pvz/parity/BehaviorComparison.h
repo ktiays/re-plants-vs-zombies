@@ -23,6 +23,14 @@ enum class BehaviorField : std::uint8_t
     GridRow,
     OccupiedCells,
     PlantCount,
+    Sun,
+    SeedRefreshCounter,
+    SeedRefreshTime,
+    SeedRefreshing,
+    SeedSelection,
+    TutorialPhase,
+    FirstSunCountdown,
+    FirstSunSpawned,
     ObservationCount,
 };
 
@@ -36,7 +44,8 @@ struct BehaviorDifference
     BehaviorField theField);
 [[nodiscard]] BehaviorDifference FindFirstBehaviorDifference(
     std::span<const game::BehaviorObservation> theLeft,
-    std::span<const game::BehaviorObservation> theRight);
+    std::span<const game::BehaviorObservation> theRight,
+    std::uint16_t theCommonFormatVersion = 2);
 
 static_assert(sizeof(BehaviorField) == 1);
 

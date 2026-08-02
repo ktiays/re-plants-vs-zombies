@@ -145,6 +145,7 @@ void PrintSummary(
         << " producer="
         << pvz::parity::GetBehaviorProducerName(
                theCapture.GetProducer())
+        << " format=" << theCapture.GetFormatVersion()
         << " frames="
         << theCapture.GetInputReplay().GetFrames().size()
         << " observations="
@@ -176,6 +177,47 @@ void PrintTimeline(
                 << " board="
                 << GetBoardStageName(
                        anObservation.mBoardStage)
+                << '\n';
+        }
+        const bool hasLevelOneTransition =
+            anObservation.mScene ==
+                pvz::game::BehaviorScene::AdventurePlaying &&
+            (anIndex == 0 ||
+             anObservation.mPlantCount !=
+                 anObservations[anIndex - 1].mPlantCount ||
+             anObservation.mSun !=
+                 anObservations[anIndex - 1].mSun ||
+             anObservation.mSeedRefreshing !=
+                 anObservations[anIndex - 1].mSeedRefreshing ||
+             anObservation.mSeedSelection !=
+                 anObservations[anIndex - 1].mSeedSelection ||
+             anObservation.mTutorialPhase !=
+                 anObservations[anIndex - 1].mTutorialPhase ||
+             anObservation.mFirstSunSpawned !=
+                 anObservations[anIndex - 1].mFirstSunSpawned);
+        if (hasLevelOneTransition &&
+            theCapture.GetFormatVersion() >= 2)
+        {
+            std::cout
+                << "level-one-tick=" << anObservation.mTick
+                << " sun=" << anObservation.mSun
+                << " plants=" << anObservation.mPlantCount
+                << " refresh="
+                << anObservation.mSeedRefreshCounter
+                << '/' << anObservation.mSeedRefreshTime
+                << " refreshing="
+                << static_cast<std::uint32_t>(
+                       anObservation.mSeedRefreshing)
+                << " selection="
+                << static_cast<std::uint32_t>(
+                       anObservation.mSeedSelection)
+                << " tutorial="
+                << static_cast<std::uint32_t>(
+                       anObservation.mTutorialPhase)
+                << " first-sun-countdown="
+                << anObservation.mFirstSunCountdown
+                << " first-sun-spawned="
+                << anObservation.mFirstSunSpawned
                 << '\n';
         }
     }
@@ -320,6 +362,70 @@ void PrintBehaviorDifference(
                 << " left=" << aLeftValue.mPlantCount
                 << " right=" << aRightValue.mPlantCount;
         }
+        else if (theDifference.mField ==
+                 pvz::parity::BehaviorField::Sun)
+        {
+            std::cout
+                << " left=" << aLeftValue.mSun
+                << " right=" << aRightValue.mSun;
+        }
+        else if (theDifference.mField ==
+                 pvz::parity::BehaviorField::SeedRefreshCounter)
+        {
+            std::cout
+                << " left=" << aLeftValue.mSeedRefreshCounter
+                << " right=" << aRightValue.mSeedRefreshCounter;
+        }
+        else if (theDifference.mField ==
+                 pvz::parity::BehaviorField::SeedRefreshTime)
+        {
+            std::cout
+                << " left=" << aLeftValue.mSeedRefreshTime
+                << " right=" << aRightValue.mSeedRefreshTime;
+        }
+        else if (theDifference.mField ==
+                 pvz::parity::BehaviorField::SeedRefreshing)
+        {
+            std::cout
+                << " left=" << aLeftValue.mSeedRefreshing
+                << " right=" << aRightValue.mSeedRefreshing;
+        }
+        else if (theDifference.mField ==
+                 pvz::parity::BehaviorField::SeedSelection)
+        {
+            std::cout
+                << " left="
+                << static_cast<std::uint32_t>(
+                       aLeftValue.mSeedSelection)
+                << " right="
+                << static_cast<std::uint32_t>(
+                       aRightValue.mSeedSelection);
+        }
+        else if (theDifference.mField ==
+                 pvz::parity::BehaviorField::TutorialPhase)
+        {
+            std::cout
+                << " left="
+                << static_cast<std::uint32_t>(
+                       aLeftValue.mTutorialPhase)
+                << " right="
+                << static_cast<std::uint32_t>(
+                       aRightValue.mTutorialPhase);
+        }
+        else if (theDifference.mField ==
+                 pvz::parity::BehaviorField::FirstSunCountdown)
+        {
+            std::cout
+                << " left=" << aLeftValue.mFirstSunCountdown
+                << " right=" << aRightValue.mFirstSunCountdown;
+        }
+        else if (theDifference.mField ==
+                 pvz::parity::BehaviorField::FirstSunSpawned)
+        {
+            std::cout
+                << " left=" << aLeftValue.mFirstSunSpawned
+                << " right=" << aRightValue.mFirstSunSpawned;
+        }
     }
     std::cout << '\n';
 }
@@ -359,7 +465,10 @@ int main(int theArgumentCount, char** theArguments)
     const auto aBehaviorDifference =
         pvz::parity::FindFirstBehaviorDifference(
             aLeft.GetObservations(),
-            aRight.GetObservations());
+            aRight.GetObservations(),
+            std::min(
+                aLeft.GetFormatVersion(),
+                aRight.GetFormatVersion()));
     if (anInputDifference != kNoDifference)
     {
         std::cout

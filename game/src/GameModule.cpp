@@ -359,19 +359,6 @@ void GameModule::Update(
     const auto aPreviousCombatState =
         mLevelOneCombat.GetState();
     const bool hadNotice = mFlow.GetNoticeTicks() > 0;
-    if (aPreviousScene == GameScene::AdventureDay)
-    {
-        mLevelOneBoard.Update();
-        mLevelOneCombat.Update();
-        const auto aDestroyedCells =
-            mLevelOneCombat.ConsumeDestroyedCells();
-        if (aDestroyedCells != 0)
-        {
-            mFlow.SetOccupiedCells(
-                mFlow.GetState().mOccupiedCells &
-                ~aDestroyedCells);
-        }
-    }
     mFlow.Update(theInput);
 
     const auto aCurrentScene = mFlow.GetScene();
@@ -446,6 +433,17 @@ void GameModule::Update(
                 static_cast<void>(
                     mLevelOneBoard.SelectPeashooter());
             }
+        }
+
+        mLevelOneBoard.Update();
+        mLevelOneCombat.Update();
+        const auto aDestroyedCells =
+            mLevelOneCombat.ConsumeDestroyedCells();
+        if (aDestroyedCells != 0)
+        {
+            mFlow.SetOccupiedCells(
+                mFlow.GetState().mOccupiedCells &
+                ~aDestroyedCells);
         }
     }
 
@@ -864,6 +862,9 @@ BehaviorObservation GameModule::GetBehaviorObservation() const
         anObservation.mBoardStage = BehaviorBoardStage::Day;
         break;
     case GameScene::AdventureDay:
+    {
+        const auto aBoardState = mLevelOneBoard.GetState();
+        const auto aCombatState = mLevelOneCombat.GetState();
         anObservation.mScene = BehaviorScene::AdventurePlaying;
         anObservation.mBoardStage = BehaviorBoardStage::Day;
         anObservation.mGridColumn = aFlowState.mGridColumn;
@@ -873,7 +874,55 @@ BehaviorObservation GameModule::GetBehaviorObservation() const
         anObservation.mPlantCount =
             static_cast<std::uint32_t>(
                 std::popcount(aFlowState.mOccupiedCells));
+        anObservation.mSun = aBoardState.mSun;
+        anObservation.mSeedRefreshCounter =
+            aBoardState.mSeedRefreshCounter;
+        anObservation.mSeedRefreshing =
+            aBoardState.mSeedRefreshing;
+        if (aBoardState.mSeedRefreshing)
+        {
+            anObservation.mSeedRefreshTime =
+                LevelOneBoard::kPeashooterRefreshTime;
+        }
+        if (aBoardState.mSeedSelection ==
+            LevelOneSeedSelection::Peashooter)
+        {
+            anObservation.mSeedSelection =
+                BehaviorSeedSelection::Peashooter;
+        }
+        if (anObservation.mPlantCount >= 2)
+        {
+            anObservation.mTutorialPhase =
+                BehaviorTutorialPhase::LevelOneCompleted;
+        }
+        else if (anObservation.mSeedSelection ==
+                 BehaviorSeedSelection::Peashooter)
+        {
+            anObservation.mTutorialPhase =
+                BehaviorTutorialPhase::LevelOnePlantPeashooter;
+        }
+        else if (aBoardState.mSeedRefreshing ||
+                 (anObservation.mPlantCount == 1 &&
+                  aBoardState.mSun <
+                      LevelOneBoard::kPeashooterCost))
+        {
+            anObservation.mTutorialPhase =
+                BehaviorTutorialPhase::LevelOneRefreshPeashooter;
+        }
+        else
+        {
+            anObservation.mTutorialPhase =
+                BehaviorTutorialPhase::LevelOnePickUpPeashooter;
+        }
+        anObservation.mFirstSunSpawned =
+            aCombatState.mSunsSpawned != 0;
+        if (!anObservation.mFirstSunSpawned)
+        {
+            anObservation.mFirstSunCountdown =
+                aCombatState.mSunCountdown;
+        }
         break;
+    }
     case GameScene::Count:
         anObservation.mScene = BehaviorScene::Other;
         break;
