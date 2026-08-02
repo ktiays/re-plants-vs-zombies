@@ -200,6 +200,10 @@ set(ALL_FILES
 ################################################################################
 if(MSVC)
     add_executable(${PROJECT_NAME} WIN32 ${ALL_FILES})
+    # Visual Studio may compile this monolithic legacy target concurrently
+    # even when MSBuild project parallelism is disabled. Serialize writes to
+    # the shared compiler PDB so clean reference builds remain reliable.
+    target_compile_options(${PROJECT_NAME} PRIVATE /FS)
 else()
     add_executable(${PROJECT_NAME} ${ALL_FILES})
 endif()
