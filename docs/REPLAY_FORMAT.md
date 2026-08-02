@@ -179,7 +179,7 @@ post-update observation per frame:
 | Field | Type | Meaning |
 | --- | --- | --- |
 | Magic | `uint32` | `0x425A5650` (`PVZB`) |
-| Version | `uint16` | `1` through `6`; new captures write `6` |
+| Version | `uint16` | `1` through `7`; new captures write `7` |
 | Simulation frequency | `uint32` | `100` |
 | Producer | `uint8` | Unknown, portable game, or legacy Windows |
 | Replay byte count | `uint32` | At most 256 MiB |
@@ -289,6 +289,23 @@ prior tick's synchronized X, matching the legacy move, collision, then integer
 synchronization order. This prevents binary `float 3.33f` accumulation from
 drifting across a collision pixel without exposing native floating-point state.
 
+Version 7 appends eight fixed-width 16-byte sun slots to every observation,
+for a 174-byte observation:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| Active | `uint8` boolean | Whether this stable slot contains a live falling sun |
+| Being collected | `uint8` boolean | Whether a click started its flight to the counter |
+| X | `int32` | Post-update horizontal position in milli-pixels |
+| Y | `int32` | Post-update vertical position in milli-pixels |
+| Ground Y | `int32` | Falling destination in milli-pixels |
+| Age | `uint16` | Number of legacy or portable updates since creation |
+
+The Windows exporter assigns native sky-sun IDs to the same first-free
+eight-slot model used by portable gameplay. The inspector reports the first
+trajectory mismatch independently from earlier scene timing, including the
+tick, slot, collection state, position, ground destination, and age.
+
 Versions 1 and 2 remain readable and use portable deterministic fallback
 choices because they contain no decision tape. Version 3 remains readable and
 replays its sun and zombie decisions while using deterministic wave and
@@ -296,7 +313,8 @@ Peashooter schedule fallbacks. Version 4 enables strict wave scheduling while
 retaining the deterministic Peashooter fallback. Version 5 strictly consumes
 both schedule kinds, projectile spawns, and zombie motion records while using
 deterministic projectile movement. Version 6 additionally consumes projectile
-motion records.
+motion records. Version 7 retains that decision tape and additionally compares
+the per-slot sun trajectory observations.
 
 The producer is provenance only and is not compared. When versions differ,
 the inspector compares the common schema prefix. When both captures are

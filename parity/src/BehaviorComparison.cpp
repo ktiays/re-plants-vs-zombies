@@ -5,6 +5,47 @@
 
 namespace pvz::parity
 {
+namespace
+{
+
+[[nodiscard]] BehaviorDifference FindSunDifferenceAtTick(
+    const game::BehaviorObservation& theLeft,
+    const game::BehaviorObservation& theRight,
+    std::uint64_t theTick)
+{
+    for (std::size_t aSlot = 0;
+         aSlot < game::kBehaviorSunSlotCount;
+         ++aSlot)
+    {
+        const auto& aLeftSun = theLeft.mSuns[aSlot];
+        const auto& aRightSun = theRight.mSuns[aSlot];
+        const auto aSunSlot = static_cast<std::uint8_t>(aSlot);
+        if (aLeftSun.mActive != aRightSun.mActive)
+            return {theTick, BehaviorField::SunActive, aSunSlot};
+        if (aLeftSun.mBeingCollected != aRightSun.mBeingCollected)
+        {
+            return {
+                theTick,
+                BehaviorField::SunBeingCollected,
+                aSunSlot,
+            };
+        }
+        if (aLeftSun.mXMilliPixels != aRightSun.mXMilliPixels)
+            return {theTick, BehaviorField::SunX, aSunSlot};
+        if (aLeftSun.mYMilliPixels != aRightSun.mYMilliPixels)
+            return {theTick, BehaviorField::SunY, aSunSlot};
+        if (aLeftSun.mGroundYMilliPixels !=
+            aRightSun.mGroundYMilliPixels)
+        {
+            return {theTick, BehaviorField::SunGroundY, aSunSlot};
+        }
+        if (aLeftSun.mAge != aRightSun.mAge)
+            return {theTick, BehaviorField::SunAge, aSunSlot};
+    }
+    return {};
+}
+
+} // namespace
 
 std::string_view GetBehaviorFieldName(BehaviorField theField)
 {
@@ -58,6 +99,18 @@ std::string_view GetBehaviorFieldName(BehaviorField theField)
         return "zombie-wave-health";
     case BehaviorField::ProjectileCount:
         return "projectile-count";
+    case BehaviorField::SunActive:
+        return "sun-active";
+    case BehaviorField::SunBeingCollected:
+        return "sun-being-collected";
+    case BehaviorField::SunX:
+        return "sun-x";
+    case BehaviorField::SunY:
+        return "sun-y";
+    case BehaviorField::SunGroundY:
+        return "sun-ground-y";
+    case BehaviorField::SunAge:
+        return "sun-age";
     case BehaviorField::ObservationCount:
         return "observation-count";
     }
@@ -142,6 +195,12 @@ BehaviorDifference FindFirstBehaviorDifference(
         }
         if (aLeft.mProjectileCount != aRight.mProjectileCount)
             return {aTick, BehaviorField::ProjectileCount};
+        if (theCommonFormatVersion < 7)
+            continue;
+        const auto aSunDifference =
+            FindSunDifferenceAtTick(aLeft, aRight, aTick);
+        if (aSunDifference.mField != BehaviorField::None)
+            return aSunDifference;
     }
     if (theLeft.size() != theRight.size())
     {
@@ -149,6 +208,27 @@ BehaviorDifference FindFirstBehaviorDifference(
             static_cast<std::uint64_t>(aCount),
             BehaviorField::ObservationCount,
         };
+    }
+    return {};
+}
+
+BehaviorDifference FindFirstSunTrajectoryDifference(
+    std::span<const game::BehaviorObservation> theLeft,
+    std::span<const game::BehaviorObservation> theRight,
+    std::uint16_t theCommonFormatVersion)
+{
+    if (theCommonFormatVersion < 7)
+        return {};
+    const auto aCount = std::min(theLeft.size(), theRight.size());
+    for (std::size_t anIndex = 0; anIndex < aCount; ++anIndex)
+    {
+        const auto& aLeft = theLeft[anIndex];
+        const auto& aRight = theRight[anIndex];
+        const auto aTick = static_cast<std::uint64_t>(anIndex);
+        const auto aSunDifference =
+            FindSunDifferenceAtTick(aLeft, aRight, aTick);
+        if (aSunDifference.mField != BehaviorField::None)
+            return aSunDifference;
     }
     return {};
 }

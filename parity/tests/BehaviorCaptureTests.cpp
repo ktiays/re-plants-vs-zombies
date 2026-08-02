@@ -70,12 +70,12 @@ void TestGoldenBytesAndRoundTrip()
     const auto aBytes = SaveCapture(MakeCapture());
     constexpr auto kExpected = []
     {
-        std::array<std::uint8_t, 111> aResult{};
+        std::array<std::uint8_t, 239> aResult{};
         aResult[0] = 0x50;
         aResult[1] = 0x56;
         aResult[2] = 0x5A;
         aResult[3] = 0x42;
-        aResult[4] = 0x06;
+        aResult[4] = 0x07;
         aResult[6] = 0x64;
         aResult[10] = 0x01;
         aResult[11] = 0x2A;
@@ -126,7 +126,24 @@ void TestGoldenBytesAndRoundTrip()
             pvz::game::BehaviorScene::Title,
         "observation should round trip");
 
-    auto aPeashooterBytes = aBytes;
+    std::vector<std::byte> aVersionSixBytes(
+        aBytes.begin(),
+        aBytes.begin() + 107);
+    aVersionSixBytes[4] = std::byte{6};
+    aVersionSixBytes.insert(
+        aVersionSixBytes.end(),
+        aBytes.begin() + 235,
+        aBytes.end());
+    pvz::engine::core::BinaryStateReader aVersionSixReader(
+        aVersionSixBytes);
+    pvz::parity::BehaviorCapture aVersionSixCapture;
+    Expect(
+        aVersionSixCapture.Load(aVersionSixReader, anError) &&
+        aVersionSixCapture.GetFormatVersion() == 6 &&
+        aVersionSixCapture.GetRandomDecisions().empty(),
+        "version 6 behavior capture should remain readable");
+
+    auto aPeashooterBytes = aVersionSixBytes;
     aPeashooterBytes[4] = std::byte{5};
     pvz::engine::core::BinaryStateReader aPeashooterReader(
         aPeashooterBytes);
@@ -138,13 +155,13 @@ void TestGoldenBytesAndRoundTrip()
         "version 5 behavior capture should remain readable");
 
     std::vector<std::byte> aCompleteLevelBytes(
-        aBytes.begin(),
-        aBytes.begin() + 104);
+        aVersionSixBytes.begin(),
+        aVersionSixBytes.begin() + 104);
     aCompleteLevelBytes[4] = std::byte{4};
     aCompleteLevelBytes.insert(
         aCompleteLevelBytes.end(),
-        aBytes.begin() + 107,
-        aBytes.end());
+        aVersionSixBytes.begin() + 107,
+        aVersionSixBytes.end());
     pvz::engine::core::BinaryStateReader aCompleteLevelReader(
         aCompleteLevelBytes);
     pvz::parity::BehaviorCapture aCompleteLevelCapture;
@@ -157,13 +174,13 @@ void TestGoldenBytesAndRoundTrip()
         "version 4 behavior capture should remain readable");
 
     std::vector<std::byte> aRandomDecisionBytes(
-        aBytes.begin(),
-        aBytes.begin() + 97);
+        aVersionSixBytes.begin(),
+        aVersionSixBytes.begin() + 97);
     aRandomDecisionBytes[4] = std::byte{3};
     aRandomDecisionBytes.insert(
         aRandomDecisionBytes.end(),
-        aBytes.begin() + 107,
-        aBytes.end());
+        aVersionSixBytes.begin() + 107,
+        aVersionSixBytes.end());
     pvz::engine::core::BinaryStateReader aRandomDecisionReader(
         aRandomDecisionBytes);
     pvz::parity::BehaviorCapture aRandomDecisionCapture;
@@ -175,7 +192,7 @@ void TestGoldenBytesAndRoundTrip()
         aRandomDecisionCapture.GetRandomDecisions().empty(),
         "version 3 behavior capture should remain readable");
 
-    auto anEconomyBytes = aBytes;
+    auto anEconomyBytes = aVersionSixBytes;
     anEconomyBytes[4] = std::byte{2};
     anEconomyBytes.resize(97);
     pvz::engine::core::BinaryStateReader anEconomyReader(
@@ -187,7 +204,7 @@ void TestGoldenBytesAndRoundTrip()
         anEconomyCapture.GetRandomDecisions().empty(),
         "version 2 behavior capture should remain readable");
 
-    auto aLegacyBytes = aBytes;
+    auto aLegacyBytes = aVersionSixBytes;
     aLegacyBytes[4] = std::byte{1};
     aLegacyBytes.resize(85);
     pvz::engine::core::BinaryStateReader aLegacyReader(
@@ -243,7 +260,7 @@ void TestMalformedCaptures()
         "invalid behavior magic should fail");
 
     aBytes = aGolden;
-    aBytes[4] = std::byte{7};
+    aBytes[4] = std::byte{8};
     ExpectLoadError(
         std::move(aBytes),
         pvz::parity::BehaviorCaptureError::UnsupportedVersion,
@@ -387,6 +404,20 @@ void TestMalformedCaptures()
         "invalid current-wave health should fail");
 
     aBytes = aGolden;
+    aBytes[109] = std::byte{1};
+    ExpectLoadError(
+        std::move(aBytes),
+        pvz::parity::BehaviorCaptureError::InvalidSunTrajectoryState,
+        "inactive sun with trajectory data should fail");
+
+    aBytes = aGolden;
+    aBytes[107] = std::byte{1};
+    ExpectLoadError(
+        std::move(aBytes),
+        pvz::parity::BehaviorCaptureError::InvalidSunTrajectoryState,
+        "active sun outside gameplay should fail");
+
+    aBytes = aGolden;
     aBytes.push_back(std::byte{0});
     ExpectLoadError(
         std::move(aBytes),
@@ -416,24 +447,24 @@ void TestMalformedCaptures()
     const auto aDecisionGolden = SaveCapture(aDecisionCapture);
 
     aBytes = aDecisionGolden;
-    aBytes[107] = std::byte{0xA1};
-    aBytes[108] = std::byte{0x86};
-    aBytes[109] = std::byte{0x01};
+    aBytes[235] = std::byte{0xA1};
+    aBytes[236] = std::byte{0x86};
+    aBytes[237] = std::byte{0x01};
     ExpectLoadError(
         std::move(aBytes),
         pvz::parity::BehaviorCaptureError::TooManyRandomDecisions,
         "oversized random-decision count should fail");
 
     aBytes = aDecisionGolden;
-    aBytes[111] = std::byte{7};
+    aBytes[239] = std::byte{7};
     ExpectLoadError(
         std::move(aBytes),
         pvz::parity::BehaviorCaptureError::InvalidRandomDecisionKind,
         "invalid random-decision kind should fail");
 
     aBytes = aDecisionGolden;
-    aBytes[112] = std::byte{};
-    aBytes[113] = std::byte{};
+    aBytes[240] = std::byte{};
+    aBytes[241] = std::byte{};
     ExpectLoadError(
         std::move(aBytes),
         pvz::parity::BehaviorCaptureError::InvalidRandomDecisionPayload,
@@ -530,6 +561,47 @@ void TestAppendAndSaveValidation()
             },
             anError),
         "append should accept fixed-width projectile motion");
+}
+
+void TestSunTrajectoryRoundTrip()
+{
+    pvz::parity::BehaviorCapture aCapture;
+    aCapture.SetProducer(
+        pvz::parity::BehaviorProducer::PortableGameModule);
+    aCapture.SetInputReplay(MakeInputReplay());
+    pvz::game::BehaviorObservation anObservation;
+    anObservation.mScene =
+        pvz::game::BehaviorScene::AdventurePlaying;
+    anObservation.mBoardStage = pvz::game::BehaviorBoardStage::Day;
+    anObservation.mSuns[3] = {
+        .mActive = true,
+        .mBeingCollected = true,
+        .mXMilliPixels = 245'125,
+        .mYMilliPixels = 188'500,
+        .mGroundYMilliPixels = 488'000,
+        .mAge = 321,
+    };
+    pvz::parity::BehaviorCaptureError anError{};
+    Expect(
+        aCapture.AppendObservation(anObservation, anError),
+        "fixed-width sun trajectory should append");
+    const auto aBytes = SaveCapture(aCapture);
+    pvz::engine::core::BinaryStateReader aReader(aBytes);
+    pvz::parity::BehaviorCapture aLoaded;
+    Expect(
+        aLoaded.Load(aReader, anError),
+        "fixed-width sun trajectory should load");
+    const auto anObservations = aLoaded.GetObservations();
+    Expect(
+        aLoaded.GetFormatVersion() == 7 &&
+        anObservations.size() == 1 &&
+        anObservations[0].mSuns[3].mActive &&
+        anObservations[0].mSuns[3].mBeingCollected &&
+        anObservations[0].mSuns[3].mXMilliPixels == 245'125 &&
+        anObservations[0].mSuns[3].mYMilliPixels == 188'500 &&
+        anObservations[0].mSuns[3].mGroundYMilliPixels == 488'000 &&
+        anObservations[0].mSuns[3].mAge == 321,
+        "fixed-width sun trajectory should round trip");
 }
 
 void TestFirstBehaviorDifference()
@@ -637,6 +709,47 @@ void TestFirstBehaviorDifference()
             aDifference.mField) == "zombie-wave-health",
         "version 5 comparison should expose damage timing drift");
 
+    aRight = aLeft;
+    aLeft[1].mSuns[2] = {
+        .mActive = true,
+        .mXMilliPixels = 320'000,
+        .mYMilliPixels = 180'000,
+        .mGroundYMilliPixels = 480'000,
+        .mAge = 40,
+    };
+    aRight = aLeft;
+    aRight[1].mSuns[2].mBeingCollected = true;
+    aDifference =
+        pvz::parity::FindFirstBehaviorDifference(
+            aLeft,
+            aRight,
+            7);
+    Expect(
+        aDifference.mTick == 1 &&
+        aDifference.mField ==
+            pvz::parity::BehaviorField::SunBeingCollected &&
+        aDifference.mSlot == 2 &&
+        pvz::parity::GetBehaviorFieldName(
+            aDifference.mField) == "sun-being-collected",
+        "version 7 comparison should identify the exact sun slot");
+    const auto aSunDifference =
+        pvz::parity::FindFirstSunTrajectoryDifference(
+            aLeft,
+            aRight,
+            7);
+    Expect(
+        aSunDifference.mTick == 1 &&
+        aSunDifference.mField ==
+            pvz::parity::BehaviorField::SunBeingCollected &&
+        aSunDifference.mSlot == 2,
+        "sun diagnostic should ignore unrelated behavior fields");
+    Expect(
+        pvz::parity::FindFirstSunTrajectoryDifference(
+            aLeft,
+            aRight,
+            6).mField == pvz::parity::BehaviorField::None,
+        "older captures should not compare absent sun trajectories");
+
     aDifference =
         pvz::parity::FindFirstBehaviorDifference(
             std::span<const pvz::game::BehaviorObservation>(
@@ -657,6 +770,7 @@ int main()
     TestGoldenBytesAndRoundTrip();
     TestMalformedCaptures();
     TestAppendAndSaveValidation();
+    TestSunTrajectoryRoundTrip();
     TestFirstBehaviorDifference();
     if (gFailures != 0)
     {

@@ -39,6 +39,12 @@ enum class BehaviorField : std::uint8_t
     LevelAwardSpawned,
     ZombieWaveHealth,
     ProjectileCount,
+    SunActive,
+    SunBeingCollected,
+    SunX,
+    SunY,
+    SunGroundY,
+    SunAge,
     ObservationCount,
 };
 
@@ -46,6 +52,7 @@ struct BehaviorDifference
 {
     std::uint64_t mTick{kNoBehaviorDifferenceTick};
     BehaviorField mField{BehaviorField::None};
+    std::uint8_t mSlot{game::kBehaviorSunSlotCount};
 };
 
 [[nodiscard]] std::string_view GetBehaviorFieldName(
@@ -54,6 +61,10 @@ struct BehaviorDifference
     std::span<const game::BehaviorObservation> theLeft,
     std::span<const game::BehaviorObservation> theRight,
     std::uint16_t theCommonFormatVersion = 2);
+[[nodiscard]] BehaviorDifference FindFirstSunTrajectoryDifference(
+    std::span<const game::BehaviorObservation> theLeft,
+    std::span<const game::BehaviorObservation> theRight,
+    std::uint16_t theCommonFormatVersion);
 
 static_assert(sizeof(BehaviorField) == 1);
 

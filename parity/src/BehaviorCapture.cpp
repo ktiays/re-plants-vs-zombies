@@ -18,6 +18,8 @@ inline constexpr std::uint16_t kEconomyCaptureVersion = 2;
 inline constexpr std::uint16_t kRandomDecisionCaptureVersion = 3;
 inline constexpr std::uint16_t kCompleteLevelCaptureVersion = 4;
 inline constexpr std::uint16_t kPeashooterCaptureVersion = 5;
+inline constexpr std::uint16_t kProjectileMotionCaptureVersion = 6;
+inline constexpr std::uint16_t kSunTrajectoryCaptureVersion = 7;
 inline constexpr std::uint32_t kMaximumObservationCount = 1'000'000;
 inline constexpr std::uint32_t kMaximumRandomDecisionCount = 100'000;
 inline constexpr std::uint32_t kMaximumInputReplaySize =
@@ -26,6 +28,10 @@ inline constexpr std::uint64_t kLegacyObservationByteCount = 24;
 inline constexpr std::uint64_t kEconomyObservationByteCount = 36;
 inline constexpr std::uint64_t kCompleteLevelObservationByteCount = 43;
 inline constexpr std::uint64_t kObservationByteCount = 46;
+inline constexpr std::uint64_t kSunObservationByteCount = 16;
+inline constexpr std::uint64_t kSunTrajectoryObservationByteCount =
+    kObservationByteCount +
+    game::kBehaviorSunSlotCount * kSunObservationByteCount;
 inline constexpr std::uint64_t kLegacyRandomDecisionByteCount = 15;
 inline constexpr std::uint64_t kCompleteLevelRandomDecisionByteCount = 17;
 inline constexpr std::uint64_t kRandomDecisionByteCount = 19;
@@ -259,6 +265,36 @@ inline constexpr std::uint64_t kRandomDecisionByteCount = 19;
             BehaviorCaptureError::InvalidLevelOneCombatState;
         return false;
     }
+    for (const auto& aSun : theObservation.mSuns)
+    {
+        if (!aSun.mActive)
+        {
+            if (aSun.mBeingCollected ||
+                aSun.mXMilliPixels != 0 ||
+                aSun.mYMilliPixels != 0 ||
+                aSun.mGroundYMilliPixels != 0 ||
+                aSun.mAge != 0)
+            {
+                theError =
+                    BehaviorCaptureError::InvalidSunTrajectoryState;
+                return false;
+            }
+            continue;
+        }
+        if (theObservation.mScene !=
+                game::BehaviorScene::AdventurePlaying ||
+            aSun.mXMilliPixels < -200'000 ||
+            aSun.mXMilliPixels > 1'000'000 ||
+            aSun.mYMilliPixels < -100'000 ||
+            aSun.mYMilliPixels > 700'000 ||
+            aSun.mGroundYMilliPixels < 300'000 ||
+            aSun.mGroundYMilliPixels > 549'000)
+        {
+            theError =
+                BehaviorCaptureError::InvalidSunTrajectoryState;
+            return false;
+        }
+    }
     theError = BehaviorCaptureError::None;
     return true;
 }
@@ -376,6 +412,8 @@ std::string_view GetBehaviorCaptureErrorMessage(
         return "behavior capture first-sun state is invalid";
     case BehaviorCaptureError::InvalidLevelOneCombatState:
         return "behavior capture Level 1 combat state is invalid";
+    case BehaviorCaptureError::InvalidSunTrajectoryState:
+        return "behavior capture sun trajectory state is invalid";
     case BehaviorCaptureError::TooManyRandomDecisions:
         return "behavior capture has too many random decisions";
     case BehaviorCaptureError::InvalidRandomDecisionKind:
@@ -544,6 +582,19 @@ bool BehaviorCapture::Save(
             theError = BehaviorCaptureError::IoError;
             return false;
         }
+        for (const auto& aSun : anObservation.mSuns)
+        {
+            if (!theWriter.WriteBool(aSun.mActive) ||
+                !theWriter.WriteBool(aSun.mBeingCollected) ||
+                !theWriter.WriteI32(aSun.mXMilliPixels) ||
+                !theWriter.WriteI32(aSun.mYMilliPixels) ||
+                !theWriter.WriteI32(aSun.mGroundYMilliPixels) ||
+                !theWriter.WriteU16(aSun.mAge))
+            {
+                theError = BehaviorCaptureError::IoError;
+                return false;
+            }
+        }
     }
     if (!theWriter.WriteU32(
             static_cast<std::uint32_t>(mRandomDecisions.size())))
@@ -602,6 +653,7 @@ bool BehaviorCapture::Load(
         aVersion != kRandomDecisionCaptureVersion &&
         aVersion != kCompleteLevelCaptureVersion &&
         aVersion != kPeashooterCaptureVersion &&
+        aVersion != kProjectileMotionCaptureVersion &&
         aVersion != kCurrentFormatVersion)
     {
         theError = BehaviorCaptureError::UnsupportedVersion;
@@ -670,7 +722,9 @@ bool BehaviorCapture::Load(
                ? kEconomyObservationByteCount
                : (aVersion < kPeashooterCaptureVersion
                       ? kCompleteLevelObservationByteCount
-                      : kObservationByteCount));
+                      : (aVersion < kSunTrajectoryCaptureVersion
+                             ? kObservationByteCount
+                             : kSunTrajectoryObservationByteCount)));
     if (theReader.GetBytesRemaining() <
         static_cast<std::uint64_t>(anObservationCount) *
             anObservationByteCount)
@@ -745,6 +799,22 @@ bool BehaviorCapture::Load(
         {
             theError = BehaviorCaptureError::IoError;
             return false;
+        }
+        if (aVersion >= kSunTrajectoryCaptureVersion)
+        {
+            for (auto& aSun : anObservation.mSuns)
+            {
+                if (!theReader.ReadBool(aSun.mActive) ||
+                    !theReader.ReadBool(aSun.mBeingCollected) ||
+                    !theReader.ReadI32(aSun.mXMilliPixels) ||
+                    !theReader.ReadI32(aSun.mYMilliPixels) ||
+                    !theReader.ReadI32(aSun.mGroundYMilliPixels) ||
+                    !theReader.ReadU16(aSun.mAge))
+                {
+                    theError = BehaviorCaptureError::IoError;
+                    return false;
+                }
+            }
         }
         anObservation.mScene =
             static_cast<game::BehaviorScene>(aScene);
@@ -824,7 +894,7 @@ bool BehaviorCapture::Load(
             aDecision.mKind =
                 static_cast<game::LevelOneRandomDecisionKind>(
                     aKind);
-            if (aVersion < kCurrentFormatVersion &&
+            if (aVersion < kProjectileMotionCaptureVersion &&
                 aDecision.mKind ==
                     game::LevelOneRandomDecisionKind::ProjectileMotion)
             {

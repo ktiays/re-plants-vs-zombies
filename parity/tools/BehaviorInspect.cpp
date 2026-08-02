@@ -436,16 +436,23 @@ void PrintTimeline(
 }
 
 void PrintBehaviorDifference(
+    std::string_view theLabel,
     const pvz::parity::BehaviorDifference& theDifference,
     const pvz::parity::BehaviorCapture& theLeft,
     const pvz::parity::BehaviorCapture& theRight)
 {
     std::cout
-        << "behavior-mismatch-tick="
+        << theLabel << "-tick="
         << theDifference.mTick
         << " field="
         << pvz::parity::GetBehaviorFieldName(
                theDifference.mField);
+    if (theDifference.mSlot < pvz::game::kBehaviorSunSlotCount)
+    {
+        std::cout
+            << " slot="
+            << static_cast<std::uint32_t>(theDifference.mSlot);
+    }
 
     const auto aLeft = theLeft.GetObservations();
     const auto aRight = theRight.GetObservations();
@@ -572,6 +579,33 @@ void PrintBehaviorDifference(
                 << " left=" << aLeftValue.mFirstSunSpawned
                 << " right=" << aRightValue.mFirstSunSpawned;
         }
+        else if (theDifference.mSlot <
+                 pvz::game::kBehaviorSunSlotCount)
+        {
+            const auto aSlot = static_cast<std::size_t>(
+                theDifference.mSlot);
+            const auto& aLeftSun = aLeftValue.mSuns[aSlot];
+            const auto& aRightSun = aRightValue.mSuns[aSlot];
+            std::cout
+                << " left-active=" << aLeftSun.mActive
+                << " right-active=" << aRightSun.mActive
+                << " left-collecting="
+                << aLeftSun.mBeingCollected
+                << " right-collecting="
+                << aRightSun.mBeingCollected
+                << " left-position="
+                << aLeftSun.mXMilliPixels << ','
+                << aLeftSun.mYMilliPixels
+                << " right-position="
+                << aRightSun.mXMilliPixels << ','
+                << aRightSun.mYMilliPixels
+                << " left-ground-y="
+                << aLeftSun.mGroundYMilliPixels
+                << " right-ground-y="
+                << aRightSun.mGroundYMilliPixels
+                << " left-age=" << aLeftSun.mAge
+                << " right-age=" << aRightSun.mAge;
+        }
     }
     std::cout << '\n';
 }
@@ -615,6 +649,13 @@ int main(int theArgumentCount, char** theArguments)
             std::min(
                 aLeft.GetFormatVersion(),
                 aRight.GetFormatVersion()));
+    const auto aSunTrajectoryDifference =
+        pvz::parity::FindFirstSunTrajectoryDifference(
+            aLeft.GetObservations(),
+            aRight.GetObservations(),
+            std::min(
+                aLeft.GetFormatVersion(),
+                aRight.GetFormatVersion()));
     const auto aRandomDecisionDifference =
         FindFirstRandomDecisionDifference(aLeft, aRight);
     if (anInputDifference != kNoDifference)
@@ -628,7 +669,17 @@ int main(int theArgumentCount, char** theArguments)
         pvz::parity::kNoBehaviorDifferenceTick)
     {
         PrintBehaviorDifference(
+            "behavior-mismatch",
             aBehaviorDifference,
+            aLeft,
+            aRight);
+    }
+    if (aSunTrajectoryDifference.mTick !=
+        pvz::parity::kNoBehaviorDifferenceTick)
+    {
+        PrintBehaviorDifference(
+            "sun-trajectory-mismatch",
+            aSunTrajectoryDifference,
             aLeft,
             aRight);
     }

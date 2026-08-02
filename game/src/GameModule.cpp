@@ -1063,6 +1063,22 @@ BehaviorObservation GameModule::GetBehaviorObservation() const
                 }
             }
         }
+        for (std::size_t aSlot = 0;
+             aSlot < aCombatState.mSuns.size();
+             ++aSlot)
+        {
+            const auto& aSun = aCombatState.mSuns[aSlot];
+            if (!aSun.mActive)
+                continue;
+            anObservation.mSuns[aSlot] = {
+                .mActive = true,
+                .mBeingCollected = aSun.mBeingCollected,
+                .mXMilliPixels = aSun.mXMilliPixels,
+                .mYMilliPixels = aSun.mYMilliPixels,
+                .mGroundYMilliPixels = aSun.mGroundYMilliPixels,
+                .mAge = aSun.mAge,
+            };
+        }
         break;
     }
     case GameScene::Count:

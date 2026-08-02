@@ -43,6 +43,7 @@ enum class BehaviorCaptureError : std::uint8_t
     InvalidSeedRefresh,
     InvalidFirstSunState,
     InvalidLevelOneCombatState,
+    InvalidSunTrajectoryState,
     TooManyRandomDecisions,
     InvalidRandomDecisionKind,
     InvalidRandomDecisionPayload,
@@ -57,7 +58,7 @@ enum class BehaviorCaptureError : std::uint8_t
 class BehaviorCapture
 {
 public:
-    static constexpr std::uint16_t kCurrentFormatVersion = 6;
+    static constexpr std::uint16_t kCurrentFormatVersion = 7;
 
     void SetProducer(BehaviorProducer theProducer);
     void SetInputReplay(

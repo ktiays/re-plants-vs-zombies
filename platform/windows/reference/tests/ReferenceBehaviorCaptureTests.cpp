@@ -76,6 +76,14 @@ void TestBehaviorCaptureBridge()
         pvz::game::BehaviorLevelOutcome::Playing;
     anObservation.mMowerState =
         pvz::game::BehaviorMowerState::Ready;
+    anObservation.mSuns[1] = {
+        .mActive = true,
+        .mBeingCollected = true,
+        .mXMilliPixels = 245'125,
+        .mYMilliPixels = 188'500,
+        .mGroundYMilliPixels = 488'000,
+        .mAge = 321,
+    };
     pvz::platform::windows::RecordLegacyBehaviorObservation(
         anObservation);
     pvz::platform::windows::RecordLegacyRandomDecision(
@@ -134,7 +142,7 @@ void TestBehaviorCaptureBridge()
         Expect(
             aCapture.GetProducer() ==
                 pvz::parity::BehaviorProducer::LegacyWindows &&
-            aCapture.GetFormatVersion() == 6 &&
+            aCapture.GetFormatVersion() == 7 &&
             aCapture.GetInputReplay().GetFrames().size() == 1 &&
             anObservations.size() == 1 &&
             anObservations[0].mGridColumn == 1 &&
@@ -144,6 +152,13 @@ void TestBehaviorCaptureBridge()
             anObservations[0].mSeedRefreshCounter == 25 &&
             anObservations[0].mSeedRefreshTime == 750 &&
             anObservations[0].mSeedRefreshing &&
+            anObservations[0].mSuns[1].mActive &&
+            anObservations[0].mSuns[1].mBeingCollected &&
+            anObservations[0].mSuns[1].mXMilliPixels == 245'125 &&
+            anObservations[0].mSuns[1].mYMilliPixels == 188'500 &&
+            anObservations[0].mSuns[1].mGroundYMilliPixels ==
+                488'000 &&
+            anObservations[0].mSuns[1].mAge == 321 &&
             aCapture.GetRandomDecisions().size() == 1 &&
             aCapture.GetRandomDecisions()[0].mNextCountdown == 507 &&
             aCapture.GetRandomDecisions()[0].mXMilliPixels ==

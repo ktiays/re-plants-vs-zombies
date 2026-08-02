@@ -156,6 +156,12 @@ the first playing-field difference is one missed 25-sun collection at tick
 9,503 (native 50, portable 25). No combat field differs. Sun trajectory/pickup
 geometry and rendered screenshot parity remain explicit follow-up gates.
 
+Version 7 adds a fixed-width, stable eight-slot sun trajectory observation to
+separate spawn, fall, click-hit, collection-flight, and scoring differences.
+Its dedicated inspector result is reported even when an earlier asynchronous
+scene difference exists. A fresh Windows version 7 capture is required before
+the tick 9,503 mismatch can be corrected from evidence.
+
 Run this gate locally:
 
 ```sh
@@ -180,7 +186,8 @@ The board gates cover deterministic geometry, render-command alignment, the
 Level 1 economy, and complete Level 1 combat. The remaining cross-runtime
 infrastructure is:
 
-- a trajectory/collection diagnostic for the remaining 25-sun pickup drift;
+- a fresh Windows version 7 run through the implemented per-slot sun
+  trajectory/collection diagnostic, followed by the narrow behavior fix;
 - a local image normalizer and difference reporter for user-owned golden
   screenshots;
 - a parity manifest that records coverage and approved deviations per scene.

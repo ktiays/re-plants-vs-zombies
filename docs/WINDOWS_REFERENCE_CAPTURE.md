@@ -76,6 +76,13 @@ exports the synchronized post-update integer X while portable collision uses
 the prior synchronized X, preserving the legacy move, collision, then integer
 synchronization order without sharing native floats or projectile objects.
 
+Version 7 adds eight stable falling-sun slots to every post-update observation.
+Each slot contains fixed-width active and collection flags, milli-pixel X, Y,
+and ground Y, plus a 16-bit age. The reference adapter maps native coin IDs to
+the same first-free slot policy as portable gameplay. This lets the inspector
+separate a spawn-timing, falling-trajectory, click-hit, collection-flight, or
+scoring mismatch without serializing a pointer, native object, or float.
+
 The adapter observes the chosen gameplay values; it does not expose or copy
 the legacy global PRNG state.
 

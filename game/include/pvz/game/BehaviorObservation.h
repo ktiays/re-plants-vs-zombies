@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 
 namespace pvz::game
@@ -8,6 +9,7 @@ namespace pvz::game
 inline constexpr std::uint8_t kNoGridCoordinate = 0xFF;
 inline constexpr std::uint8_t kBehaviorBoardColumnCount = 9;
 inline constexpr std::uint8_t kBehaviorBoardRowCount = 6;
+inline constexpr std::uint8_t kBehaviorSunSlotCount = 8;
 inline constexpr std::uint64_t kBehaviorOccupiedCellMask =
     (std::uint64_t{1} << 54U) - 1U;
 
@@ -72,6 +74,16 @@ enum class BehaviorMowerState : std::uint8_t
     Count,
 };
 
+struct BehaviorSunObservation
+{
+    bool mActive{};
+    bool mBeingCollected{};
+    std::int32_t mXMilliPixels{};
+    std::int32_t mYMilliPixels{};
+    std::int32_t mGroundYMilliPixels{};
+    std::uint16_t mAge{};
+};
+
 struct BehaviorObservation
 {
     std::uint64_t mTick{};
@@ -101,6 +113,7 @@ struct BehaviorObservation
     bool mLevelAwardSpawned{};
     std::uint16_t mZombieWaveHealth{};
     std::uint8_t mProjectileCount{};
+    std::array<BehaviorSunObservation, kBehaviorSunSlotCount> mSuns;
 };
 
 static_assert(sizeof(BehaviorScene) == 1);

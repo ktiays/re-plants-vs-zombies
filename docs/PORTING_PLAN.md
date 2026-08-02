@@ -53,9 +53,10 @@ Last updated: 2026-08-02
   scheduling to the strict game-semantic tape for falling-sun, normal-zombie,
   wave-schedule, Peashooter-schedule, and animation-derived projectile-spawn
   choices, plus per-live-slot semantic zombie motion; version 6 adds exact
-  synchronized projectile motion without native floats;
+  synchronized projectile motion without native floats, and version 7 adds
+  stable fixed-width per-slot sun trajectory and collection observations;
   independent legacy and portable exporters plus the behavior inspector report
-  the first differing tick, field, or decision while versions 1 through 5
+  the first differing tick, field, slot, or decision while versions 1 through 6
   remain readable
 - [x] Engine-owned rendering, input, logging, state, and resource protocols
 - [x] Portable PAK indexing, normalization, validation, and resource reads

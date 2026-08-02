@@ -36,6 +36,7 @@ struct LevelOneDecisionObserverState
     std::array<unsigned int, 32> mProjectileIds{};
     std::array<unsigned int, 8> mZombieIds{};
     std::array<int, 8> mZombieHealth{};
+    std::array<unsigned int, game::kBehaviorSunSlotCount> mSunIds{};
 };
 
 [[nodiscard]] LevelOneDecisionObserverState&
@@ -210,6 +211,7 @@ void ObserveLevelOneRandomDecisions(Board& theBoard)
         aState.mProjectileIds = {};
         aState.mZombieIds = {};
         aState.mZombieHealth = {};
+        aState.mSunIds = {};
     }
     if (aState.mTerminal)
         return;
@@ -610,6 +612,61 @@ void ObserveLevelOneState(
     {
         theObservation.mFirstSunCountdown =
             NormalizeU16(theBoard.mSunCountDown);
+    }
+
+    auto& aDecisionState = GetLevelOneDecisionObserverState();
+    for (auto& aSunId : aDecisionState.mSunIds)
+    {
+        if (aSunId == 0)
+            continue;
+        const auto* aSun = theBoard.mCoins.DataArrayTryToGet(aSunId);
+        if (aSun == nullptr ||
+            aSun->mDead ||
+            aSun->mType != CoinType::COIN_SUN ||
+            aSun->mCoinMotion != CoinMotion::COIN_MOTION_FROM_SKY)
+        {
+            aSunId = 0;
+        }
+    }
+    Coin* aSun = nullptr;
+    while (theBoard.IterateCoins(aSun))
+    {
+        if (aSun->mDead ||
+            aSun->mType != CoinType::COIN_SUN ||
+            aSun->mCoinMotion != CoinMotion::COIN_MOTION_FROM_SKY)
+        {
+            continue;
+        }
+        const auto aSunId = theBoard.mCoins.DataArrayGetID(aSun);
+        auto aSlot = std::find(
+            aDecisionState.mSunIds.begin(),
+            aDecisionState.mSunIds.end(),
+            aSunId);
+        if (aSlot == aDecisionState.mSunIds.end())
+        {
+            aSlot = std::find(
+                aDecisionState.mSunIds.begin(),
+                aDecisionState.mSunIds.end(),
+                0U);
+            if (aSlot == aDecisionState.mSunIds.end())
+                continue;
+            *aSlot = aSunId;
+        }
+        const auto aSlotIndex = static_cast<std::size_t>(
+            std::distance(aDecisionState.mSunIds.begin(), aSlot));
+        theObservation.mSuns[aSlotIndex] = {
+            .mActive = true,
+            .mBeingCollected = aSun->mIsBeingCollected,
+            .mXMilliPixels = NormalizeScaledFloat(
+                aSun->mPosX,
+                1'000.0F),
+            .mYMilliPixels = NormalizeScaledFloat(
+                aSun->mPosY,
+                1'000.0F),
+            .mGroundYMilliPixels =
+                static_cast<std::int32_t>(aSun->mGroundY) * 1'000,
+            .mAge = NormalizeU16(aSun->mCoinAge),
+        };
     }
 
     theObservation.mCurrentWave =

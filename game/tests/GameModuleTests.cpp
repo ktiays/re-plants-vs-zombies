@@ -956,14 +956,29 @@ void TestSceneMusicTransitions()
         aGame.Update(pvz::engine::GameTick{aCombatTick++}, anInput);
     Expect(
         aGame.GetBehaviorObservation().mFirstSunSpawned &&
-            aGame.GetBehaviorObservation().mFirstSunCountdown == 0,
-        "behavior observation normalizes the deterministic first-sun gate");
+            aGame.GetBehaviorObservation().mFirstSunCountdown == 0 &&
+            aGame.GetBehaviorObservation().mSuns[0].mActive &&
+            aGame.GetBehaviorObservation().mSuns[0].mXMilliPixels ==
+                aGame.GetLevelOneCombatState()
+                    .mSuns[0].mXMilliPixels &&
+            aGame.GetBehaviorObservation().mSuns[0].mYMilliPixels ==
+                aGame.GetLevelOneCombatState()
+                    .mSuns[0].mYMilliPixels &&
+            aGame.GetBehaviorObservation()
+                    .mSuns[0].mGroundYMilliPixels ==
+                aGame.GetLevelOneCombatState()
+                    .mSuns[0].mGroundYMilliPixels &&
+            aGame.GetBehaviorObservation().mSuns[0].mAge ==
+                aGame.GetLevelOneCombatState().mSuns[0].mAge,
+        "behavior observation exports the fixed-width first-sun trajectory");
     anInput.PressPointer({405, 90});
     aGame.Update(pvz::engine::GameTick{aCombatTick++}, anInput);
     anInput.Clear();
     Expect(
         aGame.GetLevelOneBoardState().mSun == 50 &&
             aGame.GetLevelOneCombatState().mSuns[0]
+                .mBeingCollected &&
+            aGame.GetBehaviorObservation().mSuns[0]
                 .mBeingCollected,
         "engine-neutral input starts the falling-sun collection flight");
     const auto aFirstCollectionDeadline = aCombatTick + 256;
