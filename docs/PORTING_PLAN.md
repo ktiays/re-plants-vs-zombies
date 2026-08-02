@@ -172,9 +172,9 @@ Last updated: 2026-08-02
   Adventure transition, starts the daytime music at order zero, and restores
   the title music when returning to the menu solely through `IMusicResources`
 - [ ] Complete Windows runtime behavior and screenshot baselines for the
-  reconstructed legacy target (the complete Level 1 v6 combat baseline now
-  matches; asynchronous scene timing, one 25-sun pickup, and screenshot
-  coverage remain)
+  reconstructed legacy target (the complete Level 1 v6 playing/combat baseline
+  now matches; a native v7 per-slot sun capture, asynchronous startup timing,
+  and screenshot coverage remain)
 - [ ] Migration of the remaining gameplay `Board`, `Challenge`, data-array, and
   effect snapshots from raw object blocks to fieldwise fixed-width schemas
 - [x] Mapping portable XML tokens into runtime definitions used by effects
@@ -504,13 +504,15 @@ Level 1 enforces the source-audited initial sun, Peashooter cost and packet
 recharge, center-row restriction, occupied-cell rejection, two-plant tutorial,
 collectible sky suns, all four 1/1/1/2 zombie waves, randomized wave and firing
 schedules, Peashooter targeting, peas, damage, eating, mower/loss behavior, and
-the final award. A fixed-width v6 semantic tape keeps legacy random choices and
-animation-derived zombie/projectile motion behind the reference adapter. The
-15,701-tick native Windows run reaches the award at tick 13,796; AppleClang and
-MSVC consume all 13,029 decisions and reproduce every combat observation with
-byte-identical portable outputs. The remaining behavior drift is isolated to
-asynchronous scene timing and one 25-sun pickup, while screenshot coverage is
-still pending.
+the final award. A fixed-width v7 behavior contract keeps legacy random choices,
+animation-derived zombie/projectile motion, and per-slot sun trajectories
+behind the reference adapter. The 15,701-tick native Windows run reaches the
+award at tick 13,796; AppleClang and MSVC consume all 13,029 decisions and
+reproduce every combat observation with byte-identical v7 portable outputs.
+Normalized playing behavior now matches, including the previously missed
+fractional-boundary sun collection; the remaining behavior drift is isolated
+to asynchronous startup timing, while native v7 sun-trajectory and screenshot
+coverage are still pending.
 
 The same startup path resolves `SOUND_LOADINGBAR_FLOWER` through
 `ISoundResources`, decodes it through `IAudioDecoder`, uploads fixed-width

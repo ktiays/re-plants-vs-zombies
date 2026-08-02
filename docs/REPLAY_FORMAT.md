@@ -304,7 +304,10 @@ for a 174-byte observation:
 The Windows exporter assigns native sky-sun IDs to the same first-free
 eight-slot model used by portable gameplay. The inspector reports the first
 trajectory mismatch independently from earlier scene timing, including the
-tick, slot, collection state, position, ground destination, and age.
+tick, slot, collection state, position, ground destination, and age. Its normal
+timeline output also prints each slot's activation, collection-start, and
+deactivation transitions so a click or scoring boundary can be inspected
+without dumping all 15,701 observations.
 
 Versions 1 and 2 remain readable and use portable deterministic fallback
 choices because they contain no decision tape. Version 3 remains readable and

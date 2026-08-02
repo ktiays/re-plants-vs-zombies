@@ -190,8 +190,9 @@ early gameplay-flow milestone, not yet a complete Plants vs. Zombies level.
 - After the first plant, collect two falling 25-sun pickups to fund a second
   Peashooter. Planting it starts the source-audited 99-tick tutorial countdown
   and the first normal zombie. Peashooters then acquire the center lane, fire
-  peas, apply damage, and can clear this first-wave vertical slice. The
-  remaining three waves and final level award are not ported yet.
+  peas, apply damage, and can clear all four Level 1 waves. The lawn mower,
+  loss state, and final level award are implemented. Complete visual parity
+  and the remaining game modes are not ported yet.
 - Press Escape on the lawn to return to the menu.
 
 ## Installation

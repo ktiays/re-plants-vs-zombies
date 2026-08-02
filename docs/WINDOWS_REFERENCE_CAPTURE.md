@@ -198,12 +198,12 @@ capture to produce the portable observation stream:
   /absolute/path/portable-behavior.pvzb
 ```
 
-For a version 3, 4, 5, or 6 input, the headless runner injects the captured decisions
-through the portable game interface and rejects exhausted, wrong-kind, invalid,
-or unused tape entries. Version 3 retains the deterministic wave-schedule
-fallback; versions 3 and 4 retain deterministic Peashooter launch scheduling
-and deterministic projectile/zombie motion. Version 5 retains deterministic
-projectile motion while strictly replaying zombie motion.
+For a version 3, 4, 5, 6, or 7 input, the headless runner injects the captured
+decisions through the portable game interface and rejects exhausted,
+wrong-kind, invalid, or unused tape entries. Version 3 retains the deterministic
+wave-schedule fallback; versions 3 and 4 retain deterministic Peashooter launch
+scheduling and deterministic projectile/zombie motion. Version 5 retains
+deterministic projectile motion while strictly replaying zombie motion.
 The behavior inspector returns success only when the nested input frames, all
 normalized observations, and both decision tapes match. On failure it reports
 the first input tick, behavior tick and field, or decision index.
@@ -249,15 +249,24 @@ award at tick 13,796. The 1,409,462-byte Windows artifact has SHA-256
 `5b011fa1d2b858abb88ff9c01cfd621bbe66cb9037276b2c29493926f79dc9de`.
 
 AppleClang and MSVC both consumed every decision in that native trace and
-reported no combat-field difference through the award. Both produced state
-hash `16988027000938334469`, transcript hash `3668085029793266207`, and the
-same 1,409,462-byte portable behavior artifact with SHA-256
-`b5303cc7bc36a412587869bbb65c2addd70f9e970b080a05f861ae06c438ef70`.
-The complete behavior files are not byte-identical to the native artifact:
-startup first differs at tick 5,030 (`main-menu` versus `adventure-intro`), and
-the first playing-field difference is sun at tick 9,503 (native 50, portable
-25). This is a tracked sun trajectory/pickup gap; all wave, countdown, zombie,
-wave-health, projectile, mower, outcome, and award observations match.
+reported no playing- or combat-field difference through the award. The v7
+portable replays produce state hash `16988027000938334469`, transcript hash
+`9530495229241180420`, and byte-identical 3,419,190-byte behavior artifacts
+with SHA-256
+`e4aff09f8dbf34db728015f44a78569d40774102e1b832a58dd916e7d189f5d4`.
+The general comparison still reports the expected asynchronous startup
+difference at tick 5,030 (`main-menu` versus `adventure-intro`), before the
+normalized playing slice.
+
+The former playing-field difference at tick 9,503 (native 50 sun, portable 25)
+was traced through the v7 portable slot timeline and legacy source. At tick
+9,414 the captured input clicks `(660,170)` while slot zero is at
+`y = 95.510`. Legacy `Coin::MouseHitTest` accepts that point using its float
+position; the portable hit test incorrectly truncated to pixel 95 before
+testing the exclusive upper edge. Fixed-point bounds now begin collection at
+tick 9,414 and credit it at tick 9,503. A fresh native v7 recording remains
+necessary for direct comparison of every trajectory field, but not for the
+aggregate economy result already present in the native v6 observation.
 
 The headless runner rejects malformed, oversized, non-100-Hz, or
 non-sequential streams before running the game. `pvz_replay_inspect` can compare
@@ -286,7 +295,9 @@ game logic to global PRNG consumption or rendering state. It also records
 post-update zombie positions as semantic motion so the legacy ground-animation
 curve stays on the reference side of that boundary. Version 6 records
 post-update integer projectile positions so the legacy float accumulation
-stays on the same reference side. Future gameplay slices
+stays on the same reference side. Version 7 records stable per-slot falling-sun
+activity, collection state, position, destination, and age without exporting
+native pointers or floats. Future gameplay slices
 must extend the format and independent exporters rather than adding legacy
 memory hashes.
 Screenshot comparison remains a separate rendering gate because a behavior

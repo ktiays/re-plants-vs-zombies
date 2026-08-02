@@ -150,17 +150,29 @@ byte-identical 1,409,462-byte portable captures. Cross-testing exposed and
 fixed stable projectile-slot ordering, legacy float-to-integer projectile
 motion, and the final-zombie one-third-health award rule.
 
-The complete normalized behavior stream is not yet identical. Asynchronous
-startup first differs at tick 5,030 (`main-menu` versus `adventure-intro`), and
-the first playing-field difference is one missed 25-sun collection at tick
-9,503 (native 50, portable 25). No combat field differs. Sun trajectory/pickup
-geometry and rendered screenshot parity remain explicit follow-up gates.
+The complete normalized playing and combat streams now match through the
+award. Asynchronous startup still first differs at tick 5,030 (`main-menu`
+versus `adventure-intro`), before either runtime enters the normalized playing
+slice. Rendered screenshot parity remains a separate follow-up gate.
 
 Version 7 adds a fixed-width, stable eight-slot sun trajectory observation to
 separate spawn, fall, click-hit, collection-flight, and scoring differences.
 Its dedicated inspector result is reported even when an earlier asynchronous
-scene difference exists. A fresh Windows version 7 capture is required before
-the tick 9,503 mismatch can be corrected from evidence.
+scene difference exists, and its timeline reports slot activation and
+collection transitions. Replaying the v6 native input exposed the former sun
+gap at its exact boundary: at tick 9,414 the input clicks `(660,170)` while the
+sun is at `y = 95.510`. Legacy `Coin::MouseHitTest` tests the float position and
+accepts that point; portable code had truncated Y to 95 first and rejected the
+exclusive upper edge. The fixed-point hit test now starts collection at tick
+9,414 and credits the 25 sun at tick 9,503, matching the native v6 observation.
+The boundary has a dedicated regression test.
+
+AppleClang and MSVC replay all 15,701 native input frames and 13,029 semantic
+decisions into byte-identical 3,419,190-byte v7 portable captures with SHA-256
+`e4aff09f8dbf34db728015f44a78569d40774102e1b832a58dd916e7d189f5d4`.
+A fresh native Windows v7 capture is still required to compare every per-slot
+trajectory field directly; it is no longer required to validate the corrected
+aggregate Level 1 economy.
 
 Run this gate locally:
 
@@ -186,8 +198,8 @@ The board gates cover deterministic geometry, render-command alignment, the
 Level 1 economy, and complete Level 1 combat. The remaining cross-runtime
 infrastructure is:
 
-- a fresh Windows version 7 run through the implemented per-slot sun
-  trajectory/collection diagnostic, followed by the narrow behavior fix;
+- a fresh Windows version 7 run to make every native per-slot sun trajectory
+  field directly comparable with the already matching portable captures;
 - a local image normalizer and difference reporter for user-owned golden
   screenshots;
 - a parity manifest that records coverage and approved deviations per scene.
