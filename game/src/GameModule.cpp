@@ -21,7 +21,8 @@ inline constexpr std::uint16_t kReanimationStateVersion = 3;
 inline constexpr std::uint16_t kAdventureIntroStateVersion = 4;
 inline constexpr std::uint16_t kLevelOneStateVersion = 5;
 inline constexpr std::uint16_t kCombatStateVersion = 6;
-inline constexpr std::uint16_t kStateVersion = 7;
+inline constexpr std::uint16_t kPointerStateVersion = 7;
+inline constexpr std::uint16_t kStateVersion = 8;
 inline constexpr std::uint32_t kTitleMusicOrder = 0x98;
 inline constexpr std::uint32_t kAdventureMusicOrder = 0;
 inline constexpr float kLogicalWidth = 800.0F;
@@ -294,6 +295,28 @@ engine::LifecycleResult GameModule::Initialize(
         }
     }
 
+    if (mLawnMowerClip.Load(
+            mServices->GetXmlDocuments(),
+            mServices->GetImageResources(),
+            "reanim\\LawnMower.reanim",
+            aReanimationDiagnostic))
+    {
+        if (mLawnMowerPlayer.Bind(
+                mLawnMowerClip,
+                "anim_normal") &&
+            mLawnMowerPlayer.SetFramesPerSecond(70.0F))
+        {
+            mServices->GetLogger().Log(
+                engine::LogLevel::Information,
+                "Portable lawn mower reanimation loaded");
+        }
+        else
+        {
+            mLawnMowerClip.Release(
+                mServices->GetImageResources());
+        }
+    }
+
     constexpr std::array<std::byte, 4> kWhitePixel{
         std::byte{255},
         std::byte{255},
@@ -479,6 +502,11 @@ void GameModule::Update(
         mPeashooterPlayer.Update();
         mZombiePlayer.Update();
         mSunPlayer.Update();
+        if (mLevelOneCombat.GetState().mMowerPhase ==
+            LevelOneMowerPhase::Triggered)
+        {
+            mLawnMowerPlayer.Update();
+        }
     }
 
     if (aPreviousScene != aCurrentScene)
@@ -562,6 +590,7 @@ bool GameModule::LoadState(engine::IStateReader& theReader)
          aVersion != kAdventureIntroStateVersion &&
          aVersion != kLevelOneStateVersion &&
          aVersion != kCombatStateVersion &&
+         aVersion != kPointerStateVersion &&
          aVersion != kStateVersion))
     {
         return false;
@@ -573,6 +602,7 @@ bool GameModule::LoadState(engine::IStateReader& theReader)
         aVersion == kAdventureIntroStateVersion ||
         aVersion == kLevelOneStateVersion ||
         aVersion == kCombatStateVersion ||
+        aVersion == kPointerStateVersion ||
         aVersion == kStateVersion)
     {
         std::uint8_t aScene{};
@@ -585,7 +615,7 @@ bool GameModule::LoadState(engine::IStateReader& theReader)
             !theReader.ReadU8(aState.mGridColumn) ||
             !theReader.ReadU8(aState.mGridRow) ||
             !theReader.ReadU64(aState.mOccupiedCells) ||
-            (aVersion == kStateVersion &&
+            (aVersion >= kPointerStateVersion &&
              (!theReader.ReadBool(aState.mHasPointerPosition) ||
               !theReader.ReadI32(
                   aState.mLastPointerPosition.mX) ||
@@ -608,6 +638,7 @@ bool GameModule::LoadState(engine::IStateReader& theReader)
          aVersion == kAdventureIntroStateVersion ||
          aVersion == kLevelOneStateVersion ||
          aVersion == kCombatStateVersion ||
+         aVersion == kPointerStateVersion ||
          aVersion == kStateVersion) &&
         !theReader.ReadU64(aReanimationTick))
     {
@@ -617,6 +648,7 @@ bool GameModule::LoadState(engine::IStateReader& theReader)
     aLevelOneBoard.Reset();
     if (aVersion == kLevelOneStateVersion ||
         aVersion == kCombatStateVersion ||
+        aVersion == kPointerStateVersion ||
         aVersion == kStateVersion)
     {
         std::uint8_t aSeedSelection{};
@@ -642,11 +674,13 @@ bool GameModule::LoadState(engine::IStateReader& theReader)
     LevelOneCombat aLevelOneCombat;
     aLevelOneCombat.Reset();
     if (aVersion == kCombatStateVersion ||
+        aVersion == kPointerStateVersion ||
         aVersion == kStateVersion)
     {
         if (!aLevelOneCombat.LoadState(
                 theReader,
-                aVersion == kStateVersion) ||
+                aVersion >= kPointerStateVersion,
+                aVersion >= kStateVersion) ||
             aLevelOneCombat.GetOccupiedCells() !=
                 aFlow.GetState().mOccupiedCells)
         {
@@ -690,6 +724,7 @@ bool GameModule::LoadState(engine::IStateReader& theReader)
     mPeashooterPlayer.RestoreTick(aReanimationTick);
     mZombiePlayer.RestoreTick(aReanimationTick);
     mSunPlayer.RestoreTick(aReanimationTick);
+    mLawnMowerPlayer.RestoreTick(aReanimationTick);
     RebuildUiText();
     SynchronizeMusic();
     return true;
@@ -778,6 +813,9 @@ void GameModule::Shutdown()
         mServices->GetImageResources());
     mSunPlayer.Reset();
     mSunClip.Release(
+        mServices->GetImageResources());
+    mLawnMowerPlayer.Reset();
+    mLawnMowerClip.Release(
         mServices->GetImageResources());
     for (auto& aResource : mMenuButtonHighlights)
     {
@@ -972,6 +1010,59 @@ BehaviorObservation GameModule::GetBehaviorObservation() const
             anObservation.mFirstSunCountdown =
                 aCombatState.mSunCountdown;
         }
+        anObservation.mCurrentWave =
+            aCombatState.mCurrentWave;
+        anObservation.mZombieCountdown =
+            aCombatState.mZombieCountdown;
+        anObservation.mZombieCount =
+            aCombatState.mZombieCount;
+        anObservation.mLevelOutcome =
+            aCombatState.mPhase == LevelOneCombatPhase::Won
+            ? BehaviorLevelOutcome::Won
+            : (aCombatState.mPhase == LevelOneCombatPhase::Lost
+                   ? BehaviorLevelOutcome::Lost
+                   : BehaviorLevelOutcome::Playing);
+        switch (aCombatState.mMowerPhase)
+        {
+        case LevelOneMowerPhase::Ready:
+            anObservation.mMowerState =
+                BehaviorMowerState::Ready;
+            break;
+        case LevelOneMowerPhase::Triggered:
+            anObservation.mMowerState =
+                BehaviorMowerState::Triggered;
+            break;
+        case LevelOneMowerPhase::Spent:
+            anObservation.mMowerState =
+                BehaviorMowerState::Spent;
+            break;
+        case LevelOneMowerPhase::Count:
+            break;
+        }
+        anObservation.mLevelAwardSpawned =
+            aCombatState.mAwardSpawned;
+        if (aCombatState.mPhase != LevelOneCombatPhase::Won &&
+            aCombatState.mPhase != LevelOneCombatPhase::Lost)
+        {
+            anObservation.mProjectileCount =
+                aCombatState.mProjectileCount;
+        }
+        if (aCombatState.mCurrentWave > 0)
+        {
+            const auto aCurrentWave = static_cast<std::uint8_t>(
+                aCombatState.mCurrentWave - 1U);
+            for (const auto& aZombie : aCombatState.mZombies)
+            {
+                if (aZombie.mActive &&
+                    aZombie.mFromWave == aCurrentWave)
+                {
+                    anObservation.mZombieWaveHealth =
+                        static_cast<std::uint16_t>(
+                            anObservation.mZombieWaveHealth +
+                            aZombie.mHealth);
+                }
+            }
+        }
         break;
     }
     case GameScene::Count:
@@ -1038,6 +1129,11 @@ void GameModule::RebuildUiText()
             LevelOneCombatPhase::Lost)
         {
             aPrompt = U"THE ZOMBIES ATE YOUR BRAINS";
+        }
+        else if (aCombatState.mPhase ==
+                 LevelOneCombatPhase::Won)
+        {
+            aPrompt = U"LEVEL 1 COMPLETE - REWARD UNLOCKED";
         }
         else if (aCombatState.mPhase ==
                  LevelOneCombatPhase::FirstWaveCleared)
@@ -1581,6 +1677,59 @@ void GameModule::RenderAdventureDay(
                 mWhitePixel,
                 {{aSunX, aSunY}, {60.0F, 60.0F}},
                 {255, 225, 45, 230});
+        }
+    }
+
+    if (aCombatState.mMowerPhase !=
+        LevelOneMowerPhase::Spent)
+    {
+        const auto aMowerX = static_cast<float>(
+            aCombatState.mMowerXMilliPixels) /
+            1'000.0F;
+        constexpr float kMowerY = 303.0F;
+        if (mLawnMowerPlayer.IsBound())
+        {
+            mLawnMowerPlayer.AppendSprites(
+                {aMowerX + 6.0F, kMowerY + 19.0F},
+                {255, 255, 255, 255},
+                mReanimationSprites);
+        }
+        else if (mWhitePixel.IsValid())
+        {
+            aDraws[aDrawCount++] = MakeSolidDraw(
+                mWhitePixel,
+                {{aMowerX, kMowerY}, {50.0F, 60.0F}},
+                {190, 45, 35, 255});
+        }
+    }
+
+    if (aCombatState.mAwardSpawned)
+    {
+        const auto anAwardX = static_cast<float>(
+            aCombatState.mAwardXMilliPixels) /
+            1'000.0F;
+        const auto anAwardY = static_cast<float>(
+            aCombatState.mAwardYMilliPixels) /
+            1'000.0F;
+        if (mSeedPacket.mImage.IsValid())
+        {
+            aDraws[aDrawCount++] = MakeImageDraw(
+                mSeedPacket,
+                {
+                    {anAwardX - 25.0F, anAwardY - 35.0F},
+                    {50.0F, 70.0F},
+                },
+                {255, 235, 115, 255});
+        }
+        else if (mWhitePixel.IsValid())
+        {
+            aDraws[aDrawCount++] = MakeSolidDraw(
+                mWhitePixel,
+                {
+                    {anAwardX - 25.0F, anAwardY - 35.0F},
+                    {50.0F, 70.0F},
+                },
+                {255, 215, 55, 255});
         }
     }
 

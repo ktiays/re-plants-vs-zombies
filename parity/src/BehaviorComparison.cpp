@@ -42,6 +42,22 @@ std::string_view GetBehaviorFieldName(BehaviorField theField)
         return "first-sun-countdown";
     case BehaviorField::FirstSunSpawned:
         return "first-sun-spawned";
+    case BehaviorField::CurrentWave:
+        return "current-wave";
+    case BehaviorField::ZombieCountdown:
+        return "zombie-countdown";
+    case BehaviorField::ZombieCount:
+        return "zombie-count";
+    case BehaviorField::LevelOutcome:
+        return "level-outcome";
+    case BehaviorField::MowerState:
+        return "mower-state";
+    case BehaviorField::LevelAwardSpawned:
+        return "level-award-spawned";
+    case BehaviorField::ZombieWaveHealth:
+        return "zombie-wave-health";
+    case BehaviorField::ProjectileCount:
+        return "projectile-count";
     case BehaviorField::ObservationCount:
         return "observation-count";
     }
@@ -100,6 +116,32 @@ BehaviorDifference FindFirstBehaviorDifference(
         {
             return {aTick, BehaviorField::FirstSunSpawned};
         }
+        if (theCommonFormatVersion < 4)
+            continue;
+        if (aLeft.mCurrentWave != aRight.mCurrentWave)
+            return {aTick, BehaviorField::CurrentWave};
+        if (aLeft.mZombieCountdown != aRight.mZombieCountdown)
+            return {aTick, BehaviorField::ZombieCountdown};
+        if (aLeft.mZombieCount != aRight.mZombieCount)
+            return {aTick, BehaviorField::ZombieCount};
+        if (aLeft.mLevelOutcome != aRight.mLevelOutcome)
+            return {aTick, BehaviorField::LevelOutcome};
+        if (aLeft.mMowerState != aRight.mMowerState)
+            return {aTick, BehaviorField::MowerState};
+        if (aLeft.mLevelAwardSpawned !=
+            aRight.mLevelAwardSpawned)
+        {
+            return {aTick, BehaviorField::LevelAwardSpawned};
+        }
+        if (theCommonFormatVersion < 5)
+            continue;
+        if (aLeft.mZombieWaveHealth !=
+            aRight.mZombieWaveHealth)
+        {
+            return {aTick, BehaviorField::ZombieWaveHealth};
+        }
+        if (aLeft.mProjectileCount != aRight.mProjectileCount)
+            return {aTick, BehaviorField::ProjectileCount};
     }
     if (theLeft.size() != theRight.size())
     {

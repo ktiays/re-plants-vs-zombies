@@ -14,7 +14,6 @@ namespace
 
 inline constexpr std::uint8_t kColumnCount = 9;
 inline constexpr std::int32_t kProjectileMaximumXMilliPixels = 900'000;
-inline constexpr std::int32_t kZombieLossXMilliPixels = -100'000;
 inline constexpr std::int32_t kMinimumStateXMilliPixels = -200'000;
 inline constexpr std::int32_t kMaximumStateXMilliPixels = 1'000'000;
 inline constexpr std::int32_t kMinimumStateYMilliPixels = -100'000;
@@ -37,6 +36,10 @@ inline constexpr std::int32_t kSunCollectionDestinationXMilliPixels =
 inline constexpr std::int32_t kSunCollectionDestinationYMilliPixels = 0;
 inline constexpr std::int32_t kSunScoringDistanceMilliPixels = 8'000;
 inline constexpr std::uint16_t kMaximumSunCollectionTicks = 256;
+inline constexpr std::array<std::uint8_t, LevelOneCombat::kWaveCount>
+    kNormalZombiesPerWave{1, 1, 1, 2};
+inline constexpr std::uint16_t kNoWaveHealthThreshold = 0xFFFFU;
+inline constexpr std::int32_t kAwardRowYMilliPixels = 337'000;
 
 [[nodiscard]] std::int32_t ToPixels(
     std::int32_t theMilliPixels)
@@ -96,27 +99,31 @@ void LevelOneCombat::Reset()
     mCollectedSun = 0;
     mDestroyedCells = 0;
     mRandomDecisionFailure = false;
+    mLastZombieDeathXMilliPixels = 0;
+    mLastZombieDeathYMilliPixels = 0;
 }
 
 void LevelOneCombat::Update()
 {
-    if (mState.mPhase == LevelOneCombatPhase::Lost)
+    if (mState.mPhase == LevelOneCombatPhase::Lost ||
+        mState.mPhase == LevelOneCombatPhase::Won)
         return;
 
+    mLastZombieDeathXMilliPixels = 0;
+    mLastZombieDeathYMilliPixels = 0;
     ++mState.mTick;
     UpdatePlants();
     UpdateZombies();
     UpdateProjectiles();
-
-    if (mState.mFirstWaveSpawned &&
-        mState.mZombieCount == 0 &&
-        !mState.mFirstWaveCleared)
+    if (mState.mPhase != LevelOneCombatPhase::Lost)
+        UpdateMower();
+    RecountEntities();
+    UpdateLevelProgress();
+    if (mState.mPhase == LevelOneCombatPhase::Lost ||
+        mState.mPhase == LevelOneCombatPhase::Won)
     {
-        mState.mFirstWaveCleared = true;
-        mState.mPhase =
-            LevelOneCombatPhase::FirstWaveCleared;
+        return;
     }
-
     UpdateSun();
     UpdateWave();
     RecountEntities();
@@ -128,7 +135,8 @@ bool LevelOneCombat::AddPeashooter(
 {
     if (theColumn >= kColumnCount ||
         theRow != kLaneRow ||
-        mState.mPhase == LevelOneCombatPhase::Lost)
+        mState.mPhase == LevelOneCombatPhase::Lost ||
+        mState.mPhase == LevelOneCombatPhase::Won)
     {
         return false;
     }
@@ -152,13 +160,24 @@ bool LevelOneCombat::AddPeashooter(
     if (aSlot == mState.mPlants.end())
         return false;
 
+    LevelOneRandomDecision aScheduleDecision;
+    if (!ReadPeashooterScheduleDecision(
+            theColumn,
+            true,
+            aScheduleDecision))
+    {
+        return false;
+    }
+
     *aSlot = {
         .mActive = true,
         .mColumn = theColumn,
         .mRow = theRow,
         .mHealth = kPlantHealth,
-        .mLaunchCounter = 0,
-        .mShootingCounter = 0,
+        .mLaunchCounter =
+            aScheduleDecision.mNextCountdown,
+        .mShootingCounter =
+            aScheduleDecision.mShootingCounter,
     };
     RecountEntities();
 
@@ -176,6 +195,7 @@ bool LevelOneCombat::AddPeashooter(
     {
         mState.mPhase = LevelOneCombatPhase::Active;
         mState.mZombieCountdown = kFirstWaveCountdown;
+        mState.mZombieCountdownStart = kFirstWaveCountdown;
     }
     return true;
 }
@@ -231,7 +251,18 @@ bool LevelOneCombat::RestoreState(
 {
     if (theState.mPhase >= LevelOneCombatPhase::Count ||
         theState.mSunCountdown > kMaximumSunCountdown ||
-        theState.mZombieCountdown > kFirstWaveCountdown)
+        theState.mZombieCountdown > kNextWaveCountdownMaximum ||
+        theState.mZombieCountdownStart >
+            kNextWaveCountdownMaximum ||
+        theState.mZombieCountdown >
+            theState.mZombieCountdownStart ||
+        theState.mCurrentWave > kWaveCount ||
+        theState.mMowerPhase >= LevelOneMowerPhase::Count ||
+        theState.mMowerXMilliPixels < kMowerReadyXMilliPixels ||
+        theState.mMowerXMilliPixels >
+            kMowerMaximumXMilliPixels +
+                kMowerSpeedMilliPixelsPerTick ||
+        theState.mMowerChompCounter > 50)
     {
         return false;
     }
@@ -275,7 +306,8 @@ bool LevelOneCombat::RestoreState(
             aPlant.mRow != kLaneRow ||
             aPlant.mHealth == 0 ||
             aPlant.mHealth > kPlantHealth ||
-            aPlant.mLaunchCounter > kPeashooterLaunchRate ||
+            aPlant.mLaunchCounter >
+                kPeashooterLaunchRate + 1U ||
             aPlant.mShootingCounter > kPeashooterFireDelay)
         {
             return false;
@@ -301,7 +333,9 @@ bool LevelOneCombat::RestoreState(
                 kMinimumZombieSpeedMicroPixelsPerTick ||
             aZombie.mSpeedMicroPixelsPerTick >
                 kMaximumZombieSpeedMicroPixelsPerTick ||
-            aZombie.mMovementRemainderMicroPixels >= 1'000)
+            aZombie.mMovementRemainderMicroPixels >= 1'000 ||
+            aZombie.mFromWave >= kWaveCount ||
+            aZombie.mFromWave >= theState.mCurrentWave)
         {
             return false;
         }
@@ -339,9 +373,62 @@ bool LevelOneCombat::RestoreState(
         (theState.mPhase ==
              LevelOneCombatPhase::AwaitingSecondPlant &&
          theState.mPlantCount != 1) ||
+        (theState.mCurrentWave == 0 &&
+         (theState.mFirstWaveSpawned ||
+          theState.mFirstWaveCleared)) ||
+        (theState.mCurrentWave > 0 &&
+         !theState.mFirstWaveSpawned) ||
         (theState.mFirstWaveCleared &&
          (!theState.mFirstWaveSpawned ||
-          theState.mZombieCount != 0)))
+          std::any_of(
+              theState.mZombies.begin(),
+              theState.mZombies.end(),
+              [](const LevelOneZombieState& theZombie)
+              {
+                  return theZombie.mActive &&
+                         theZombie.mFromWave == 0;
+              }))) ||
+        (theState.mPhase == LevelOneCombatPhase::Won &&
+         (!theState.mAwardSpawned ||
+          theState.mCurrentWave != kWaveCount ||
+          theState.mZombieCount != 0)) ||
+        (theState.mAwardSpawned &&
+         theState.mPhase != LevelOneCombatPhase::Won) ||
+        (theState.mAwardSpawned &&
+         (theState.mAwardXMilliPixels <
+              kMinimumStateXMilliPixels ||
+          theState.mAwardXMilliPixels >
+              kMaximumStateXMilliPixels ||
+          theState.mAwardYMilliPixels !=
+              kAwardRowYMilliPixels)) ||
+        (!theState.mAwardSpawned &&
+         (theState.mAwardXMilliPixels != 0 ||
+          theState.mAwardYMilliPixels != 0)) ||
+        (theState.mMowerPhase == LevelOneMowerPhase::Ready &&
+         (theState.mMowerXMilliPixels !=
+              kMowerReadyXMilliPixels ||
+          theState.mMowerChompCounter != 0)) ||
+        (theState.mMowerPhase == LevelOneMowerPhase::Spent &&
+         theState.mMowerXMilliPixels <=
+             kMowerMaximumXMilliPixels) ||
+        (theState.mCurrentWave == 0 &&
+         theState.mZombieHealthToNextWave !=
+             kNoWaveHealthThreshold) ||
+        (theState.mCurrentWave > 0 &&
+         (theState.mZombieHealthWaveStart !=
+              static_cast<std::uint16_t>(
+                  kNormalZombiesPerWave[
+                      theState.mCurrentWave - 1U] *
+                  kNormalZombieHealth) ||
+          theState.mZombieHealthToNextWave ==
+              kNoWaveHealthThreshold ||
+          theState.mZombieHealthToNextWave <
+              theState.mZombieHealthWaveStart / 2U ||
+          theState.mZombieHealthToNextWave >
+              (static_cast<std::uint32_t>(
+                   theState.mZombieHealthWaveStart) *
+               65U) /
+                  100U)))
     {
         return false;
     }
@@ -427,18 +514,38 @@ bool LevelOneCombat::SaveState(
             return false;
         }
     }
+    if (!theWriter.WriteU8(mState.mCurrentWave) ||
+        !theWriter.WriteU16(mState.mZombieCountdownStart) ||
+        !theWriter.WriteU16(mState.mZombieHealthWaveStart) ||
+        !theWriter.WriteU16(mState.mZombieHealthToNextWave) ||
+        !theWriter.WriteBool(mState.mAwardSpawned) ||
+        !theWriter.WriteI32(mState.mAwardXMilliPixels) ||
+        !theWriter.WriteI32(mState.mAwardYMilliPixels) ||
+        !theWriter.WriteU8(
+            static_cast<std::uint8_t>(mState.mMowerPhase)) ||
+        !theWriter.WriteI32(mState.mMowerXMilliPixels) ||
+        !theWriter.WriteU8(mState.mMowerChompCounter))
+    {
+        return false;
+    }
+    for (const auto& aZombie : mState.mZombies)
+    {
+        if (!theWriter.WriteU8(aZombie.mFromWave))
+            return false;
+    }
     return true;
 }
 
 bool LevelOneCombat::LoadState(
     engine::IStateReader& theReader)
 {
-    return LoadState(theReader, true);
+    return LoadState(theReader, true, true);
 }
 
 bool LevelOneCombat::LoadState(
     engine::IStateReader& theReader,
-    bool theHasExtendedCombatState)
+    bool theHasExtendedCombatState,
+    bool theHasCompleteLevelState)
 {
     LevelOneCombatState aState;
     std::uint8_t aPhase{};
@@ -527,6 +634,64 @@ bool LevelOneCombat::LoadState(
             return false;
         }
     }
+    if (theHasCompleteLevelState)
+    {
+        std::uint8_t aMowerPhase{};
+        if (!theReader.ReadU8(aState.mCurrentWave) ||
+            !theReader.ReadU16(
+                aState.mZombieCountdownStart) ||
+            !theReader.ReadU16(
+                aState.mZombieHealthWaveStart) ||
+            !theReader.ReadU16(
+                aState.mZombieHealthToNextWave) ||
+            !theReader.ReadBool(aState.mAwardSpawned) ||
+            !theReader.ReadI32(
+                aState.mAwardXMilliPixels) ||
+            !theReader.ReadI32(
+                aState.mAwardYMilliPixels) ||
+            !theReader.ReadU8(aMowerPhase) ||
+            !theReader.ReadI32(
+                aState.mMowerXMilliPixels) ||
+            !theReader.ReadU8(
+                aState.mMowerChompCounter))
+        {
+            return false;
+        }
+        aState.mMowerPhase =
+            static_cast<LevelOneMowerPhase>(aMowerPhase);
+        for (auto& aZombie : aState.mZombies)
+        {
+            if (!theReader.ReadU8(aZombie.mFromWave))
+                return false;
+        }
+    }
+    else
+    {
+        aState.mCurrentWave =
+            aState.mFirstWaveSpawned ? 1 : 0;
+        aState.mZombieCountdownStart =
+            aState.mCurrentWave == 0
+            ? (aState.mPhase == LevelOneCombatPhase::Active
+                   ? kFirstWaveCountdown
+                   : 0)
+            : kNextWaveCountdownMinimum;
+        if (aState.mCurrentWave > 0)
+        {
+            aState.mZombieCountdown =
+                kNextWaveCountdownMinimum;
+            aState.mZombieHealthWaveStart =
+                kNormalZombieHealth;
+            aState.mZombieHealthToNextWave =
+                kNormalZombieHealth / 2U;
+        }
+        if (aState.mPhase ==
+            LevelOneCombatPhase::FirstWaveCleared)
+        {
+            aState.mPhase = LevelOneCombatPhase::Active;
+        }
+        for (auto& aZombie : aState.mZombies)
+            aZombie.mFromWave = 0;
+    }
     return RestoreState(aState);
 }
 
@@ -560,33 +725,60 @@ void LevelOneCombat::UpdatePlants()
         {
             --aPlant.mShootingCounter;
             if (aPlant.mShootingCounter == 1)
+            {
                 FirePea(aPlant);
+                if (mRandomDecisionFailure)
+                    return;
+            }
         }
 
         if (aPlant.mLaunchCounter > 0)
             --aPlant.mLaunchCounter;
         if (aPlant.mLaunchCounter == 0)
         {
-            aPlant.mLaunchCounter =
-                kPeashooterLaunchRate;
-            if (HasTarget(aPlant))
+            LevelOneRandomDecision aScheduleDecision;
+            if (!ReadPeashooterScheduleDecision(
+                    aPlant.mColumn,
+                    false,
+                    aScheduleDecision))
             {
-                aPlant.mShootingCounter =
-                    kPeashooterFireDelay;
+                return;
             }
+            aPlant.mLaunchCounter =
+                aScheduleDecision.mNextCountdown;
+            aPlant.mShootingCounter =
+                aScheduleDecision.mShootingCounter;
         }
     }
 }
 
 void LevelOneCombat::UpdateZombies()
 {
-    for (auto& aZombie : mState.mZombies)
+    for (std::size_t aZombieIndex = 0;
+         aZombieIndex < mState.mZombies.size();
+         ++aZombieIndex)
     {
+        auto& aZombie = mState.mZombies[aZombieIndex];
         if (!aZombie.mActive)
             continue;
 
         ++aZombie.mAge;
-        if (!aZombie.mEating)
+        LevelOneRandomDecision aMotionDecision;
+        if (!ReadZombieMotionDecision(
+                static_cast<std::uint8_t>(aZombieIndex),
+                aMotionDecision))
+        {
+            return;
+        }
+        if (mRandomDecisionSource != nullptr &&
+            mRandomDecisionSource->Supports(
+                LevelOneRandomDecisionKind::ZombieMotion))
+        {
+            aZombie.mXMilliPixels =
+                aMotionDecision.mXMilliPixels;
+            aZombie.mMovementRemainderMicroPixels = 0;
+        }
+        else if (!aZombie.mEating)
         {
             const auto aMovementMicroPixels =
                 aZombie.mSpeedMicroPixelsPerTick +
@@ -627,25 +819,66 @@ void LevelOneCombat::UpdateZombies()
         }
 
         if (aZombie.mXMilliPixels <
-            kZombieLossXMilliPixels)
+            kZombieLossXMilliPixels ||
+            ToPixels(aZombie.mXMilliPixels) <=
+                ToPixels(kZombieLossXMilliPixels))
         {
             mState.mPhase = LevelOneCombatPhase::Lost;
+        }
+
+        // The legacy headless-zombie decay runs after movement, prey checks,
+        // and the board-edge check, but before projectiles update.
+        if (aMotionDecision.mShootingCounter != 0)
+        {
+            if (aZombie.mHealth <= 1)
+            {
+                mLastZombieDeathXMilliPixels =
+                    aZombie.mXMilliPixels;
+                mLastZombieDeathYMilliPixels =
+                    kAwardRowYMilliPixels;
+                aZombie = {};
+                continue;
+            }
+            --aZombie.mHealth;
         }
     }
 }
 
 void LevelOneCombat::UpdateProjectiles()
 {
-    for (auto& aProjectile : mState.mProjectiles)
+    for (std::size_t aProjectileIndex = 0;
+         aProjectileIndex < mState.mProjectiles.size();
+         ++aProjectileIndex)
     {
+        auto& aProjectile = mState.mProjectiles[aProjectileIndex];
         if (!aProjectile.mActive)
             continue;
 
         ++aProjectile.mAge;
-        aProjectile.mXMilliPixels +=
-            kPeaSpeedMilliPixelsPerTick;
+        // Legacy UpdateNormalMotion advances mPosX before collision, but
+        // GetProjectileRect still reads the previous integer mX.  The integer
+        // position is synchronized only after the collision check.
         const auto aProjectileX =
             ToPixels(aProjectile.mXMilliPixels);
+        LevelOneRandomDecision aMotionDecision;
+        if (!ReadProjectileMotionDecision(
+                static_cast<std::uint8_t>(aProjectileIndex),
+                aMotionDecision))
+        {
+            return;
+        }
+        if (mRandomDecisionSource != nullptr &&
+            mRandomDecisionSource->Supports(
+                LevelOneRandomDecisionKind::ProjectileMotion))
+        {
+            aProjectile.mXMilliPixels =
+                aMotionDecision.mXMilliPixels;
+        }
+        else
+        {
+            aProjectile.mXMilliPixels +=
+                kPeaSpeedMilliPixelsPerTick;
+        }
 
         LevelOneZombieState* aTarget{};
         std::int32_t aTargetX{};
@@ -674,13 +907,35 @@ void LevelOneCombat::UpdateProjectiles()
         }
         if (aTarget)
         {
-            if (aTarget->mHealth <= kPeaDamage)
+            const std::uint16_t aHealthAfterDamage =
+                aTarget->mHealth <= kPeaDamage
+                ? std::uint16_t{0}
+                : static_cast<std::uint16_t>(
+                      aTarget->mHealth - kPeaDamage);
+            const auto anActiveZombieCount =
+                CountActive(mState.mZombies);
+            // Zombie::UpdateDamageStates drops the head below one-third body
+            // health. DropLoot then calls TrySpawnLevelAward; on the final
+            // wave, a headless last enemy no longer counts as an enemy on
+            // screen, so the legacy board awards the level and removes it
+            // immediately even though body health has not reached zero.
+            const bool dropsFinalLevelAward =
+                mState.mCurrentWave == kWaveCount &&
+                anActiveZombieCount == 1 &&
+                aHealthAfterDamage <
+                    kNormalZombieHeadLossHealth;
+            if (aHealthAfterDamage == 0 ||
+                dropsFinalLevelAward)
+            {
+                mLastZombieDeathXMilliPixels =
+                    aTarget->mXMilliPixels;
+                mLastZombieDeathYMilliPixels =
+                    kAwardRowYMilliPixels;
                 *aTarget = {};
+            }
             else
             {
-                aTarget->mHealth =
-                    static_cast<std::uint16_t>(
-                        aTarget->mHealth - kPeaDamage);
+                aTarget->mHealth = aHealthAfterDamage;
             }
             aProjectile = {};
         }
@@ -690,6 +945,79 @@ void LevelOneCombat::UpdateProjectiles()
         {
             aProjectile = {};
         }
+    }
+}
+
+void LevelOneCombat::UpdateMower()
+{
+    if (mState.mMowerPhase == LevelOneMowerPhase::Spent)
+        return;
+
+    const auto aMowerX = ToPixels(
+        mState.mMowerXMilliPixels);
+    for (auto& aZombie : mState.mZombies)
+    {
+        if (!aZombie.mActive ||
+            aZombie.mRow != kLaneRow)
+        {
+            continue;
+        }
+        const auto aZombieX = ToPixels(
+            aZombie.mXMilliPixels);
+        if (GetOverlap(
+                aMowerX,
+                50,
+                aZombieX + kNormalZombieRectX,
+                kNormalZombieRectWidth) <= 0)
+        {
+            continue;
+        }
+
+        if (mState.mMowerPhase == LevelOneMowerPhase::Ready)
+        {
+            mState.mMowerPhase =
+                LevelOneMowerPhase::Triggered;
+            mState.mMowerChompCounter = 25;
+        }
+        else
+        {
+            mState.mMowerChompCounter = 50;
+        }
+        mLastZombieDeathXMilliPixels =
+            aZombie.mXMilliPixels;
+        mLastZombieDeathYMilliPixels =
+            kAwardRowYMilliPixels;
+        aZombie = {};
+    }
+
+    if (mState.mMowerPhase != LevelOneMowerPhase::Triggered)
+        return;
+
+    std::int32_t aSpeed = kMowerSpeedMilliPixelsPerTick;
+    if (mState.mMowerChompCounter > 0)
+    {
+        --mState.mMowerChompCounter;
+        const auto aTimeNumerator = static_cast<std::int32_t>(
+            50U - mState.mMowerChompCounter);
+        const auto aBounceNumerator =
+            50 - std::abs(2 * aTimeNumerator - 50);
+        const auto aWarpedNumerator =
+            2 * aBounceNumerator * 50 -
+            aBounceNumerator * aBounceNumerator;
+        constexpr std::int32_t kCurveDenominator = 2'500;
+        aSpeed =
+            (kMowerSpeedMilliPixelsPerTick *
+                 kCurveDenominator -
+             2'330 * aWarpedNumerator +
+             kCurveDenominator / 2) /
+            kCurveDenominator;
+    }
+    mState.mMowerXMilliPixels += aSpeed;
+    if (mState.mMowerXMilliPixels >
+        kMowerMaximumXMilliPixels)
+    {
+        mState.mMowerPhase = LevelOneMowerPhase::Spent;
+        mState.mMowerChompCounter = 0;
     }
 }
 
@@ -804,14 +1132,62 @@ void LevelOneCombat::UpdateSun()
 void LevelOneCombat::UpdateWave()
 {
     if (mState.mPhase != LevelOneCombatPhase::Active ||
-        mState.mFirstWaveSpawned)
+        mState.mCurrentWave >= kWaveCount)
     {
         return;
     }
     if (mState.mZombieCountdown > 0)
         --mState.mZombieCountdown;
+    if (mState.mCurrentWave > 0 &&
+        mState.mZombieCountdown >
+            kWaveAccelerationCountdown &&
+        mState.mZombieCountdownStart -
+                mState.mZombieCountdown >
+            kWaveAccelerationMinimumAge &&
+        TotalZombieHealthInWave(
+            static_cast<std::uint8_t>(
+                mState.mCurrentWave - 1U)) <=
+            mState.mZombieHealthToNextWave)
+    {
+        mState.mZombieCountdown =
+            kWaveAccelerationCountdown;
+    }
     if (mState.mZombieCountdown == 0)
-        SpawnFirstWave();
+        SpawnWave();
+}
+
+void LevelOneCombat::UpdateLevelProgress()
+{
+    if (mState.mFirstWaveSpawned &&
+        !mState.mFirstWaveCleared)
+    {
+        const bool hasFirstWaveZombie = std::any_of(
+            mState.mZombies.begin(),
+            mState.mZombies.end(),
+            [](const LevelOneZombieState& theZombie)
+            {
+                return theZombie.mActive &&
+                       theZombie.mFromWave == 0;
+            });
+        mState.mFirstWaveCleared = !hasFirstWaveZombie;
+    }
+
+    if (mState.mCurrentWave != kWaveCount ||
+        mState.mZombieCount != 0 ||
+        mState.mAwardSpawned)
+    {
+        return;
+    }
+    mState.mAwardSpawned = true;
+    mState.mPhase = LevelOneCombatPhase::Won;
+    mState.mAwardXMilliPixels =
+        mLastZombieDeathXMilliPixels != 0
+        ? mLastZombieDeathXMilliPixels + 57'000
+        : 400'000;
+    mState.mAwardYMilliPixels =
+        mLastZombieDeathYMilliPixels != 0
+        ? mLastZombieDeathYMilliPixels
+        : kAwardRowYMilliPixels;
 }
 
 bool LevelOneCombat::HasTarget(
@@ -856,18 +1232,18 @@ void LevelOneCombat::FirePea(
     if (aSlot == mState.mProjectiles.end())
         return;
 
-    const auto anOrigin =
-        BoardGeometry::GridToPixel(
-            BoardStageLayout::Day,
+    LevelOneRandomDecision aSpawnDecision;
+    if (!ReadProjectileSpawnDecision(
             thePlant.mColumn,
-            thePlant.mRow);
+            aSpawnDecision))
+    {
+        return;
+    }
     *aSlot = {
         .mActive = true,
         .mRow = thePlant.mRow,
-        .mXMilliPixels =
-            (anOrigin.mX + 68) * 1'000,
-        .mYMilliPixels =
-            (anOrigin.mY + 20) * 1'000,
+        .mXMilliPixels = aSpawnDecision.mXMilliPixels,
+        .mYMilliPixels = aSpawnDecision.mGroundYMilliPixels,
         .mAge = 0,
     };
 }
@@ -902,35 +1278,98 @@ LevelOneCombat::FindPlantTarget(
     return nullptr;
 }
 
-void LevelOneCombat::SpawnFirstWave()
+void LevelOneCombat::SpawnWave()
 {
-    const auto aSlot = std::find_if(
-        mState.mZombies.begin(),
-        mState.mZombies.end(),
-        [](const LevelOneZombieState& theZombie)
+    if (mState.mCurrentWave >= kWaveCount)
+        return;
+
+    const auto aZombieCount =
+        kNormalZombiesPerWave[mState.mCurrentWave];
+    const auto anAvailableCount = static_cast<std::uint8_t>(
+        std::count_if(
+            mState.mZombies.begin(),
+            mState.mZombies.end(),
+            [](const LevelOneZombieState& theZombie)
+            {
+                return !theZombie.mActive;
+            }));
+    if (anAvailableCount < aZombieCount)
+        return;
+
+    std::array<LevelOneRandomDecision, 2> aZombieDecisions;
+    for (std::uint8_t anIndex = 0;
+         anIndex < aZombieCount;
+         ++anIndex)
+    {
+        if (!ReadNormalZombieDecision(
+                aZombieDecisions[anIndex]))
         {
-            return !theZombie.mActive;
-        });
-    if (aSlot == mState.mZombies.end())
+            return;
+        }
+    }
+    const auto aWaveHealth = static_cast<std::uint16_t>(
+        static_cast<std::uint16_t>(aZombieCount) *
+        kNormalZombieHealth);
+    LevelOneRandomDecision aScheduleDecision;
+    if (!ReadWaveScheduleDecision(
+            aWaveHealth,
+            aScheduleDecision))
+    {
         return;
+    }
 
-    LevelOneRandomDecision aDecision;
-    if (!ReadNormalZombieDecision(aDecision))
-        return;
-
-    *aSlot = {
-        .mActive = true,
-        .mRow = kLaneRow,
-        .mHealth = kNormalZombieHealth,
-        .mXMilliPixels = aDecision.mXMilliPixels,
-        .mSpeedMicroPixelsPerTick =
-            aDecision.mSpeedMicroPixelsPerTick,
-        .mMovementRemainderMicroPixels = 0,
-        .mAge = 0,
-        .mEating = false,
-    };
+    for (std::uint8_t anIndex = 0;
+         anIndex < aZombieCount;
+         ++anIndex)
+    {
+        const auto aSlot = std::find_if(
+            mState.mZombies.begin(),
+            mState.mZombies.end(),
+            [](const LevelOneZombieState& theZombie)
+            {
+                return !theZombie.mActive;
+            });
+        *aSlot = {
+            .mActive = true,
+            .mRow = kLaneRow,
+            .mHealth = kNormalZombieHealth,
+            .mXMilliPixels =
+                aZombieDecisions[anIndex].mXMilliPixels,
+            .mSpeedMicroPixelsPerTick =
+                aZombieDecisions[anIndex]
+                    .mSpeedMicroPixelsPerTick,
+            .mMovementRemainderMicroPixels = 0,
+            .mAge = 0,
+            .mEating = false,
+            .mFromWave = mState.mCurrentWave,
+        };
+    }
+    ++mState.mCurrentWave;
     mState.mFirstWaveSpawned = true;
+    mState.mZombieHealthWaveStart = aWaveHealth;
+    mState.mZombieHealthToNextWave =
+        aScheduleDecision.mWaveHealthThreshold;
+    mState.mZombieCountdown =
+        aScheduleDecision.mNextCountdown;
+    mState.mZombieCountdownStart =
+        aScheduleDecision.mNextCountdown;
     RecountEntities();
+}
+
+std::uint16_t LevelOneCombat::TotalZombieHealthInWave(
+    std::uint8_t theWave) const
+{
+    std::uint16_t aHealth{};
+    for (const auto& aZombie : mState.mZombies)
+    {
+        if (aZombie.mActive &&
+            aZombie.mFromWave == theWave)
+        {
+            aHealth = static_cast<std::uint16_t>(
+                aHealth + aZombie.mHealth);
+        }
+    }
+    return aHealth;
 }
 
 void LevelOneCombat::RecountEntities()
@@ -978,7 +1417,10 @@ bool LevelOneCombat::ReadFallingSunDecision(
             kMinimumSunGroundYMilliPixels ||
         theDecision.mGroundYMilliPixels >
             kMaximumSunGroundYMilliPixels ||
-        theDecision.mSpeedMicroPixelsPerTick != 0)
+        theDecision.mSpeedMicroPixelsPerTick != 0 ||
+        theDecision.mWaveHealthThreshold != 0 ||
+        theDecision.mPlantColumn != 0xFFU ||
+        theDecision.mShootingCounter != 0)
     {
         mRandomDecisionFailure = true;
         return false;
@@ -1020,7 +1462,252 @@ bool LevelOneCombat::ReadNormalZombieDecision(
         theDecision.mSpeedMicroPixelsPerTick <
             kMinimumZombieSpeedMicroPixelsPerTick ||
         theDecision.mSpeedMicroPixelsPerTick >
-            kMaximumZombieSpeedMicroPixelsPerTick)
+            kMaximumZombieSpeedMicroPixelsPerTick ||
+        theDecision.mWaveHealthThreshold != 0 ||
+        theDecision.mPlantColumn != 0xFFU ||
+        theDecision.mShootingCounter != 0)
+    {
+        mRandomDecisionFailure = true;
+        return false;
+    }
+    return true;
+}
+
+bool LevelOneCombat::ReadWaveScheduleDecision(
+    std::uint16_t theWaveHealth,
+    LevelOneRandomDecision& theDecision)
+{
+    if (mRandomDecisionFailure)
+        return false;
+    if (mRandomDecisionSource == nullptr ||
+        !mRandomDecisionSource->Supports(
+            LevelOneRandomDecisionKind::WaveSchedule))
+    {
+        theDecision = {
+            .mKind =
+                LevelOneRandomDecisionKind::WaveSchedule,
+            .mNextCountdown =
+                kNextWaveCountdownMinimum,
+            .mXMilliPixels = 0,
+            .mGroundYMilliPixels = 0,
+            .mSpeedMicroPixelsPerTick = 0,
+            .mWaveHealthThreshold =
+                static_cast<std::uint16_t>(
+                    theWaveHealth / 2U),
+        };
+        return true;
+    }
+
+    const auto aMinimumHealth = static_cast<std::uint16_t>(
+        theWaveHealth / 2U);
+    const auto aMaximumHealth = static_cast<std::uint16_t>(
+        (static_cast<std::uint32_t>(theWaveHealth) * 65U) /
+        100U);
+    if (!mRandomDecisionSource->ReadNext(
+            LevelOneRandomDecisionKind::WaveSchedule,
+            theDecision) ||
+        theDecision.mKind !=
+            LevelOneRandomDecisionKind::WaveSchedule ||
+        theDecision.mNextCountdown <
+            kNextWaveCountdownMinimum ||
+        theDecision.mNextCountdown >
+            kNextWaveCountdownMaximum ||
+        theDecision.mXMilliPixels != 0 ||
+        theDecision.mGroundYMilliPixels != 0 ||
+        theDecision.mSpeedMicroPixelsPerTick != 0 ||
+        theDecision.mWaveHealthThreshold <
+            aMinimumHealth ||
+        theDecision.mWaveHealthThreshold >
+            aMaximumHealth ||
+        theDecision.mPlantColumn != 0xFFU ||
+        theDecision.mShootingCounter != 0)
+    {
+        mRandomDecisionFailure = true;
+        return false;
+    }
+    return true;
+}
+
+bool LevelOneCombat::ReadPeashooterScheduleDecision(
+    std::uint8_t theColumn,
+    bool theIsNewPlant,
+    LevelOneRandomDecision& theDecision)
+{
+    if (mRandomDecisionFailure)
+        return false;
+    if (mRandomDecisionSource == nullptr ||
+        !mRandomDecisionSource->Supports(
+            LevelOneRandomDecisionKind::PeashooterSchedule))
+    {
+        std::uint8_t aShootingCounter{};
+        if (!theIsNewPlant)
+        {
+            const auto aPlant = std::find_if(
+                mState.mPlants.begin(),
+                mState.mPlants.end(),
+                [theColumn](const LevelOnePlantCombatState& thePlant)
+                {
+                    return thePlant.mActive &&
+                           thePlant.mColumn == theColumn &&
+                           thePlant.mRow == kLaneRow;
+                });
+            if (aPlant != mState.mPlants.end() &&
+                HasTarget(*aPlant))
+            {
+                aShootingCounter = kPeashooterFireDelay;
+            }
+        }
+        theDecision = {
+            .mKind =
+                LevelOneRandomDecisionKind::PeashooterSchedule,
+            .mNextCountdown = static_cast<std::uint16_t>(
+                kPeashooterLaunchRate +
+                (theIsNewPlant ? 1U : 0U)),
+            .mPlantColumn = theColumn,
+            .mShootingCounter = aShootingCounter,
+        };
+        return true;
+    }
+
+    if (!mRandomDecisionSource->ReadNext(
+            LevelOneRandomDecisionKind::PeashooterSchedule,
+            theDecision) ||
+        theDecision.mKind !=
+            LevelOneRandomDecisionKind::PeashooterSchedule ||
+        theDecision.mNextCountdown == 0 ||
+        theDecision.mNextCountdown >
+            static_cast<std::uint16_t>(
+                kPeashooterLaunchRate +
+                (theIsNewPlant ? 1U : 0U)) ||
+        theDecision.mXMilliPixels != 0 ||
+        theDecision.mGroundYMilliPixels != 0 ||
+        theDecision.mSpeedMicroPixelsPerTick != 0 ||
+        theDecision.mWaveHealthThreshold != 0 ||
+        theDecision.mPlantColumn != theColumn ||
+        (theIsNewPlant
+             ? theDecision.mShootingCounter != 0
+             : (theDecision.mShootingCounter != 0 &&
+                theDecision.mShootingCounter !=
+                    kPeashooterFireDelay)))
+    {
+        mRandomDecisionFailure = true;
+        return false;
+    }
+    return true;
+}
+
+bool LevelOneCombat::ReadProjectileSpawnDecision(
+    std::uint8_t theColumn,
+    LevelOneRandomDecision& theDecision)
+{
+    if (mRandomDecisionFailure)
+        return false;
+    if (mRandomDecisionSource == nullptr ||
+        !mRandomDecisionSource->Supports(
+            LevelOneRandomDecisionKind::ProjectileSpawn))
+    {
+        const auto anOrigin =
+            BoardGeometry::GridToPixel(
+                BoardStageLayout::Day,
+                theColumn,
+                kLaneRow);
+        theDecision = {
+            .mKind = LevelOneRandomDecisionKind::ProjectileSpawn,
+            .mXMilliPixels = (anOrigin.mX + 68) * 1'000,
+            .mGroundYMilliPixels = (anOrigin.mY + 20) * 1'000,
+            .mPlantColumn = theColumn,
+        };
+        return true;
+    }
+
+    if (!mRandomDecisionSource->ReadNext(
+            LevelOneRandomDecisionKind::ProjectileSpawn,
+            theDecision) ||
+        theDecision.mKind !=
+            LevelOneRandomDecisionKind::ProjectileSpawn ||
+        theDecision.mNextCountdown != 0 ||
+        theDecision.mXMilliPixels < -100'000 ||
+        theDecision.mXMilliPixels > 900'000 ||
+        theDecision.mGroundYMilliPixels < -100'000 ||
+        theDecision.mGroundYMilliPixels > 700'000 ||
+        theDecision.mSpeedMicroPixelsPerTick != 0 ||
+        theDecision.mWaveHealthThreshold != 0 ||
+        theDecision.mPlantColumn != theColumn ||
+        theDecision.mShootingCounter != 0)
+    {
+        mRandomDecisionFailure = true;
+        return false;
+    }
+    return true;
+}
+
+bool LevelOneCombat::ReadZombieMotionDecision(
+    std::uint8_t theSlot,
+    LevelOneRandomDecision& theDecision)
+{
+    if (mRandomDecisionFailure)
+        return false;
+    if (mRandomDecisionSource == nullptr ||
+        !mRandomDecisionSource->Supports(
+            LevelOneRandomDecisionKind::ZombieMotion))
+    {
+        theDecision = {
+            .mKind = LevelOneRandomDecisionKind::ZombieMotion,
+            .mPlantColumn = theSlot,
+        };
+        return true;
+    }
+
+    if (!mRandomDecisionSource->ReadNext(
+            LevelOneRandomDecisionKind::ZombieMotion,
+            theDecision) ||
+        theDecision.mKind !=
+            LevelOneRandomDecisionKind::ZombieMotion ||
+        theDecision.mNextCountdown != 0 ||
+        theDecision.mXMilliPixels < kMinimumStateXMilliPixels ||
+        theDecision.mXMilliPixels > kMaximumStateXMilliPixels ||
+        theDecision.mGroundYMilliPixels != 0 ||
+        theDecision.mSpeedMicroPixelsPerTick != 0 ||
+        theDecision.mWaveHealthThreshold != 0 ||
+        theDecision.mPlantColumn != theSlot ||
+        theDecision.mShootingCounter > 1)
+    {
+        mRandomDecisionFailure = true;
+        return false;
+    }
+    return true;
+}
+
+bool LevelOneCombat::ReadProjectileMotionDecision(
+    std::uint8_t theSlot,
+    LevelOneRandomDecision& theDecision)
+{
+    if (mRandomDecisionFailure)
+        return false;
+    if (mRandomDecisionSource == nullptr ||
+        !mRandomDecisionSource->Supports(
+            LevelOneRandomDecisionKind::ProjectileMotion))
+    {
+        theDecision = {
+            .mKind = LevelOneRandomDecisionKind::ProjectileMotion,
+            .mPlantColumn = theSlot,
+        };
+        return true;
+    }
+
+    if (!mRandomDecisionSource->ReadNext(
+            LevelOneRandomDecisionKind::ProjectileMotion,
+            theDecision) ||
+        theDecision.mKind !=
+            LevelOneRandomDecisionKind::ProjectileMotion ||
+        theDecision.mNextCountdown != 0 ||
+        theDecision.mXMilliPixels < kMinimumStateXMilliPixels ||
+        theDecision.mXMilliPixels > kMaximumStateXMilliPixels ||
+        theDecision.mGroundYMilliPixels != 0 ||
+        theDecision.mSpeedMicroPixelsPerTick != 0 ||
+        theDecision.mWaveHealthThreshold != 0 ||
+        theDecision.mPlantColumn != theSlot ||
+        theDecision.mShootingCounter != 0)
     {
         mRandomDecisionFailure = true;
         return false;

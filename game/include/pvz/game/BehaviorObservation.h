@@ -54,6 +54,24 @@ enum class BehaviorTutorialPhase : std::uint8_t
     Count,
 };
 
+enum class BehaviorLevelOutcome : std::uint8_t
+{
+    None,
+    Playing,
+    Won,
+    Lost,
+    Count,
+};
+
+enum class BehaviorMowerState : std::uint8_t
+{
+    None,
+    Ready,
+    Triggered,
+    Spent,
+    Count,
+};
+
 struct BehaviorObservation
 {
     std::uint64_t mTick{};
@@ -73,11 +91,23 @@ struct BehaviorObservation
         BehaviorTutorialPhase::None};
     std::uint16_t mFirstSunCountdown{};
     bool mFirstSunSpawned{};
+    std::uint8_t mCurrentWave{};
+    std::uint16_t mZombieCountdown{};
+    std::uint8_t mZombieCount{};
+    BehaviorLevelOutcome mLevelOutcome{
+        BehaviorLevelOutcome::None};
+    BehaviorMowerState mMowerState{
+        BehaviorMowerState::None};
+    bool mLevelAwardSpawned{};
+    std::uint16_t mZombieWaveHealth{};
+    std::uint8_t mProjectileCount{};
 };
 
 static_assert(sizeof(BehaviorScene) == 1);
 static_assert(sizeof(BehaviorBoardStage) == 1);
 static_assert(sizeof(BehaviorSeedSelection) == 1);
 static_assert(sizeof(BehaviorTutorialPhase) == 1);
+static_assert(sizeof(BehaviorLevelOutcome) == 1);
+static_assert(sizeof(BehaviorMowerState) == 1);
 
 } // namespace pvz::game

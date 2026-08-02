@@ -71,6 +71,31 @@ inline constexpr std::uint64_t kNoDifference =
     return "invalid";
 }
 
+[[nodiscard]] std::string_view GetRandomDecisionKindName(
+    pvz::game::LevelOneRandomDecisionKind theKind)
+{
+    switch (theKind)
+    {
+    case pvz::game::LevelOneRandomDecisionKind::FallingSun:
+        return "falling-sun";
+    case pvz::game::LevelOneRandomDecisionKind::NormalZombie:
+        return "normal-zombie";
+    case pvz::game::LevelOneRandomDecisionKind::WaveSchedule:
+        return "wave-schedule";
+    case pvz::game::LevelOneRandomDecisionKind::PeashooterSchedule:
+        return "peashooter-schedule";
+    case pvz::game::LevelOneRandomDecisionKind::ProjectileSpawn:
+        return "projectile-spawn";
+    case pvz::game::LevelOneRandomDecisionKind::ZombieMotion:
+        return "zombie-motion";
+    case pvz::game::LevelOneRandomDecisionKind::ProjectileMotion:
+        return "projectile-motion";
+    case pvz::game::LevelOneRandomDecisionKind::Count:
+        break;
+    }
+    return "invalid";
+}
+
 [[nodiscard]] bool LoadCapture(
     const std::filesystem::path& thePath,
     pvz::parity::BehaviorCapture& theCapture)
@@ -196,7 +221,25 @@ void PrintTimeline(
              anObservation.mTutorialPhase !=
                  anObservations[anIndex - 1].mTutorialPhase ||
              anObservation.mFirstSunSpawned !=
-                 anObservations[anIndex - 1].mFirstSunSpawned);
+                 anObservations[anIndex - 1].mFirstSunSpawned ||
+             anObservation.mCurrentWave !=
+                 anObservations[anIndex - 1].mCurrentWave ||
+             (anObservation.mZombieCountdown !=
+                  anObservations[anIndex - 1].mZombieCountdown &&
+              anObservation.mZombieCountdown + 1U !=
+                  anObservations[anIndex - 1].mZombieCountdown) ||
+             anObservation.mZombieCount !=
+                 anObservations[anIndex - 1].mZombieCount ||
+             anObservation.mLevelOutcome !=
+                 anObservations[anIndex - 1].mLevelOutcome ||
+             anObservation.mMowerState !=
+                 anObservations[anIndex - 1].mMowerState ||
+             anObservation.mLevelAwardSpawned !=
+                 anObservations[anIndex - 1].mLevelAwardSpawned ||
+             anObservation.mZombieWaveHealth !=
+                 anObservations[anIndex - 1].mZombieWaveHealth ||
+             anObservation.mProjectileCount !=
+                 anObservations[anIndex - 1].mProjectileCount);
         if (hasLevelOneTransition &&
             theCapture.GetFormatVersion() >= 2)
         {
@@ -220,6 +263,27 @@ void PrintTimeline(
                 << anObservation.mFirstSunCountdown
                 << " first-sun-spawned="
                 << anObservation.mFirstSunSpawned
+                << " wave="
+                << static_cast<std::uint32_t>(
+                       anObservation.mCurrentWave)
+                << " zombie-countdown="
+                << anObservation.mZombieCountdown
+                << " zombies="
+                << static_cast<std::uint32_t>(
+                       anObservation.mZombieCount)
+                << " outcome="
+                << static_cast<std::uint32_t>(
+                       anObservation.mLevelOutcome)
+                << " mower="
+                << static_cast<std::uint32_t>(
+                       anObservation.mMowerState)
+                << " award="
+                << anObservation.mLevelAwardSpawned
+                << " wave-health="
+                << anObservation.mZombieWaveHealth
+                << " projectiles="
+                << static_cast<std::uint32_t>(
+                       anObservation.mProjectileCount)
                 << '\n';
         }
     }
@@ -272,10 +336,7 @@ void PrintTimeline(
         std::cout
             << "random-decision-index=" << anIndex
             << " kind="
-            << (aDecision.mKind ==
-                        pvz::game::LevelOneRandomDecisionKind::FallingSun
-                    ? "falling-sun"
-                    : "normal-zombie")
+            << GetRandomDecisionKindName(aDecision.mKind)
             << " next-countdown="
             << aDecision.mNextCountdown
             << " x-millipixels="
@@ -284,6 +345,14 @@ void PrintTimeline(
             << aDecision.mGroundYMilliPixels
             << " speed-micropixels-per-tick="
             << aDecision.mSpeedMicroPixelsPerTick
+            << " wave-health-threshold="
+            << aDecision.mWaveHealthThreshold
+            << " plant-column="
+            << static_cast<std::uint32_t>(
+                   aDecision.mPlantColumn)
+            << " shooting-counter="
+            << static_cast<std::uint32_t>(
+                   aDecision.mShootingCounter)
             << '\n';
     }
 }
@@ -337,7 +406,11 @@ void PrintTimeline(
         theLeft.mGroundYMilliPixels ==
             theRight.mGroundYMilliPixels &&
         theLeft.mSpeedMicroPixelsPerTick ==
-            theRight.mSpeedMicroPixelsPerTick;
+            theRight.mSpeedMicroPixelsPerTick &&
+        theLeft.mWaveHealthThreshold ==
+            theRight.mWaveHealthThreshold &&
+        theLeft.mPlantColumn == theRight.mPlantColumn &&
+        theLeft.mShootingCounter == theRight.mShootingCounter;
 }
 
 [[nodiscard]] std::uint64_t FindFirstRandomDecisionDifference(

@@ -9,7 +9,9 @@
 #include "pvz/game/GameModule.h"
 #include "pvz/game/LevelOneRandomDecision.h"
 #include "pvz/parity/BehaviorCapture.h"
+#include "pvz/parity/BehaviorComparison.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -224,7 +226,15 @@ private:
     const std::filesystem::path& thePath,
     pvz::engine::core::InputReplay& theReplay,
     std::vector<pvz::game::LevelOneRandomDecision>& theRandomDecisions,
-    bool& theHasRandomDecisionTape)
+    std::vector<pvz::game::BehaviorObservation>&
+        theExpectedObservations,
+    std::uint16_t& theExpectedBehaviorVersion,
+    bool& theHasRandomDecisionTape,
+    bool& theSupportsWaveSchedule,
+    bool& theSupportsPeashooterSchedule,
+    bool& theSupportsProjectileSpawn,
+    bool& theSupportsZombieMotion,
+    bool& theSupportsProjectileMotion)
 {
     std::error_code anError;
     const auto aFileSize =
@@ -316,8 +326,23 @@ private:
         theRandomDecisions.assign(
             aCapture.GetRandomDecisions().begin(),
             aCapture.GetRandomDecisions().end());
+        theExpectedObservations.assign(
+            aCapture.GetObservations().begin(),
+            aCapture.GetObservations().end());
+        theExpectedBehaviorVersion =
+            aCapture.GetFormatVersion();
         theHasRandomDecisionTape =
             aCapture.GetFormatVersion() >= 3;
+        theSupportsWaveSchedule =
+            aCapture.GetFormatVersion() >= 4;
+        theSupportsPeashooterSchedule =
+            aCapture.GetFormatVersion() >= 5;
+        theSupportsProjectileSpawn =
+            aCapture.GetFormatVersion() >= 5;
+        theSupportsZombieMotion =
+            aCapture.GetFormatVersion() >= 5;
+        theSupportsProjectileMotion =
+            aCapture.GetFormatVersion() >= 6;
         return true;
     }
     std::cerr
@@ -409,14 +434,29 @@ int main(int theArgumentCount, char** theArguments)
     pvz::engine::core::InputReplay aReplay;
     std::vector<pvz::game::LevelOneRandomDecision>
         aRandomDecisions;
+    std::vector<pvz::game::BehaviorObservation>
+        anExpectedBehaviorObservations;
+    std::uint16_t anExpectedBehaviorVersion{};
     bool hasRandomDecisionTape = false;
+    bool supportsWaveSchedule = false;
+    bool supportsPeashooterSchedule = false;
+    bool supportsProjectileSpawn = false;
+    bool supportsZombieMotion = false;
+    bool supportsProjectileMotion = false;
 
     if (aReplayInputPath.has_value()
             ? !LoadReplayInput(
                   *aReplayInputPath,
                   aReplay,
                   aRandomDecisions,
-                  hasRandomDecisionTape)
+                  anExpectedBehaviorObservations,
+                  anExpectedBehaviorVersion,
+                  hasRandomDecisionTape,
+                  supportsWaveSchedule,
+                  supportsPeashooterSchedule,
+                  supportsProjectileSpawn,
+                  supportsZombieMotion,
+                  supportsProjectileMotion)
             : !BuildAdventureReplay(aReplay))
     {
         return 1;
@@ -451,7 +491,13 @@ int main(int theArgumentCount, char** theArguments)
         aRandomDecisionTape;
     if (hasRandomDecisionTape)
     {
-        aRandomDecisionTape.emplace(aRandomDecisions);
+        aRandomDecisionTape.emplace(
+            aRandomDecisions,
+            supportsWaveSchedule,
+            supportsPeashooterSchedule,
+            supportsProjectileSpawn,
+            supportsZombieMotion,
+            supportsProjectileMotion);
         if (!aGame.SetLevelOneRandomDecisionSource(
                 &*aRandomDecisionTape))
         {
@@ -465,6 +511,7 @@ int main(int theArgumentCount, char** theArguments)
         return 1;
     }
 
+    std::optional<std::uint64_t> aRandomDecisionFailureTick;
     for (const auto& aRecordedFrame :
          aLoadedReplay.GetFrames())
     {
@@ -473,6 +520,12 @@ int main(int theArgumentCount, char** theArguments)
         aRecordingGame.Update(
             pvz::engine::GameTick{aRecordedFrame.mTick},
             anInput);
+        if (aGame.HasRandomDecisionFailure() &&
+            !aRandomDecisionFailureTick.has_value())
+        {
+            aRandomDecisionFailureTick =
+                aRecordedFrame.mTick;
+        }
         if (!aBehaviorCapture.AppendObservation(
                 aGame.GetBehaviorObservation(),
                 aBehaviorError))
@@ -485,14 +538,289 @@ int main(int theArgumentCount, char** theArguments)
     {
         return 1;
     }
+    if (!anExpectedBehaviorObservations.empty())
+    {
+        const auto anActualObservations =
+            aBehaviorCapture.GetObservations();
+        const auto aDifference =
+            pvz::parity::FindFirstBehaviorDifference(
+                anExpectedBehaviorObservations,
+                anActualObservations,
+                anExpectedBehaviorVersion);
+        if (aDifference.mTick !=
+            pvz::parity::kNoBehaviorDifferenceTick)
+        {
+            const auto aDifferenceIndex =
+                static_cast<std::size_t>(aDifference.mTick);
+            const auto& anExpected =
+                anExpectedBehaviorObservations[aDifferenceIndex];
+            const auto& anActual =
+                anActualObservations[aDifferenceIndex];
+            std::cerr
+                << "behavior-replay-first-difference"
+                << " tick=" << aDifference.mTick
+                << " field="
+                << pvz::parity::GetBehaviorFieldName(
+                       aDifference.mField)
+                << " expected-sun=" << anExpected.mSun
+                << " actual-sun=" << anActual.mSun
+                << " expected-plants="
+                << anExpected.mPlantCount
+                << " actual-plants="
+                << anActual.mPlantCount
+                << '\n';
+        }
+        const auto aPlayingIterator = std::find_if(
+            anExpectedBehaviorObservations.begin(),
+            anExpectedBehaviorObservations.end(),
+            [](const pvz::game::BehaviorObservation& theObservation)
+            {
+                return theObservation.mScene ==
+                    pvz::game::BehaviorScene::AdventurePlaying;
+            });
+        if (aPlayingIterator !=
+            anExpectedBehaviorObservations.end())
+        {
+            const auto aPlayingIndex =
+                static_cast<std::size_t>(std::distance(
+                    anExpectedBehaviorObservations.begin(),
+                    aPlayingIterator));
+            const auto aPlayingDifference =
+                pvz::parity::FindFirstBehaviorDifference(
+                    std::span<const pvz::game::BehaviorObservation>(
+                        anExpectedBehaviorObservations)
+                        .subspan(aPlayingIndex),
+                    anActualObservations.subspan(aPlayingIndex),
+                    anExpectedBehaviorVersion);
+            if (aPlayingDifference.mTick !=
+                pvz::parity::kNoBehaviorDifferenceTick)
+            {
+                const auto aPlayingDifferenceIndex =
+                    aPlayingIndex +
+                    static_cast<std::size_t>(
+                        aPlayingDifference.mTick);
+                const auto& anExpected =
+                    anExpectedBehaviorObservations[
+                        aPlayingDifferenceIndex];
+                const auto& anActual =
+                    anActualObservations[
+                        aPlayingDifferenceIndex];
+                std::cerr
+                    << "behavior-replay-playing-first-difference"
+                    << " tick=" << aPlayingDifferenceIndex
+                    << " field="
+                    << pvz::parity::GetBehaviorFieldName(
+                           aPlayingDifference.mField)
+                    << " expected-sun=" << anExpected.mSun
+                    << " actual-sun=" << anActual.mSun
+                    << " expected-plants="
+                    << static_cast<std::uint32_t>(
+                           anExpected.mPlantCount)
+                    << " actual-plants="
+                    << static_cast<std::uint32_t>(
+                           anActual.mPlantCount)
+                    << " expected-wave-health="
+                    << anExpected.mZombieWaveHealth
+                    << " actual-wave-health="
+                    << anActual.mZombieWaveHealth
+                    << " expected-projectiles="
+                    << static_cast<std::uint32_t>(
+                           anExpected.mProjectileCount)
+                    << " actual-projectiles="
+                    << static_cast<std::uint32_t>(
+                           anActual.mProjectileCount)
+                    << '\n';
+            }
+
+            if (anExpectedBehaviorVersion >= 4)
+            {
+                const auto aCombatCount = std::min(
+                    anExpectedBehaviorObservations.size(),
+                    anActualObservations.size());
+                for (auto anIndex = aPlayingIndex;
+                     anIndex < aCombatCount;
+                     ++anIndex)
+                {
+                    const auto& anExpected =
+                        anExpectedBehaviorObservations[anIndex];
+                    const auto& anActual =
+                        anActualObservations[anIndex];
+                    auto aField = pvz::parity::BehaviorField::None;
+                    if (anExpected.mCurrentWave !=
+                        anActual.mCurrentWave)
+                    {
+                        aField =
+                            pvz::parity::BehaviorField::CurrentWave;
+                    }
+                    else if (anExpected.mZombieWaveHealth !=
+                             anActual.mZombieWaveHealth)
+                    {
+                        aField = pvz::parity::BehaviorField::
+                            ZombieWaveHealth;
+                    }
+                    else if (anExpected.mProjectileCount !=
+                             anActual.mProjectileCount)
+                    {
+                        aField = pvz::parity::BehaviorField::
+                            ProjectileCount;
+                    }
+                    else if (anExpected.mZombieCountdown !=
+                             anActual.mZombieCountdown)
+                    {
+                        aField = pvz::parity::BehaviorField::
+                            ZombieCountdown;
+                    }
+                    else if (anExpected.mZombieCount !=
+                             anActual.mZombieCount)
+                    {
+                        aField =
+                            pvz::parity::BehaviorField::ZombieCount;
+                    }
+                    else if (anExpected.mLevelOutcome !=
+                             anActual.mLevelOutcome)
+                    {
+                        aField =
+                            pvz::parity::BehaviorField::LevelOutcome;
+                    }
+                    else if (anExpected.mMowerState !=
+                             anActual.mMowerState)
+                    {
+                        aField =
+                            pvz::parity::BehaviorField::MowerState;
+                    }
+                    else if (anExpected.mLevelAwardSpawned !=
+                             anActual.mLevelAwardSpawned)
+                    {
+                        aField = pvz::parity::BehaviorField::
+                            LevelAwardSpawned;
+                    }
+                    if (aField != pvz::parity::BehaviorField::None)
+                    {
+                        std::cerr
+                            << "behavior-replay-combat-first-difference"
+                            << " tick=" << anIndex
+                            << " field="
+                            << pvz::parity::GetBehaviorFieldName(aField)
+                            << " expected-wave="
+                            << static_cast<std::uint32_t>(
+                                   anExpected.mCurrentWave)
+                            << " actual-wave="
+                            << static_cast<std::uint32_t>(
+                                   anActual.mCurrentWave)
+                            << " expected-countdown="
+                            << anExpected.mZombieCountdown
+                            << " actual-countdown="
+                            << anActual.mZombieCountdown
+                            << " expected-zombies="
+                            << static_cast<std::uint32_t>(
+                                   anExpected.mZombieCount)
+                            << " actual-zombies="
+                            << static_cast<std::uint32_t>(
+                                   anActual.mZombieCount)
+                            << " expected-wave-health="
+                            << anExpected.mZombieWaveHealth
+                            << " actual-wave-health="
+                            << anActual.mZombieWaveHealth
+                            << " expected-projectiles="
+                            << static_cast<std::uint32_t>(
+                                   anExpected.mProjectileCount)
+                            << " actual-projectiles="
+                            << static_cast<std::uint32_t>(
+                                   anActual.mProjectileCount)
+                            << '\n';
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    const auto writeDiagnosticBehavior = [&]() -> bool
+    {
+        if (!aBehaviorOutputPath.has_value())
+            return true;
+        pvz::engine::core::BinaryStateWriter aDiagnosticWriter;
+        if (!aBehaviorCapture.Save(
+                aDiagnosticWriter,
+                aBehaviorError))
+        {
+            return false;
+        }
+        std::ofstream aDiagnosticStream(
+            *aBehaviorOutputPath,
+            std::ios::binary | std::ios::trunc);
+        const auto aDiagnosticBytes =
+            aDiagnosticWriter.GetBytes();
+        if (!aDiagnosticStream)
+            return false;
+        aDiagnosticStream.write(
+            reinterpret_cast<const char*>(
+                aDiagnosticBytes.data()),
+            static_cast<std::streamsize>(
+                aDiagnosticBytes.size()));
+        return static_cast<bool>(aDiagnosticStream);
+    };
     if (aGame.HasRandomDecisionFailure())
     {
-        std::cerr << "random-decision-tape-rejected\n";
+        if (!writeDiagnosticBehavior())
+            return 1;
+        const auto aReadCount =
+            aRandomDecisionTape->GetReadCount();
+        const auto aTapeError =
+            aRandomDecisionTape->GetError();
+        const auto aCandidateIndex =
+            aTapeError ==
+                    pvz::game::LevelOneRandomDecisionReadError::None &&
+                aReadCount > 0
+            ? aReadCount - 1U
+            : aReadCount;
+        std::cerr
+            << "random-decision-tape-rejected"
+            << " tick="
+            << aRandomDecisionFailureTick.value_or(0)
+            << " read="
+            << aRandomDecisionTape->GetReadCount()
+            << " remaining="
+            << aRandomDecisionTape->GetRemainingCount()
+            << " error="
+            << static_cast<std::uint32_t>(
+                   aRandomDecisionTape->GetError())
+            << " expected-kind="
+            << static_cast<std::uint32_t>(
+                   aRandomDecisionTape->GetExpectedKind())
+            << " actual-kind="
+            << static_cast<std::uint32_t>(
+                   aRandomDecisionTape->GetActualKind());
+        if (aCandidateIndex < aRandomDecisions.size())
+        {
+            const auto& aDecision =
+                aRandomDecisions[aCandidateIndex];
+            std::cerr
+                << " decision-index=" << aCandidateIndex
+                << " next-countdown="
+                << aDecision.mNextCountdown
+                << " x-millipixels="
+                << aDecision.mXMilliPixels
+                << " ground-y-millipixels="
+                << aDecision.mGroundYMilliPixels
+                << " speed-micropixels-per-tick="
+                << aDecision.mSpeedMicroPixelsPerTick
+                << " wave-health-threshold="
+                << aDecision.mWaveHealthThreshold
+                << " plant-column="
+                << static_cast<std::uint32_t>(
+                       aDecision.mPlantColumn)
+                << " shooting-counter="
+                << static_cast<std::uint32_t>(
+                       aDecision.mShootingCounter);
+        }
+        std::cerr << '\n';
         return 1;
     }
     if (aRandomDecisionTape.has_value() &&
         aRandomDecisionTape->GetRemainingCount() != 0)
     {
+        if (!writeDiagnosticBehavior())
+            return 1;
         std::cerr
             << "random-decision-tape-unused="
             << aRandomDecisionTape->GetRemainingCount()
@@ -551,8 +879,8 @@ int main(int theArgumentCount, char** theArguments)
         aBehaviorObservations.back().mOccupiedCells ==
             aFlowState.mOccupiedCells &&
         aBehaviorObservations.back().mPlantCount == 1 &&
-        aFinalHash == 18'030'610'087'916'243'024ULL &&
-        aTranscriptHash == 7'473'042'268'779'290'947ULL;
+        aFinalHash == 7'771'277'013'250'427'510ULL &&
+        aTranscriptHash == 11'892'826'481'577'727'771ULL;
 
     pvz::engine::core::BinaryStateWriter aSessionWriter;
     pvz::engine::core::ReplaySessionError aSessionError{};

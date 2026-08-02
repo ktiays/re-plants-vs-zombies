@@ -47,11 +47,16 @@ Last updated: 2026-08-02
   compares raw input with portable sessions
 - [x] Versioned fixed-width `PVZB` behavior captures combine exact logical
   input with post-update normalized scene, board stage, grid focus, occupied
-  cells, plant count, and Level 1 economy state; version 3 adds a strict
-  game-semantic tape for falling-sun and normal-zombie random choices;
+  cells, plant count, and Level 1 economy state; version 4 adds complete-level
+  wave, zombie, outcome, mower, and award observations, and version 5 adds
+  fixed-width wave-health/projectile diagnostics and Peashooter launch
+  scheduling to the strict game-semantic tape for falling-sun, normal-zombie,
+  wave-schedule, Peashooter-schedule, and animation-derived projectile-spawn
+  choices, plus per-live-slot semantic zombie motion; version 6 adds exact
+  synchronized projectile motion without native floats;
   independent legacy and portable exporters plus the behavior inspector report
-  the first differing tick, field, or decision while versions 1 and 2 remain
-  readable
+  the first differing tick, field, or decision while versions 1 through 5
+  remain readable
 - [x] Engine-owned rendering, input, logging, state, and resource protocols
 - [x] Portable PAK indexing, normalization, validation, and resource reads
 - [x] Validation against the supplied retail PAK: 3,198 entries and
@@ -107,13 +112,15 @@ Last updated: 2026-08-02
   source-audited 150-sun start, 100-sun Peashooter, 750-tick packet recharge,
   center-row placement rule, non-destructive occupied-cell rejection, and
   keyboard/pointer seed selection behind engine-neutral input
-- [x] Deterministic Level 1 first-wave combat vertical slice: the portable game
+- [x] Deterministic complete Level 1 combat: the portable game
   owns the two-plant tutorial gate, falling 25-sun pickups, 99-tick first-wave
-  countdown, normal-zombie and Peashooter state, fixed-point movement, lane
-  targeting, pea collision/damage, four-tick eating cadence, and first-wave
-  completion; a 9,169-tick Windows runtime replay now validates five falling-
-  sun decisions, one normal-zombie decision, delayed sun collection, pointer
-  hover focus, and both tutorial placements
+  countdown, all four 1/1/1/2 zombie waves, source-compatible next-wave health
+  acceleration, normal-zombie and Peashooter state, fixed-point movement, lane
+  targeting, pea collision/damage, four-tick eating cadence, lawn-mower rescue,
+  loss, win, and final award; a version 6 source fixture covers the complete
+  scenario, while a 15,701-tick Windows runtime trace validates all combat
+  observations through the award and remains byte-identical across AppleClang
+  and MSVC after portable replay
 - [x] Local reference-first parity harness: independent, revisioned legacy
   board fixtures exhaustively cover day, pool, and roof geometry, pointer
   mapping, background cropping, and engine-neutral selection render commands
@@ -126,12 +133,12 @@ Last updated: 2026-08-02
   transform interpolation, disappearing-frame truncation, atlas-cell
   selection, alpha, and independent x/y skew produce backend-neutral affine
   sprite quads consumed directly by Metal
-- [x] Version-7 portable game state persists scene, menu, transition, notice,
+- [x] Version-8 portable game state persists scene, menu, transition, notice,
   grid selection, the 45-cell occupancy bitset, fixed-width reanimation tick,
   logical pointer-hover history, sun, packet recharge, seed selection,
   collection-flight state, micro-pixel zombie movement remainder, and bounded
-  combat entities through explicit fields; versions 1 through 6 remain
-  readable
+  combat entities, wave scheduling, mower, outcome, and award state through
+  explicit fields; versions 1 through 7 remain readable
 - [x] Fixed-width audio firewall: decoded PCM descriptors, sound and voice
   handles, playback parameters, resource diagnostics, decoder/device
   protocols, and the game-facing sound service expose no backend or
@@ -164,8 +171,9 @@ Last updated: 2026-08-02
   Adventure transition, starts the daytime music at order zero, and restores
   the title music when returning to the menu solely through `IMusicResources`
 - [ ] Complete Windows runtime behavior and screenshot baselines for the
-  reconstructed legacy target (the 9,169-tick Level 1 first-zombie behavior
-  baseline matches; later combat waves and screenshot coverage remain)
+  reconstructed legacy target (the complete Level 1 v6 combat baseline now
+  matches; asynchronous scene timing, one 25-sun pickup, and screenshot
+  coverage remain)
 - [ ] Migration of the remaining gameplay `Board`, `Challenge`, data-array, and
   effect snapshots from raw object blocks to fieldwise fixed-width schemas
 - [x] Mapping portable XML tokens into runtime definitions used by effects
@@ -491,17 +499,17 @@ The current controls are Enter, Space, or primary click on the title; arrow
 keys or pointer selection in the menu; and seed-packet selection followed by
 pointer or arrow-key plus Enter/Space placement on the lawn. Escape returns
 from the lawn to the menu. Adventure is the only enabled mode in this slice.
-Level 1 now enforces the source-audited initial sun, Peashooter cost and packet
-recharge, center-row restriction, and occupied-cell rejection. Its first-wave
-vertical slice also includes the two-plant tutorial gate, collectible sky sun,
-one normal zombie, Peashooter targeting, peas, damage, eating, and deterministic
-first-wave completion. The remaining three waves, lawn-mower/loss behavior,
-level award, and full random-sequence parity remain later gameplay work. These
-rules pass source-audited local differential and replay tests. Real Windows
-runtime confirmation now covers the complete title-to-first-plant economy
-slice and deterministic first-sun trigger. Post-trigger sun choices, zombie
-speed/placement, and full combat remain pending a game-semantic random-decision
-capture instead of relying on the legacy renderer-coupled global RNG stream.
+Level 1 enforces the source-audited initial sun, Peashooter cost and packet
+recharge, center-row restriction, occupied-cell rejection, two-plant tutorial,
+collectible sky suns, all four 1/1/1/2 zombie waves, randomized wave and firing
+schedules, Peashooter targeting, peas, damage, eating, mower/loss behavior, and
+the final award. A fixed-width v6 semantic tape keeps legacy random choices and
+animation-derived zombie/projectile motion behind the reference adapter. The
+15,701-tick native Windows run reaches the award at tick 13,796; AppleClang and
+MSVC consume all 13,029 decisions and reproduce every combat observation with
+byte-identical portable outputs. The remaining behavior drift is isolated to
+asynchronous scene timing and one 25-sun pickup, while screenshot coverage is
+still pending.
 
 The same startup path resolves `SOUND_LOADINGBAR_FLOWER` through
 `ISoundResources`, decodes it through `IAudioDecoder`, uploads fixed-width

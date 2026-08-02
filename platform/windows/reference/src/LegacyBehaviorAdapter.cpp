@@ -3,6 +3,9 @@
 #include "Lawn/Board.h"
 #include "Lawn/Coin.h"
 #include "Lawn/CursorObject.h"
+#include "Lawn/LawnMower.h"
+#include "Lawn/Plant.h"
+#include "Lawn/Projectile.h"
 #include "Lawn/SeedPacket.h"
 #include "Lawn/Zombie.h"
 #include "Lawn/Widget/TitleScreen.h"
@@ -10,8 +13,11 @@
 #include "pvz/platform/windows/LegacyInputCapture.h"
 #include "widget/WidgetManager.h"
 
+#include <algorithm>
+#include <array>
 #include <cstdint>
 #include <cmath>
+#include <iostream>
 #include <limits>
 
 namespace pvz::platform::windows
@@ -23,6 +29,13 @@ struct LevelOneDecisionObserverState
 {
     Board* mBoard{};
     int mSunsFallen{};
+    int mCurrentWave{};
+    bool mTerminal{};
+    std::array<unsigned int, 9> mPlantIds{};
+    std::array<int, 9> mPlantLaunchCounters{};
+    std::array<unsigned int, 32> mProjectileIds{};
+    std::array<unsigned int, 8> mZombieIds{};
+    std::array<int, 8> mZombieHealth{};
 };
 
 [[nodiscard]] LevelOneDecisionObserverState&
@@ -66,7 +79,8 @@ void EnsureBehaviorCaptureEnvironment(LawnApp& theApp)
     }
     if (theApp.mGameScene == GameScenes::SCENE_LEVEL_INTRO)
         return game::BehaviorScene::AdventureIntro;
-    if (theApp.mGameScene == GameScenes::SCENE_PLAYING)
+    if (theApp.mGameScene == GameScenes::SCENE_PLAYING ||
+        theApp.mGameScene == GameScenes::SCENE_ZOMBIES_WON)
         return game::BehaviorScene::AdventurePlaying;
     return game::BehaviorScene::Other;
 }
@@ -189,6 +203,251 @@ void ObserveLevelOneRandomDecisions(Board& theBoard)
     {
         aState.mBoard = &theBoard;
         aState.mSunsFallen = theBoard.mNumSunsFallen;
+        aState.mCurrentWave = theBoard.mCurrentWave;
+        aState.mTerminal = false;
+        aState.mPlantIds = {};
+        aState.mPlantLaunchCounters = {};
+        aState.mProjectileIds = {};
+        aState.mZombieIds = {};
+        aState.mZombieHealth = {};
+    }
+    if (aState.mTerminal)
+        return;
+
+    std::array<unsigned int, 32> aCurrentProjectileIds{};
+    std::array<Projectile*, 32> aNewProjectiles{};
+    std::size_t aCurrentProjectileCount{};
+    std::size_t aNewProjectileCount{};
+    Projectile* aProjectile = nullptr;
+    while (theBoard.IterateProjectiles(aProjectile))
+    {
+        if (aProjectile->mDead ||
+            aProjectile->mProjectileType !=
+                ProjectileType::PROJECTILE_PEA ||
+            aProjectile->mRow != 2 ||
+            aCurrentProjectileCount >=
+                aCurrentProjectileIds.size())
+        {
+            continue;
+        }
+        const auto aProjectileId =
+            theBoard.mProjectiles.DataArrayGetID(aProjectile);
+        aCurrentProjectileIds[aCurrentProjectileCount] =
+            aProjectileId;
+        ++aCurrentProjectileCount;
+        if (std::find(
+                aState.mProjectileIds.begin(),
+                aState.mProjectileIds.end(),
+                aProjectileId) ==
+                aState.mProjectileIds.end())
+        {
+            aNewProjectiles[aNewProjectileCount++] = aProjectile;
+        }
+    }
+
+    std::array<bool, 9> aSeenPlantColumns{};
+    std::size_t aNextNewProjectile{};
+    Plant* aPlant = nullptr;
+    while (theBoard.IteratePlants(aPlant))
+    {
+        if (!aPlant->mIsOnBoard ||
+            aPlant->mSeedType != SeedType::SEED_PEASHOOTER ||
+            aPlant->mRow != 2 ||
+            aPlant->mPlantCol < 0 ||
+            aPlant->mPlantCol >= 9)
+        {
+            continue;
+        }
+        const auto aColumn =
+            static_cast<std::uint8_t>(aPlant->mPlantCol);
+        const auto aColumnIndex =
+            static_cast<std::size_t>(aColumn);
+        const auto aPlantId =
+            theBoard.mPlants.DataArrayGetID(aPlant);
+        const bool isNewPlant =
+            aState.mPlantIds[aColumnIndex] != aPlantId;
+        const bool hasReset =
+            !isNewPlant &&
+            aPlant->mLaunchCounter >
+                aState.mPlantLaunchCounters[aColumnIndex];
+        if (!isNewPlant &&
+            aPlant->mShootingCounter == 1 &&
+            aNextNewProjectile < aNewProjectileCount)
+        {
+            const auto* aNewProjectile =
+                aNewProjectiles[aNextNewProjectile++];
+            RecordLegacyRandomDecision({
+                .mKind = game::LevelOneRandomDecisionKind::
+                    ProjectileSpawn,
+                .mXMilliPixels = NormalizeScaledFloat(
+                    aNewProjectile->mPosX - 3.33F,
+                    1'000.0F),
+                .mGroundYMilliPixels = NormalizeScaledFloat(
+                    aNewProjectile->mPosY,
+                    1'000.0F),
+                .mPlantColumn = aColumn,
+            });
+        }
+        if (isNewPlant)
+        {
+            if (aPlant->mShootingCounter == 33)
+            {
+                RecordLegacyRandomDecision({
+                    .mKind = game::LevelOneRandomDecisionKind::
+                        PeashooterSchedule,
+                    .mNextCountdown = 1,
+                    .mPlantColumn = aColumn,
+                });
+                RecordLegacyRandomDecision({
+                    .mKind = game::LevelOneRandomDecisionKind::
+                        PeashooterSchedule,
+                    .mNextCountdown = NormalizeU16(
+                        aPlant->mLaunchCounter),
+                    .mPlantColumn = aColumn,
+                    .mShootingCounter = 33,
+                });
+            }
+            else
+            {
+                RecordLegacyRandomDecision({
+                    .mKind = game::LevelOneRandomDecisionKind::
+                        PeashooterSchedule,
+                    .mNextCountdown = NormalizeU16(
+                        aPlant->mLaunchCounter + 1),
+                    .mPlantColumn = aColumn,
+                });
+            }
+        }
+        else if (hasReset)
+        {
+            RecordLegacyRandomDecision({
+                .mKind = game::LevelOneRandomDecisionKind::
+                    PeashooterSchedule,
+                .mNextCountdown = NormalizeU16(
+                    aPlant->mLaunchCounter),
+                .mPlantColumn = aColumn,
+                .mShootingCounter = static_cast<std::uint8_t>(
+                    std::clamp(aPlant->mShootingCounter, 0, 255)),
+            });
+        }
+        aSeenPlantColumns[aColumnIndex] = true;
+        aState.mPlantIds[aColumnIndex] = aPlantId;
+        aState.mPlantLaunchCounters[aColumnIndex] =
+            aPlant->mLaunchCounter;
+    }
+    for (std::size_t aColumn = 0;
+         aColumn < aSeenPlantColumns.size();
+         ++aColumn)
+    {
+        if (!aSeenPlantColumns[aColumn])
+        {
+            aState.mPlantIds[aColumn] = 0;
+            aState.mPlantLaunchCounters[aColumn] = 0;
+        }
+    }
+    for (std::size_t aZombieSlot = 0;
+         aZombieSlot < aState.mZombieIds.size();
+         ++aZombieSlot)
+    {
+        const auto aZombieId = aState.mZombieIds[aZombieSlot];
+        if (aZombieId == 0)
+            continue;
+        auto* aTrackedZombie =
+            theBoard.mZombies.DataArrayTryToGet(aZombieId);
+        if (aTrackedZombie == nullptr)
+        {
+            aState.mZombieIds[aZombieSlot] = 0;
+            aState.mZombieHealth[aZombieSlot] = 0;
+            continue;
+        }
+        const auto aPreviousHealth =
+            aState.mZombieHealth[aZombieSlot];
+        const auto aCurrentHealth =
+            std::max(aTrackedZombie->mBodyHealth, 0);
+        const auto aHealthDelta =
+            std::max(aPreviousHealth - aCurrentHealth, 0);
+        RecordLegacyRandomDecision({
+            .mKind = game::LevelOneRandomDecisionKind::ZombieMotion,
+            // Legacy collision and drawing read the synchronized integer mX,
+            // not the animation-produced float mPosX.  Preserve that exact
+            // truncation boundary so rounding cannot move a zombie by a
+            // collision pixel.
+            .mXMilliPixels =
+                static_cast<std::int32_t>(aTrackedZombie->mX) *
+                1'000,
+            .mPlantColumn = static_cast<std::uint8_t>(aZombieSlot),
+            // Peas account for 20-point chunks.  A remaining one-point
+            // decrement is the post-choice result of the headless-zombie
+            // Rand(5) decay in Zombie::Update.
+            .mShootingCounter = static_cast<std::uint8_t>(
+                aHealthDelta % 20 == 1 ? 1 : 0),
+        });
+        aState.mZombieHealth[aZombieSlot] = aCurrentHealth;
+        if (aTrackedZombie->IsDeadOrDying())
+        {
+            aState.mZombieIds[aZombieSlot] = 0;
+            aState.mZombieHealth[aZombieSlot] = 0;
+        }
+    }
+
+    // Allocate new IDs before emitting motion, then emit every live/dead-this-
+    // tick projectile in stable slot order. Portable combat updates its fixed
+    // projectile array in that same order. Emitting existing IDs first would
+    // invert the tape whenever a newly fired pea reused a lower free slot.
+    for (std::size_t anIndex = 0;
+         anIndex < aCurrentProjectileCount;
+         ++anIndex)
+    {
+        const auto aProjectileId = aCurrentProjectileIds[anIndex];
+        if (std::find(
+                aState.mProjectileIds.begin(),
+                aState.mProjectileIds.end(),
+                aProjectileId) != aState.mProjectileIds.end())
+        {
+            continue;
+        }
+        const auto aFreeSlot = std::find(
+            aState.mProjectileIds.begin(),
+            aState.mProjectileIds.end(),
+            0U);
+        if (aFreeSlot == aState.mProjectileIds.end())
+            continue;
+        *aFreeSlot = aProjectileId;
+    }
+
+    std::array<bool, 32> aProjectileSlotsToClear{};
+    for (std::size_t aProjectileSlot = 0;
+         aProjectileSlot < aState.mProjectileIds.size();
+         ++aProjectileSlot)
+    {
+        const auto aProjectileId =
+            aState.mProjectileIds[aProjectileSlot];
+        if (aProjectileId == 0)
+            continue;
+        auto* aTrackedProjectile =
+            theBoard.mProjectiles.DataArrayTryToGet(aProjectileId);
+        if (aTrackedProjectile == nullptr)
+        {
+            aState.mProjectileIds[aProjectileSlot] = 0;
+            continue;
+        }
+        RecordLegacyRandomDecision({
+            .mKind = game::LevelOneRandomDecisionKind::ProjectileMotion,
+            .mXMilliPixels =
+                static_cast<std::int32_t>(aTrackedProjectile->mX) *
+                1'000,
+            .mPlantColumn =
+                static_cast<std::uint8_t>(aProjectileSlot),
+        });
+        if (aTrackedProjectile->mDead)
+            aProjectileSlotsToClear[aProjectileSlot] = true;
+    }
+    for (std::size_t aProjectileSlot = 0;
+         aProjectileSlot < aProjectileSlotsToClear.size();
+         ++aProjectileSlot)
+    {
+        if (aProjectileSlotsToClear[aProjectileSlot])
+            aState.mProjectileIds[aProjectileSlot] = 0;
     }
 
     if (theBoard.mNumSunsFallen > aState.mSunsFallen)
@@ -248,7 +507,48 @@ void ObserveLevelOneRandomDecisions(Board& theBoard)
                 static_cast<std::uint32_t>(aSpeed);
         }
         RecordLegacyRandomDecision(aDecision);
+
+        const auto aZombieId =
+            theBoard.mZombies.DataArrayGetID(aZombie);
+        if (std::find(
+                aState.mZombieIds.begin(),
+                aState.mZombieIds.end(),
+                aZombieId) == aState.mZombieIds.end())
+        {
+            const auto aFreeSlot = std::find(
+                aState.mZombieIds.begin(),
+                aState.mZombieIds.end(),
+                0U);
+            if (aFreeSlot != aState.mZombieIds.end())
+            {
+                *aFreeSlot = aZombieId;
+                const auto aSlot = static_cast<std::size_t>(
+                    std::distance(
+                        aState.mZombieIds.begin(),
+                        aFreeSlot));
+                aState.mZombieHealth[aSlot] =
+                    std::max(aZombie->mBodyHealth, 0);
+            }
+        }
     }
+    if (theBoard.mCurrentWave > aState.mCurrentWave)
+    {
+        game::LevelOneRandomDecision aDecision;
+        aDecision.mKind =
+            game::LevelOneRandomDecisionKind::WaveSchedule;
+        aDecision.mNextCountdown =
+            NormalizeU16(theBoard.mZombieCountDown);
+        aDecision.mWaveHealthThreshold =
+            NormalizeU16(theBoard.mZombieHealthToNextWave);
+        RecordLegacyRandomDecision(aDecision);
+    }
+    aState.mCurrentWave = theBoard.mCurrentWave;
+    aState.mTerminal =
+        theBoard.mLevelAwardSpawned ||
+        theBoard.mApp->mBoardResult ==
+            BoardResult::BOARDRESULT_LOST ||
+        theBoard.mApp->mGameScene ==
+            GameScenes::SCENE_ZOMBIES_WON;
 }
 
 [[nodiscard]] game::BehaviorTutorialPhase GetTutorialPhase(
@@ -311,6 +611,85 @@ void ObserveLevelOneState(
         theObservation.mFirstSunCountdown =
             NormalizeU16(theBoard.mSunCountDown);
     }
+
+    theObservation.mCurrentWave =
+        static_cast<std::uint8_t>(std::clamp(
+            theBoard.mCurrentWave,
+            0,
+            255));
+    if (theBoard.mTutorialState ==
+        TutorialState::TUTORIAL_LEVEL_1_COMPLETED)
+    {
+        theObservation.mZombieCountdown =
+            NormalizeU16(theBoard.mZombieCountDown);
+    }
+    Zombie* aZombie = nullptr;
+    while (theBoard.IterateZombies(aZombie))
+    {
+        if (!aZombie->IsDeadOrDying() &&
+            theObservation.mZombieCount <
+                std::numeric_limits<std::uint8_t>::max())
+        {
+            ++theObservation.mZombieCount;
+        }
+    }
+    if (theBoard.mLevelAwardSpawned)
+    {
+        theObservation.mLevelOutcome =
+            game::BehaviorLevelOutcome::Won;
+    }
+    else if (theBoard.mApp->mBoardResult ==
+                 BoardResult::BOARDRESULT_LOST ||
+             theBoard.mApp->mGameScene ==
+                 GameScenes::SCENE_ZOMBIES_WON)
+    {
+        theObservation.mLevelOutcome =
+            game::BehaviorLevelOutcome::Lost;
+    }
+    else
+    {
+        theObservation.mLevelOutcome =
+            game::BehaviorLevelOutcome::Playing;
+    }
+    theObservation.mLevelAwardSpawned =
+        theBoard.mLevelAwardSpawned;
+
+    if (theBoard.mCurrentWave > 0)
+    {
+        theObservation.mZombieWaveHealth = NormalizeU16(
+            theBoard.TotalZombiesHealthInWave(
+                theBoard.mCurrentWave - 1));
+    }
+    Projectile* aProjectile = nullptr;
+    while (theObservation.mLevelOutcome ==
+               game::BehaviorLevelOutcome::Playing &&
+           theBoard.IterateProjectiles(aProjectile))
+    {
+        if (!aProjectile->mDead &&
+            theObservation.mProjectileCount <
+                std::numeric_limits<std::uint8_t>::max())
+        {
+            ++theObservation.mProjectileCount;
+        }
+    }
+
+    LawnMower* aMower = theBoard.FindLawnMowerInRow(2);
+    if (aMower == nullptr)
+    {
+        theObservation.mMowerState =
+            game::BehaviorMowerState::Spent;
+    }
+    else if (aMower->mMowerState ==
+             LawnMowerState::MOWER_TRIGGERED)
+    {
+        theObservation.mMowerState =
+            game::BehaviorMowerState::Triggered;
+    }
+    else
+    {
+        theObservation.mMowerState =
+            game::BehaviorMowerState::Ready;
+    }
 }
 
 } // namespace
@@ -325,10 +704,15 @@ void CaptureLegacyBehaviorTick(LawnApp& theApp)
     EnsureBehaviorCaptureEnvironment(theApp);
     if (!HasLegacyBehaviorCaptureStarted())
     {
-        if (theApp.mTitleScreen != nullptr &&
-            theApp.mTitleScreen->mLoadingThreadComplete)
+        // The application-level flag remains set after loading completes,
+        // even if a click removes the title widget during this update.  Do
+        // not arm during resource loading: recording every loading update can
+        // perturb the reconstructed loader, while the former title-widget
+        // flag could be missed in the same update that entered the menu.
+        if (theApp.mLoadingThreadCompleted)
         {
             StartLegacyBehaviorCapture();
+            std::cerr << "Reference behavior capture start gate reached\n";
         }
         return;
     }

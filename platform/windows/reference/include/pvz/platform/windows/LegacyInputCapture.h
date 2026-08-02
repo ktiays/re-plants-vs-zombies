@@ -24,6 +24,7 @@ enum class ReferencePointerButton : std::uint8_t
 [[nodiscard]] bool WasLegacyBehaviorCaptureRequested();
 [[nodiscard]] bool IsLegacyInputCaptureEnabled();
 [[nodiscard]] bool HasLegacyBehaviorCaptureStarted();
+[[nodiscard]] bool IsLegacyInputCaptureFinalized();
 void StartLegacyBehaviorCapture();
 
 void RecordLegacyPointerPosition(

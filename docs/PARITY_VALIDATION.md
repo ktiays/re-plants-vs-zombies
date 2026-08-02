@@ -81,7 +81,7 @@ selection in the reconstructed legacy source. Portable tests cover:
 - selection requirements and non-destructive occupied-cell rejection;
 - center-row-only planting for the first level;
 - the exact refresh boundary, which becomes ready only after counter 750;
-- fixed-width, transactional version-7 persistence with versions 1 through 6
+- fixed-width, transactional version-8 persistence with versions 1 through 7
   retained as readable inputs;
 - a 1,310-tick replay whose final sun, recharge, occupancy, state hash, and
   rolling transcript hash are fixed.
@@ -91,7 +91,7 @@ two placements and three collected suns. It also verifies pointer-hover grid
 focus, the delayed collection flight, and the tutorial transition that counts
 sun already moving toward the counter.
 
-## Current Level 1 first-wave combat gate
+## Current complete Level 1 combat gate
 
 The combat fixture is independent of `LevelOneCombat` and records values
 audited from `Board::SetTutorialState`, `Board::PickZombieWaves`,
@@ -102,14 +102,19 @@ audited from `Board::SetTutorialState`, `Board::PickZombieWaves`,
 
 - the two-plant tutorial transition, 400-tick tutorial sun boundary, 25-sun
   value, and 99-tick first-wave countdown;
-- the complete Level 1 normal-zombie composition of 1, 1, 1, and 2, while the
-  executable slice currently runs only the first wave;
+- the complete Level 1 normal-zombie composition of 1, 1, 1, and 2 across all
+  four executable waves;
+- the source `2500 + Rand(600)` next-wave range, the 400-tick minimum age and
+  200-tick accelerated countdown, and the 50-to-65-percent wave-health gate;
 - 300 plant health, 270 normal-zombie health, 20 pea damage, 3.33-pixel pea
   movement, 150-tick launch rate, 33-tick firing sequence, and four damage
   every four zombie-age ticks;
-- a deterministic first-wave simulation, an engine-input integration path from
-  sun collection through zombie spawn, and transactional round-trip coverage
-  for the fixed 752-byte combat record;
+- a deterministic complete-level simulation reaching the award after 4,995
+  combat ticks, an engine-input integration path from sun collection through
+  zombie spawn, and transactional round-trip coverage for the fixed 782-byte
+  combat record;
+- lawn-mower collision before the `x = -100` loss check, source-derived mower
+  acceleration and one-use spent state, plus explicit won/lost/award state;
 - independently collectible overlapping sky suns, proving that the spawn
   countdown continues while an earlier pickup remains active.
 
@@ -119,6 +124,37 @@ portable game consumes those decisions through an engine-neutral interface,
 rejects ordering or range drift, and carries micro-pixel zombie speed through
 fixed-width movement state. A 9,169-tick Windows capture with five sun choices
 and one zombie choice matches the portable behavior stream exactly.
+
+Version 4 adds semantic wave-schedule decisions and per-tick current-wave,
+zombie-countdown, zombie-count, outcome, mower, and award observations. The
+complete-level expected values are source-audited at revision
+`79f7b4cc4d09eae842e0bb57ad798ffef8e25007`. Version 5 adds semantic initial
+and recurring Peashooter launch schedules after the first complete native run
+proved that fixed 150-tick reloads accelerated later waves. Native full-level
+v5 observations also carry current-wave health and projectile count, exposing
+the originating shot/collision drift before it shifts a later wave. A semantic
+projectile-spawn record carries the native pre-update pea origin produced by
+the live head animation, without exposing reanimation state to portable game
+logic. A per-live-slot zombie-motion record applies the same boundary to the
+legacy `_ground` animation track and records the post-update synchronized
+integer position used by legacy collision, plus the one-bit result of the
+headless zombie's random health-decay choice. Strict full-level replay is the
+runtime evidence gate. Version 6 adds per-live-slot synchronized projectile
+positions so legacy float accumulation cannot cross a later collision pixel.
+
+The 2026-08-02 v6 Windows run crossed that gate for combat. Its 15,701-frame
+trace reaches the native award at tick 13,796 and contains 13,029 ordered
+semantic decisions. AppleClang and MSVC both consume the entire tape, reproduce
+every version-4-through-6 combat observation through the award, and emit
+byte-identical 1,409,462-byte portable captures. Cross-testing exposed and
+fixed stable projectile-slot ordering, legacy float-to-integer projectile
+motion, and the final-zombie one-third-health award rule.
+
+The complete normalized behavior stream is not yet identical. Asynchronous
+startup first differs at tick 5,030 (`main-menu` versus `adventure-intro`), and
+the first playing-field difference is one missed 25-sun collection at tick
+9,503 (native 50, portable 25). No combat field differs. Sun trajectory/pickup
+geometry and rendered screenshot parity remain explicit follow-up gates.
 
 Run this gate locally:
 
@@ -140,24 +176,20 @@ ctest --test-dir out/portable --output-on-failure
 
 ## Next infrastructure milestones
 
-The board gates cover deterministic geometry, render-command alignment, and the
-first Level 1 economy rules. The remaining cross-runtime infrastructure is:
+The board gates cover deterministic geometry, render-command alignment, the
+Level 1 economy, and complete Level 1 combat. The remaining cross-runtime
+infrastructure is:
 
-- the Level 1 game-semantic random-decision stream is complete for falling suns
-  and normal-zombie spawn position/speed; later wave-composition kinds should
-  extend the same strict interface;
-- the logical-tick input hook is complete: the Windows reference emits `PVZR`,
-  while the macOS application and headless runner emit portable-state `PVZC`
-  sessions; the headless runner can consume the Windows stream;
+- a trajectory/collection diagnostic for the remaining 25-sun pickup drift;
 - a local image normalizer and difference reporter for user-owned golden
   screenshots;
 - a parity manifest that records coverage and approved deviations per scene.
 
-The version 3 Level 1 gate and its fresh Windows runtime capture are complete
-through the first normal-zombie spawn. It compares spendable sun, packet
-recharge, seed selection, tutorial phase, grid focus, the first-sun gate, and
-the ordered semantic choices. See `WINDOWS_REFERENCE_CAPTURE.md` for the
-9,169-tick evidence record.
+The fresh Windows version 3 runtime capture remains the backward-compatibility
+gate through the first normal-zombie spawn. The same 9,169-frame artifact now
+replays through the version 6 reader with byte-identical AppleClang/MSVC
+results. See
+`WINDOWS_REFERENCE_CAPTURE.md` for the evidence record.
 
 Until the relevant evidence exists, a migrated visual or gameplay slice should
 be reported as implemented but not parity-validated.

@@ -179,7 +179,7 @@ post-update observation per frame:
 | Field | Type | Meaning |
 | --- | --- | --- |
 | Magic | `uint32` | `0x425A5650` (`PVZB`) |
-| Version | `uint16` | `1`, `2`, or `3`; new captures write `3` |
+| Version | `uint16` | `1` through `6`; new captures write `6` |
 | Simulation frequency | `uint32` | `100` |
 | Producer | `uint8` | Unknown, portable game, or legacy Windows |
 | Replay byte count | `uint32` | At most 256 MiB |
@@ -211,22 +211,47 @@ Version 2 appends twelve fixed-width bytes, for a 36-byte observation:
 | First-sun countdown | `uint16` | Deterministic tutorial countdown before the first falling sun; zero afterward |
 | First sun spawned | `uint8` boolean | Whether the deterministic first falling-sun gate has fired |
 
-Version 3 appends a game-semantic random-decision tape after all observations:
+Version 4 appends seven fixed-width bytes, for a 43-byte observation:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| Current wave | `uint8` | Number of Level 1 waves already spawned, from zero through four |
+| Zombie countdown | `uint16` | Remaining ticks before the next wave |
+| Zombie count | `uint8` | Live normal zombies on the board |
+| Level outcome | `uint8` enum | None, playing, won, or lost |
+| Mower state | `uint8` enum | None, ready, triggered, or spent |
+| Level award spawned | `uint8` boolean | Whether the final Level 1 seed-packet award exists |
+
+Version 5 appends three fixed-width combat-diagnostic bytes, for a 46-byte
+observation:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| Current-wave zombie health | `uint16` | Remaining body health from live zombies belonging to the latest wave |
+| Projectile count | `uint8` | Live pre-terminal Level 1 projectiles; normalized to zero after win/loss |
+
+Version 3 and later append a game-semantic random-decision tape after all
+observations:
 
 | Field | Type | Meaning |
 | --- | --- | --- |
 | Decision count | `uint32` | At most 100,000 semantic gameplay decisions |
-| Decisions | repeated 15-byte records | Ordered falling-sun and normal-zombie choices |
+| Decisions | repeated records | Ordered gameplay-semantic random choices |
 
-Each decision record is fieldwise encoded:
+Versions 1 through 3 use a 15-byte decision record. Version 4 appends the
+two-byte wave-health threshold, for a 17-byte record. Version 5 appends the
+plant column and shooting counter, for a 19-byte record:
 
 | Field | Type | Meaning |
 | --- | --- | --- |
-| Kind | `uint8` enum | Falling sun or normal zombie |
-| Next countdown | `uint16` | Next sky-sun delay; zero for a zombie |
-| X | `int32` | Spawn position in milli-pixels |
-| Ground Y | `int32` | Falling-sun destination in milli-pixels; zero for a zombie |
+| Kind | `uint8` enum | Falling sun, normal zombie, wave schedule, Peashooter schedule, projectile spawn, zombie motion, or projectile motion |
+| Next countdown | `uint16` | Next sky-sun/wave delay or Peashooter launch counter; zero for zombie and projectile records |
+| X | `int32` | Sun, zombie, or projectile spawn position, or post-update zombie/projectile position, in milli-pixels |
+| Ground Y | `int32` | Falling-sun destination or projectile spawn Y in milli-pixels; zero for a zombie |
 | Speed | `uint32` | Zombie speed in micro-pixels per tick; zero for a sun |
+| Wave-health threshold | `uint16` | Health gate for accelerating the next wave; zero for sun and zombie records |
+| Plant column | `uint8` | Peashooter column `0` through `8` for schedules/spawns, zombie slot `0` through `7` or projectile slot `0` through `31` for motion, or `0xFF` otherwise |
+| Shooting counter | `uint8` | `33` when a scheduled launch found a target; for zombie motion, one when the legacy headless-decay choice applied, otherwise zero |
 
 The Windows exporter records values after the legacy game has made each
 choice. It does not record the global PRNG state: rendering, loading, or other
@@ -234,14 +259,48 @@ legacy systems may consume that stream independently. The portable game reads
 the semantic tape strictly in event order and fails on exhaustion, a kind
 mismatch, an invalid range, or an unused decision. Zombie movement carries the
 captured micro-pixel remainder in fixed-width state so sub-milli speed is not
-rounded away over long runs.
+rounded away over long runs. Version 4 also records the legacy
+`2500 + Rand(600)` wave countdown and the 50-to-65-percent wave-health
+acceleration threshold as one semantic `WaveSchedule` decision.
+Version 5 also records each Peashooter's randomized initial launch counter and
+each `150 - Rand(15)` reload as a semantic `PeashooterSchedule` decision. An
+initial decision stores the counter before the portable same-tick update;
+recurring decisions store the legacy post-reload counter and whether the
+33-tick firing sequence started. The plant column keeps simultaneous plants
+ordered without exposing native plant identifiers. Version 5 also records the
+pre-update pea origin as a `ProjectileSpawn` decision. Native Peashooters derive
+that coordinate from a live head-animation transform; exporting only the
+result keeps reanimation objects out of portable game logic while reproducing
+the animation-derived shot origin.
+Normal-zombie walking in the legacy game similarly derives instantaneous
+ground displacement from an animation track. A `ZombieMotion` record exports
+the synchronized integer post-update position for each live zombie slot. Once
+the zombie has lost its head, the same record carries whether that tick's
+`Rand(5)` choice applied the one-point body-health decay. This creates an exact
+parity oracle without making portable combat depend on a renderer, native
+reanimation object, global PRNG, pointer, or variable-width identifier.
+The per-tick wave-health and projectile fields identify the first spawn, shot,
+collision, or damage drift before it can surface later as a shifted wave.
 
-Version 1 and 2 captures remain readable and run with the portable deterministic
-fallback choices because they contain no decision tape.
+Version 6 retains the 46-byte observation and 19-byte decision layouts and
+adds `ProjectileMotion`. Each live projectile slot records the synchronized
+post-update integer X used by legacy drawing; portable collision uses the
+prior tick's synchronized X, matching the legacy move, collision, then integer
+synchronization order. This prevents binary `float 3.33f` accumulation from
+drifting across a collision pixel without exposing native floating-point state.
+
+Versions 1 and 2 remain readable and use portable deterministic fallback
+choices because they contain no decision tape. Version 3 remains readable and
+replays its sun and zombie decisions while using deterministic wave and
+Peashooter schedule fallbacks. Version 4 enables strict wave scheduling while
+retaining the deterministic Peashooter fallback. Version 5 strictly consumes
+both schedule kinds, projectile spawns, and zombie motion records while using
+deterministic projectile movement. Version 6 additionally consumes projectile
+motion records.
 
 The producer is provenance only and is not compared. When versions differ,
 the inspector compares the common schema prefix. When both captures are
-version 3, it also compares every semantic decision. The Windows exporter
+version 3 or later, it also compares every semantic decision. The Windows exporter
 converts legacy enums and live `DataArray<Plant>` objects field by field; it
 does not persist array metadata, pointers, padding, or native object memory.
 The portable exporter derives the same schema from `GameModule`.

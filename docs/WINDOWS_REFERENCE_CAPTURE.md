@@ -40,6 +40,42 @@ Version 3 additionally records ordered, game-semantic Level 1 random choices:
 - falling-sun next countdown, spawn X, and ground Y;
 - normal-zombie spawn X and speed in micro-pixels per tick.
 
+Version 4 extends the post-update observation through the complete level:
+
+- current wave and remaining wave countdown;
+- live normal-zombie count;
+- playing, won, or lost outcome;
+- ready, triggered, or spent lawn-mower state;
+- final seed-packet award presence.
+
+It also adds a semantic wave-schedule choice containing the legacy next-wave
+countdown and health-acceleration threshold. The fixed Level 1 composition
+remains source-audited as 1, 1, 1, and 2 normal zombies.
+
+Version 5 additionally records each Peashooter's randomized initial launch
+counter and every randomized reload counter, together with its fixed-width
+board column and whether the reload started the 33-tick firing sequence. Its
+per-tick observation also includes current-wave zombie health and live
+pre-terminal projectile count so damage-timing drift is reported at the
+originating event. Each pea creation also records its fixed-width pre-update
+spawn coordinate and source plant column. The native coordinate is allowed to
+depend on its live head animation; portable game logic sees only this semantic
+result, never a reanimation object or renderer protocol.
+Normal-zombie walking uses the same rule: after the legacy `_ground` animation
+has produced its displacement, the adapter records each live slot's
+post-update synchronized integer X as fixed-width millipixels. This is the
+coordinate actually used by legacy collision and drawing; recording the float
+and rounding it could cross an integer collision boundary. Portable combat can
+therefore test collision and wave timing exactly without importing native
+animation objects into gameplay. After a normal zombie loses its head, the
+same record carries the post-choice result of the legacy `Rand(5)` one-point
+health decay, without sharing the legacy global PRNG.
+
+Version 6 adds a semantic motion record for every live projectile slot. It
+exports the synchronized post-update integer X while portable collision uses
+the prior synchronized X, preserving the legacy move, collision, then integer
+synchronization order without sharing native floats or projectile objects.
+
 The adapter observes the chosen gameplay values; it does not expose or copy
 the legacy global PRNG state.
 
@@ -103,19 +139,26 @@ Focus-loss, pause, and renderer-surface behavior are intentionally outside this
 active-gameplay parity stream.
 
 Raw input capture starts at the first actual legacy update. Behavior capture
-uses the stable game-layer boundary described below. Both stop when the
-application leaves its main loop. The file is serialized and published only
-during normal shutdown. The final path and its `.tmp` sibling must not already
-exist; the recorder refuses to overwrite evidence.
+uses the stable game-layer boundary described below. Both stop at the main-loop
+close boundary. Behavior evidence is serialized and atomically published
+before reconstructed legacy subsystems enter shutdown; the later process
+finalizer is idempotent. This prevents unrelated legacy teardown latency from
+losing a complete capture. A behavior run that never reaches its start gate is
+rejected rather than publishing an empty but structurally valid file. The
+final path and its `.tmp` sibling must not already exist; the recorder refuses
+to overwrite evidence.
 
 Generated `.pvzr`, `.pvzc`, and `.pvzb` files are ignored by Git. Retail assets
 and captures stay local.
 
-Behavior capture is armed by the command line but begins only after the legacy
-runtime's title loading thread completes and the title becomes interactive.
-This keeps asynchronous engine loading outside the comparison: tick zero in
-both the Windows capture and the portable replay is a game-layer title update.
-Raw `-recordreplay` capture still starts immediately when requested.
+Behavior capture is armed by the command line and starts after the stable
+application-level loading-complete gate. The update that observes that gate
+arms the recorder; tick zero is the following update. This avoids perturbing
+the reconstructed resource loader and does not depend on the title widget
+remaining alive after the click that enters the menu. Title is an explicit
+schema scene when it remains present after the gate. The inspector's separate
+playing/combat comparisons keep asynchronous startup duration from hiding
+gameplay parity. Raw `-recordreplay` capture starts immediately when requested.
 
 ## Validate and replay on macOS
 
@@ -148,12 +191,15 @@ capture to produce the portable observation stream:
   /absolute/path/portable-behavior.pvzb
 ```
 
-For a version 3 input, the headless runner injects the captured decisions
+For a version 3, 4, 5, or 6 input, the headless runner injects the captured decisions
 through the portable game interface and rejects exhausted, wrong-kind, invalid,
-or unused tape entries. The behavior inspector returns success only when the
-nested input frames, all normalized observations, and both version 3 decision
-tapes match. On failure it reports the first input tick, behavior tick and
-field, or decision index.
+or unused tape entries. Version 3 retains the deterministic wave-schedule
+fallback; versions 3 and 4 retain deterministic Peashooter launch scheduling
+and deterministic projectile/zombie motion. Version 5 retains deterministic
+projectile motion while strictly replaying zombie motion.
+The behavior inspector returns success only when the nested input frames, all
+normalized observations, and both decision tapes match. On failure it reports
+the first input tick, behavior tick and field, or decision index.
 
 ## Latest runtime evidence
 
@@ -181,6 +227,31 @@ The portable artifact has the same size and SHA-256
 `08860a6be91b9ad8212dabc8bd4049f2f82406405b20dec023a4c72fff3b6098`;
 the producer byte differs by design.
 
+The same real version 3 artifact was replayed through the final version 6
+reader by both the AppleClang and MSVC portable builds. Both consumed all 9,169
+frames, produced state hash `10586816686523529125` and transcript hash
+`14242291833905204768`, and emitted byte-identical 678,657-byte version 6
+captures with SHA-256
+`0624d39902d23ddf279d2e3f5557f5658b1c7fb0924889cc65a400ff39997820`.
+This remains the backward-compatibility and cross-compiler determinism gate.
+
+The complete Level 1 v6 reference artifact contains 15,701 frames, 15,701
+observations, and 13,029 semantic decisions. It enters the menu at tick 1,369,
+the Level 1 intro at 5,031, the playable lawn at 5,886, and reaches the native
+award at tick 13,796. The 1,409,462-byte Windows artifact has SHA-256
+`5b011fa1d2b858abb88ff9c01cfd621bbe66cb9037276b2c29493926f79dc9de`.
+
+AppleClang and MSVC both consumed every decision in that native trace and
+reported no combat-field difference through the award. Both produced state
+hash `16988027000938334469`, transcript hash `3668085029793266207`, and the
+same 1,409,462-byte portable behavior artifact with SHA-256
+`b5303cc7bc36a412587869bbb65c2addd70f9e970b080a05f861ae06c438ef70`.
+The complete behavior files are not byte-identical to the native artifact:
+startup first differs at tick 5,030 (`main-menu` versus `adventure-intro`), and
+the first playing-field difference is sun at tick 9,503 (native 50, portable
+25). This is a tracked sun trajectory/pickup gap; all wave, countdown, zombie,
+wave-health, projectile, mower, outcome, and award observations match.
+
 The headless runner rejects malformed, oversized, non-100-Hz, or
 non-sequential streams before running the game. `pvz_replay_inspect` can compare
 two raw input streams, a raw stream with the input nested in a session, or two
@@ -200,8 +271,16 @@ hash and the rolling transcript hash.
 `PVZR` proves what logical input reached each legacy update. `PVZB` adds the
 cross-runtime behavior layer without pretending the object graphs are
 equivalent. Version 1 covers lifecycle, focus, and occupancy; version 2 adds
-the Level 1 economy slice; version 3 adds ordered gameplay decisions without
-coupling to global PRNG consumption. Future gameplay slices must extend the
-format and independent exporters rather than adding legacy memory hashes.
+the Level 1 economy slice; version 3 adds ordered sun and zombie decisions;
+version 4 adds complete-level wave, outcome, mower, award, and wave-schedule
+semantics; version 5 adds per-plant initial and recurring Peashooter launch
+schedules and animation-derived projectile origins without coupling portable
+game logic to global PRNG consumption or rendering state. It also records
+post-update zombie positions as semantic motion so the legacy ground-animation
+curve stays on the reference side of that boundary. Version 6 records
+post-update integer projectile positions so the legacy float accumulation
+stays on the same reference side. Future gameplay slices
+must extend the format and independent exporters rather than adding legacy
+memory hashes.
 Screenshot comparison remains a separate rendering gate because a behavior
 match does not prove pixel parity.

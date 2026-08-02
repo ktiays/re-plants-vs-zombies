@@ -231,6 +231,11 @@ bool HasLegacyBehaviorCaptureStarted()
         aState.mBehaviorStarted;
 }
 
+bool IsLegacyInputCaptureFinalized()
+{
+    return GetCaptureState().mFinalized;
+}
+
 void StartLegacyBehaviorCapture()
 {
     auto& aState = GetCaptureState();
@@ -397,6 +402,14 @@ bool FinalizeLegacyInputCapture()
     aState.mFinalized = true;
     if (!aState.mEnabled)
         return false;
+    if (aState.mKind == CaptureKind::Behavior &&
+        !aState.mBehaviorStarted)
+    {
+        SetError(
+            aState,
+            "reference behavior capture never reached its start gate");
+        return false;
+    }
 
     engine::core::BinaryStateWriter aWriter;
     if (aState.mKind == CaptureKind::Behavior)

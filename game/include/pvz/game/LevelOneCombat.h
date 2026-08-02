@@ -17,6 +17,15 @@ enum class LevelOneCombatPhase : std::uint8_t
     Active,
     FirstWaveCleared,
     Lost,
+    Won,
+    Count,
+};
+
+enum class LevelOneMowerPhase : std::uint8_t
+{
+    Ready,
+    Triggered,
+    Spent,
     Count,
 };
 
@@ -50,6 +59,7 @@ struct LevelOneZombieState
     std::uint16_t mMovementRemainderMicroPixels{};
     std::uint32_t mAge{};
     bool mEating{};
+    std::uint8_t mFromWave{};
 };
 
 struct LevelOneProjectileState
@@ -79,6 +89,17 @@ struct LevelOneCombatState
     std::array<LevelOnePlantCombatState, 9> mPlants;
     std::array<LevelOneZombieState, 8> mZombies;
     std::array<LevelOneProjectileState, 32> mProjectiles;
+    std::uint8_t mCurrentWave{};
+    std::uint16_t mZombieCountdownStart{};
+    std::uint16_t mZombieHealthWaveStart{};
+    std::uint16_t mZombieHealthToNextWave{0xFFFFU};
+    bool mAwardSpawned{};
+    std::int32_t mAwardXMilliPixels{};
+    std::int32_t mAwardYMilliPixels{};
+    LevelOneMowerPhase mMowerPhase{
+        LevelOneMowerPhase::Ready};
+    std::int32_t mMowerXMilliPixels{-21'000};
+    std::uint8_t mMowerChompCounter{};
 };
 
 class LevelOneCombat
@@ -88,8 +109,15 @@ public:
     static constexpr std::uint16_t kSunValue = 25;
     static constexpr std::uint16_t kTutorialSunCountdown = 400;
     static constexpr std::uint16_t kFirstWaveCountdown = 99;
+    static constexpr std::uint8_t kWaveCount = 4;
+    static constexpr std::uint16_t kNextWaveCountdownMinimum = 2'500;
+    static constexpr std::uint16_t kNextWaveCountdownMaximum = 3'099;
+    static constexpr std::uint16_t kWaveAccelerationCountdown = 200;
+    static constexpr std::uint16_t kWaveAccelerationMinimumAge = 400;
     static constexpr std::uint16_t kPlantHealth = 300;
     static constexpr std::uint16_t kNormalZombieHealth = 270;
+    static constexpr std::uint16_t kNormalZombieHeadLossHealth =
+        kNormalZombieHealth / 3;
     static constexpr std::uint16_t kPeaDamage = 20;
     static constexpr std::uint16_t kPeashooterLaunchRate = 150;
     static constexpr std::uint8_t kPeashooterFireDelay = 33;
@@ -114,6 +142,10 @@ public:
         780'000;
     static constexpr std::uint16_t
         kDeterministicZombieSpeedMilliPixelsPerTick = 270;
+    static constexpr std::int32_t kMowerReadyXMilliPixels = -21'000;
+    static constexpr std::int32_t kMowerMaximumXMilliPixels = 800'000;
+    static constexpr std::int32_t kMowerSpeedMilliPixelsPerTick = 3'330;
+    static constexpr std::int32_t kZombieLossXMilliPixels = -100'000;
 
     void SetRandomDecisionSource(
         ILevelOneRandomDecisionSource* theSource);
@@ -134,7 +166,8 @@ public:
     [[nodiscard]] bool LoadState(engine::IStateReader& theReader);
     [[nodiscard]] bool LoadState(
         engine::IStateReader& theReader,
-        bool theHasExtendedCombatState);
+        bool theHasExtendedCombatState,
+        bool theHasCompleteLevelState = false);
     [[nodiscard]] std::uint64_t GetOccupiedCells() const;
     [[nodiscard]] bool HasRandomDecisionFailure() const;
 
@@ -142,18 +175,38 @@ private:
     void UpdatePlants();
     void UpdateZombies();
     void UpdateProjectiles();
+    void UpdateMower();
     void UpdateSun();
     void UpdateWave();
+    void UpdateLevelProgress();
     [[nodiscard]] bool HasTarget(
         const LevelOnePlantCombatState& thePlant) const;
     void FirePea(const LevelOnePlantCombatState& thePlant);
     [[nodiscard]] LevelOnePlantCombatState* FindPlantTarget(
         const LevelOneZombieState& theZombie);
-    void SpawnFirstWave();
+    void SpawnWave();
+    [[nodiscard]] std::uint16_t TotalZombieHealthInWave(
+        std::uint8_t theWave) const;
     void RecountEntities();
     [[nodiscard]] bool ReadFallingSunDecision(
         LevelOneRandomDecision& theDecision);
     [[nodiscard]] bool ReadNormalZombieDecision(
+        LevelOneRandomDecision& theDecision);
+    [[nodiscard]] bool ReadWaveScheduleDecision(
+        std::uint16_t theWaveHealth,
+        LevelOneRandomDecision& theDecision);
+    [[nodiscard]] bool ReadPeashooterScheduleDecision(
+        std::uint8_t theColumn,
+        bool theIsNewPlant,
+        LevelOneRandomDecision& theDecision);
+    [[nodiscard]] bool ReadProjectileSpawnDecision(
+        std::uint8_t theColumn,
+        LevelOneRandomDecision& theDecision);
+    [[nodiscard]] bool ReadZombieMotionDecision(
+        std::uint8_t theSlot,
+        LevelOneRandomDecision& theDecision);
+    [[nodiscard]] bool ReadProjectileMotionDecision(
+        std::uint8_t theSlot,
         LevelOneRandomDecision& theDecision);
     [[nodiscard]] static std::uint16_t CalculateSunLifetime(
         std::int32_t theGroundYMilliPixels);
@@ -163,8 +216,11 @@ private:
     std::uint16_t mCollectedSun{};
     std::uint64_t mDestroyedCells{};
     bool mRandomDecisionFailure{};
+    std::int32_t mLastZombieDeathXMilliPixels{};
+    std::int32_t mLastZombieDeathYMilliPixels{};
 };
 
 static_assert(sizeof(LevelOneCombatPhase) == 1);
+static_assert(sizeof(LevelOneMowerPhase) == 1);
 
 } // namespace pvz::game

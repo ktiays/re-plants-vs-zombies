@@ -10,6 +10,11 @@ enum class LevelOneRandomDecisionKind : std::uint8_t
 {
     FallingSun,
     NormalZombie,
+    WaveSchedule,
+    PeashooterSchedule,
+    ProjectileSpawn,
+    ZombieMotion,
+    ProjectileMotion,
     Count,
 };
 
@@ -21,6 +26,9 @@ struct LevelOneRandomDecision
     std::int32_t mXMilliPixels{};
     std::int32_t mGroundYMilliPixels{};
     std::uint32_t mSpeedMicroPixelsPerTick{};
+    std::uint16_t mWaveHealthThreshold{};
+    std::uint8_t mPlantColumn{0xFFU};
+    std::uint8_t mShootingCounter{};
 };
 
 enum class LevelOneRandomDecisionReadError : std::uint8_t
@@ -39,6 +47,8 @@ public:
     [[nodiscard]] virtual bool ReadNext(
         LevelOneRandomDecisionKind theExpectedKind,
         LevelOneRandomDecision& theDecision) = 0;
+    [[nodiscard]] virtual bool Supports(
+        LevelOneRandomDecisionKind theKind) const = 0;
 };
 
 class LevelOneRandomDecisionTape final
@@ -46,11 +56,18 @@ class LevelOneRandomDecisionTape final
 {
 public:
     explicit LevelOneRandomDecisionTape(
-        std::span<const LevelOneRandomDecision> theDecisions);
+        std::span<const LevelOneRandomDecision> theDecisions,
+        bool theSupportsWaveSchedule = false,
+        bool theSupportsPeashooterSchedule = false,
+        bool theSupportsProjectileSpawn = false,
+        bool theSupportsZombieMotion = false,
+        bool theSupportsProjectileMotion = false);
 
     [[nodiscard]] bool ReadNext(
         LevelOneRandomDecisionKind theExpectedKind,
         LevelOneRandomDecision& theDecision) override;
+    [[nodiscard]] bool Supports(
+        LevelOneRandomDecisionKind theKind) const override;
 
     [[nodiscard]] std::uint32_t GetReadCount() const;
     [[nodiscard]] std::uint32_t GetRemainingCount() const;
@@ -67,6 +84,11 @@ private:
         LevelOneRandomDecisionKind::FallingSun};
     LevelOneRandomDecisionKind mActualKind{
         LevelOneRandomDecisionKind::FallingSun};
+    bool mSupportsWaveSchedule{};
+    bool mSupportsPeashooterSchedule{};
+    bool mSupportsProjectileSpawn{};
+    bool mSupportsZombieMotion{};
+    bool mSupportsProjectileMotion{};
 };
 
 static_assert(sizeof(LevelOneRandomDecisionKind) == 1);

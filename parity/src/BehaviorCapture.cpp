@@ -15,13 +15,20 @@ namespace
 inline constexpr std::uint32_t kCaptureMagic = 0x425A5650;
 inline constexpr std::uint16_t kLegacyCaptureVersion = 1;
 inline constexpr std::uint16_t kEconomyCaptureVersion = 2;
+inline constexpr std::uint16_t kRandomDecisionCaptureVersion = 3;
+inline constexpr std::uint16_t kCompleteLevelCaptureVersion = 4;
+inline constexpr std::uint16_t kPeashooterCaptureVersion = 5;
 inline constexpr std::uint32_t kMaximumObservationCount = 1'000'000;
 inline constexpr std::uint32_t kMaximumRandomDecisionCount = 100'000;
 inline constexpr std::uint32_t kMaximumInputReplaySize =
     256U * 1'024U * 1'024U;
 inline constexpr std::uint64_t kLegacyObservationByteCount = 24;
-inline constexpr std::uint64_t kObservationByteCount = 36;
-inline constexpr std::uint64_t kRandomDecisionByteCount = 15;
+inline constexpr std::uint64_t kEconomyObservationByteCount = 36;
+inline constexpr std::uint64_t kCompleteLevelObservationByteCount = 43;
+inline constexpr std::uint64_t kObservationByteCount = 46;
+inline constexpr std::uint64_t kLegacyRandomDecisionByteCount = 15;
+inline constexpr std::uint64_t kCompleteLevelRandomDecisionByteCount = 17;
+inline constexpr std::uint64_t kRandomDecisionByteCount = 19;
 
 [[nodiscard]] bool ValidateRandomDecision(
     const game::LevelOneRandomDecision& theDecision,
@@ -33,30 +40,121 @@ inline constexpr std::uint64_t kRandomDecisionByteCount = 15;
         theError = BehaviorCaptureError::InvalidRandomDecisionKind;
         return false;
     }
-    if (theDecision.mKind ==
-        game::LevelOneRandomDecisionKind::FallingSun)
+    switch (theDecision.mKind)
     {
+    case game::LevelOneRandomDecisionKind::FallingSun:
         if (theDecision.mNextCountdown < 435 ||
             theDecision.mNextCountdown > 1'224 ||
             theDecision.mXMilliPixels < 100'000 ||
             theDecision.mXMilliPixels > 649'000 ||
             theDecision.mGroundYMilliPixels < 300'000 ||
             theDecision.mGroundYMilliPixels > 549'000 ||
-            theDecision.mSpeedMicroPixelsPerTick != 0)
+            theDecision.mSpeedMicroPixelsPerTick != 0 ||
+            theDecision.mWaveHealthThreshold != 0 ||
+            theDecision.mPlantColumn != 0xFFU ||
+            theDecision.mShootingCounter != 0)
         {
             theError =
                 BehaviorCaptureError::InvalidRandomDecisionPayload;
             return false;
         }
-    }
-    else if (theDecision.mNextCountdown != 0 ||
-             theDecision.mXMilliPixels < 780'000 ||
-             theDecision.mXMilliPixels > 819'000 ||
-             theDecision.mGroundYMilliPixels != 0 ||
-             theDecision.mSpeedMicroPixelsPerTick < 230'000 ||
-             theDecision.mSpeedMicroPixelsPerTick > 320'000)
-    {
-        theError = BehaviorCaptureError::InvalidRandomDecisionPayload;
+        break;
+    case game::LevelOneRandomDecisionKind::NormalZombie:
+        if (theDecision.mNextCountdown != 0 ||
+            theDecision.mXMilliPixels < 780'000 ||
+            theDecision.mXMilliPixels > 819'000 ||
+            theDecision.mGroundYMilliPixels != 0 ||
+            theDecision.mSpeedMicroPixelsPerTick < 230'000 ||
+            theDecision.mSpeedMicroPixelsPerTick > 320'000 ||
+            theDecision.mWaveHealthThreshold != 0 ||
+            theDecision.mPlantColumn != 0xFFU ||
+            theDecision.mShootingCounter != 0)
+        {
+            theError =
+                BehaviorCaptureError::InvalidRandomDecisionPayload;
+            return false;
+        }
+        break;
+    case game::LevelOneRandomDecisionKind::WaveSchedule:
+        if (theDecision.mNextCountdown < 2'500 ||
+            theDecision.mNextCountdown > 3'099 ||
+            theDecision.mXMilliPixels != 0 ||
+            theDecision.mGroundYMilliPixels != 0 ||
+            theDecision.mSpeedMicroPixelsPerTick != 0 ||
+            theDecision.mWaveHealthThreshold < 135 ||
+            theDecision.mWaveHealthThreshold > 351 ||
+            theDecision.mPlantColumn != 0xFFU ||
+            theDecision.mShootingCounter != 0)
+        {
+            theError =
+                BehaviorCaptureError::InvalidRandomDecisionPayload;
+            return false;
+        }
+        break;
+    case game::LevelOneRandomDecisionKind::PeashooterSchedule:
+        if (theDecision.mNextCountdown == 0 ||
+            theDecision.mNextCountdown > 151 ||
+            theDecision.mXMilliPixels != 0 ||
+            theDecision.mGroundYMilliPixels != 0 ||
+            theDecision.mSpeedMicroPixelsPerTick != 0 ||
+            theDecision.mWaveHealthThreshold != 0 ||
+            theDecision.mPlantColumn >= 9 ||
+            (theDecision.mShootingCounter != 0 &&
+             theDecision.mShootingCounter != 33))
+        {
+            theError =
+                BehaviorCaptureError::InvalidRandomDecisionPayload;
+            return false;
+        }
+        break;
+    case game::LevelOneRandomDecisionKind::ProjectileSpawn:
+        if (theDecision.mNextCountdown != 0 ||
+            theDecision.mXMilliPixels < -100'000 ||
+            theDecision.mXMilliPixels > 900'000 ||
+            theDecision.mGroundYMilliPixels < -100'000 ||
+            theDecision.mGroundYMilliPixels > 700'000 ||
+            theDecision.mSpeedMicroPixelsPerTick != 0 ||
+            theDecision.mWaveHealthThreshold != 0 ||
+            theDecision.mPlantColumn >= 9 ||
+            theDecision.mShootingCounter != 0)
+        {
+            theError =
+                BehaviorCaptureError::InvalidRandomDecisionPayload;
+            return false;
+        }
+        break;
+    case game::LevelOneRandomDecisionKind::ZombieMotion:
+        if (theDecision.mNextCountdown != 0 ||
+            theDecision.mXMilliPixels < -200'000 ||
+            theDecision.mXMilliPixels > 1'000'000 ||
+            theDecision.mGroundYMilliPixels != 0 ||
+            theDecision.mSpeedMicroPixelsPerTick != 0 ||
+            theDecision.mWaveHealthThreshold != 0 ||
+            theDecision.mPlantColumn >= 8 ||
+            theDecision.mShootingCounter > 1)
+        {
+            theError =
+                BehaviorCaptureError::InvalidRandomDecisionPayload;
+            return false;
+        }
+        break;
+    case game::LevelOneRandomDecisionKind::ProjectileMotion:
+        if (theDecision.mNextCountdown != 0 ||
+            theDecision.mXMilliPixels < -200'000 ||
+            theDecision.mXMilliPixels > 1'000'000 ||
+            theDecision.mGroundYMilliPixels != 0 ||
+            theDecision.mSpeedMicroPixelsPerTick != 0 ||
+            theDecision.mWaveHealthThreshold != 0 ||
+            theDecision.mPlantColumn >= 32 ||
+            theDecision.mShootingCounter != 0)
+        {
+            theError =
+                BehaviorCaptureError::InvalidRandomDecisionPayload;
+            return false;
+        }
+        break;
+    case game::LevelOneRandomDecisionKind::Count:
+        theError = BehaviorCaptureError::InvalidRandomDecisionKind;
         return false;
     }
     theError = BehaviorCaptureError::None;
@@ -132,6 +230,33 @@ inline constexpr std::uint64_t kRandomDecisionByteCount = 15;
         theObservation.mFirstSunCountdown != 0)
     {
         theError = BehaviorCaptureError::InvalidFirstSunState;
+        return false;
+    }
+    if (theObservation.mLevelOutcome >=
+            game::BehaviorLevelOutcome::Count ||
+        theObservation.mMowerState >=
+            game::BehaviorMowerState::Count ||
+        theObservation.mCurrentWave > 4 ||
+        theObservation.mZombieCountdown > 3'099 ||
+        theObservation.mZombieCount > 8 ||
+        theObservation.mZombieWaveHealth > 540 ||
+        theObservation.mProjectileCount > 32 ||
+        (theObservation.mLevelAwardSpawned &&
+         theObservation.mLevelOutcome !=
+             game::BehaviorLevelOutcome::Won) ||
+        (theObservation.mLevelOutcome ==
+             game::BehaviorLevelOutcome::None &&
+         (theObservation.mCurrentWave != 0 ||
+          theObservation.mZombieCountdown != 0 ||
+          theObservation.mZombieCount != 0 ||
+          theObservation.mZombieWaveHealth != 0 ||
+          theObservation.mProjectileCount != 0 ||
+          theObservation.mMowerState !=
+              game::BehaviorMowerState::None ||
+          theObservation.mLevelAwardSpawned)))
+    {
+        theError =
+            BehaviorCaptureError::InvalidLevelOneCombatState;
         return false;
     }
     theError = BehaviorCaptureError::None;
@@ -249,6 +374,8 @@ std::string_view GetBehaviorCaptureErrorMessage(
         return "behavior capture seed refresh state is invalid";
     case BehaviorCaptureError::InvalidFirstSunState:
         return "behavior capture first-sun state is invalid";
+    case BehaviorCaptureError::InvalidLevelOneCombatState:
+        return "behavior capture Level 1 combat state is invalid";
     case BehaviorCaptureError::TooManyRandomDecisions:
         return "behavior capture has too many random decisions";
     case BehaviorCaptureError::InvalidRandomDecisionKind:
@@ -394,7 +521,25 @@ bool BehaviorCapture::Save(
             !theWriter.WriteU16(
                 anObservation.mFirstSunCountdown) ||
             !theWriter.WriteBool(
-                anObservation.mFirstSunSpawned))
+                anObservation.mFirstSunSpawned) ||
+            !theWriter.WriteU8(
+                anObservation.mCurrentWave) ||
+            !theWriter.WriteU16(
+                anObservation.mZombieCountdown) ||
+            !theWriter.WriteU8(
+                anObservation.mZombieCount) ||
+            !theWriter.WriteU8(
+                static_cast<std::uint8_t>(
+                    anObservation.mLevelOutcome)) ||
+            !theWriter.WriteU8(
+                static_cast<std::uint8_t>(
+                    anObservation.mMowerState)) ||
+            !theWriter.WriteBool(
+                anObservation.mLevelAwardSpawned) ||
+            !theWriter.WriteU16(
+                anObservation.mZombieWaveHealth) ||
+            !theWriter.WriteU8(
+                anObservation.mProjectileCount))
         {
             theError = BehaviorCaptureError::IoError;
             return false;
@@ -415,7 +560,11 @@ bool BehaviorCapture::Save(
             !theWriter.WriteI32(
                 aDecision.mGroundYMilliPixels) ||
             !theWriter.WriteU32(
-                aDecision.mSpeedMicroPixelsPerTick))
+                aDecision.mSpeedMicroPixelsPerTick) ||
+            !theWriter.WriteU16(
+                aDecision.mWaveHealthThreshold) ||
+            !theWriter.WriteU8(aDecision.mPlantColumn) ||
+            !theWriter.WriteU8(aDecision.mShootingCounter))
         {
             theError = BehaviorCaptureError::IoError;
             return false;
@@ -450,6 +599,9 @@ bool BehaviorCapture::Load(
     }
     if (aVersion != kLegacyCaptureVersion &&
         aVersion != kEconomyCaptureVersion &&
+        aVersion != kRandomDecisionCaptureVersion &&
+        aVersion != kCompleteLevelCaptureVersion &&
+        aVersion != kPeashooterCaptureVersion &&
         aVersion != kCurrentFormatVersion)
     {
         theError = BehaviorCaptureError::UnsupportedVersion;
@@ -514,7 +666,11 @@ bool BehaviorCapture::Load(
     const auto anObservationByteCount =
         aVersion == kLegacyCaptureVersion
         ? kLegacyObservationByteCount
-        : kObservationByteCount;
+        : (aVersion < kCompleteLevelCaptureVersion
+               ? kEconomyObservationByteCount
+               : (aVersion < kPeashooterCaptureVersion
+                      ? kCompleteLevelObservationByteCount
+                      : kObservationByteCount));
     if (theReader.GetBytesRemaining() <
         static_cast<std::uint64_t>(anObservationCount) *
             anObservationByteCount)
@@ -534,6 +690,8 @@ bool BehaviorCapture::Load(
         std::uint8_t aBoardStage{};
         std::uint8_t aSeedSelection{};
         std::uint8_t aTutorialPhase{};
+        std::uint8_t aLevelOutcome{};
+        std::uint8_t aMowerState{};
         if (!theReader.ReadU64(anObservation.mTick) ||
             !theReader.ReadU8(aScene) ||
             !theReader.ReadU8(aBoardStage) ||
@@ -564,6 +722,30 @@ bool BehaviorCapture::Load(
             theError = BehaviorCaptureError::IoError;
             return false;
         }
+        if (aVersion >= kCompleteLevelCaptureVersion &&
+            (!theReader.ReadU8(
+                 anObservation.mCurrentWave) ||
+             !theReader.ReadU16(
+                 anObservation.mZombieCountdown) ||
+             !theReader.ReadU8(
+                 anObservation.mZombieCount) ||
+             !theReader.ReadU8(aLevelOutcome) ||
+             !theReader.ReadU8(aMowerState) ||
+             !theReader.ReadBool(
+                 anObservation.mLevelAwardSpawned)))
+        {
+            theError = BehaviorCaptureError::IoError;
+            return false;
+        }
+        if (aVersion >= kPeashooterCaptureVersion &&
+            (!theReader.ReadU16(
+                 anObservation.mZombieWaveHealth) ||
+             !theReader.ReadU8(
+                 anObservation.mProjectileCount)))
+        {
+            theError = BehaviorCaptureError::IoError;
+            return false;
+        }
         anObservation.mScene =
             static_cast<game::BehaviorScene>(aScene);
         anObservation.mBoardStage =
@@ -574,6 +756,12 @@ bool BehaviorCapture::Load(
         anObservation.mTutorialPhase =
             static_cast<game::BehaviorTutorialPhase>(
                 aTutorialPhase);
+        anObservation.mLevelOutcome =
+            static_cast<game::BehaviorLevelOutcome>(
+                aLevelOutcome);
+        anObservation.mMowerState =
+            static_cast<game::BehaviorMowerState>(
+                aMowerState);
         if (!ValidateObservation(
                 anObservation,
                 static_cast<std::uint64_t>(anIndex),
@@ -584,7 +772,7 @@ bool BehaviorCapture::Load(
         anObservations.push_back(anObservation);
     }
     std::vector<game::LevelOneRandomDecision> aRandomDecisions;
-    if (aVersion >= kCurrentFormatVersion)
+    if (aVersion >= kRandomDecisionCaptureVersion)
     {
         std::uint32_t aDecisionCount{};
         if (!theReader.ReadU32(aDecisionCount))
@@ -599,7 +787,11 @@ bool BehaviorCapture::Load(
         }
         if (theReader.GetBytesRemaining() <
             static_cast<std::uint64_t>(aDecisionCount) *
-                kRandomDecisionByteCount)
+                (aVersion >= kPeashooterCaptureVersion
+                     ? kRandomDecisionByteCount
+                     : (aVersion >= kCompleteLevelCaptureVersion
+                            ? kCompleteLevelRandomDecisionByteCount
+                            : kLegacyRandomDecisionByteCount)))
         {
             theError = BehaviorCaptureError::IoError;
             return false;
@@ -617,7 +809,14 @@ bool BehaviorCapture::Load(
                 !theReader.ReadI32(
                     aDecision.mGroundYMilliPixels) ||
                 !theReader.ReadU32(
-                    aDecision.mSpeedMicroPixelsPerTick))
+                    aDecision.mSpeedMicroPixelsPerTick) ||
+                (aVersion >= kCompleteLevelCaptureVersion &&
+                 !theReader.ReadU16(
+                     aDecision.mWaveHealthThreshold)) ||
+                (aVersion >= kPeashooterCaptureVersion &&
+                 (!theReader.ReadU8(aDecision.mPlantColumn) ||
+                  !theReader.ReadU8(
+                      aDecision.mShootingCounter))))
             {
                 theError = BehaviorCaptureError::IoError;
                 return false;
@@ -625,6 +824,14 @@ bool BehaviorCapture::Load(
             aDecision.mKind =
                 static_cast<game::LevelOneRandomDecisionKind>(
                     aKind);
+            if (aVersion < kCurrentFormatVersion &&
+                aDecision.mKind ==
+                    game::LevelOneRandomDecisionKind::ProjectileMotion)
+            {
+                theError = BehaviorCaptureError::
+                    InvalidRandomDecisionKind;
+                return false;
+            }
             if (!ValidateRandomDecision(aDecision, theError))
                 return false;
             aRandomDecisions.push_back(aDecision);

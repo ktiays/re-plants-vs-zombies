@@ -31,6 +31,14 @@ enum class BehaviorField : std::uint8_t
     TutorialPhase,
     FirstSunCountdown,
     FirstSunSpawned,
+    CurrentWave,
+    ZombieCountdown,
+    ZombieCount,
+    LevelOutcome,
+    MowerState,
+    LevelAwardSpawned,
+    ZombieWaveHealth,
+    ProjectileCount,
     ObservationCount,
 };
 

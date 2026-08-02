@@ -53,6 +53,7 @@
 #include "pvz/platform/windows/LegacyInputCapture.h"
 
 #include <algorithm>
+#include <iostream>
 #endif
 
 bool gIsPartnerBuild = false; // GOTY @Patoke: 0x729659
@@ -2416,6 +2417,19 @@ bool LawnApp::UpdateApp()
 {
 	if (mCloseRequest)
 	{
+#ifdef PVZ_HAS_REFERENCE_INPUT_CAPTURE
+		// Publish the bounded capture before entering legacy shutdown. Some
+		// reconstructed subsystems can outlive the main window, but no more
+		// input or behavior ticks can occur after this close request.
+		if (!pvz::platform::windows::IsLegacyInputCaptureFinalized() &&
+			!pvz::platform::windows::FinalizeLegacyInputCapture())
+		{
+			std::cerr
+				<< "Could not save reference capture at close boundary: "
+				<< pvz::platform::windows::GetLegacyInputCaptureError()
+				<< '\n';
+		}
+#endif
 		Shutdown();
 		return false;
 	}

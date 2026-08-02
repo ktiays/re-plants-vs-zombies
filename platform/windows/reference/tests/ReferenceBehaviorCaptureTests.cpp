@@ -72,6 +72,10 @@ void TestBehaviorCaptureBridge()
     anObservation.mTutorialPhase =
         pvz::game::BehaviorTutorialPhase::
             LevelOneRefreshPeashooter;
+    anObservation.mLevelOutcome =
+        pvz::game::BehaviorLevelOutcome::Playing;
+    anObservation.mMowerState =
+        pvz::game::BehaviorMowerState::Ready;
     pvz::platform::windows::RecordLegacyBehaviorObservation(
         anObservation);
     pvz::platform::windows::RecordLegacyRandomDecision(
@@ -88,7 +92,8 @@ void TestBehaviorCaptureBridge()
         pvz::platform::windows::FinalizeLegacyInputCapture(),
         "publish global reference behavior capture");
     Expect(
-        pvz::platform::windows::WasLegacyBehaviorCaptureRequested() &&
+        pvz::platform::windows::IsLegacyInputCaptureFinalized() &&
+            pvz::platform::windows::WasLegacyBehaviorCaptureRequested() &&
         pvz::platform::windows::GetLegacyInputCaptureFrameCount() == 1 &&
         std::filesystem::exists(anOutputPath, anError) &&
         !anError,
@@ -129,7 +134,7 @@ void TestBehaviorCaptureBridge()
         Expect(
             aCapture.GetProducer() ==
                 pvz::parity::BehaviorProducer::LegacyWindows &&
-            aCapture.GetFormatVersion() == 3 &&
+            aCapture.GetFormatVersion() == 6 &&
             aCapture.GetInputReplay().GetFrames().size() == 1 &&
             anObservations.size() == 1 &&
             anObservations[0].mGridColumn == 1 &&

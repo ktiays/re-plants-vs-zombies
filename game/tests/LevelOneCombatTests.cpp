@@ -7,6 +7,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <iostream>
 #include <vector>
 
 extern void Expect(bool theCondition, const char* theMessage);
@@ -88,7 +89,9 @@ void TestSourceAuditedCombatConstants()
                 legacy::kSunFallSpeedMilliPixelsPerTick &&
             Combat::kPlantHealth == legacy::kPlantHealth &&
             Combat::kNormalZombieHealth ==
-                legacy::kNormalZombieHealth,
+                legacy::kNormalZombieHealth &&
+            Combat::kNormalZombieHeadLossHealth ==
+                legacy::kNormalZombieHeadLossHealth,
         "Level 1 sun and entity health match the legacy source");
     Expect(
         Combat::kDeterministicSunSpawnXMilliPixels >=
@@ -147,6 +150,27 @@ void TestSourceAuditedCombatConstants()
             legacy::kNormalZombiesPerWave[2] == 1 &&
             legacy::kNormalZombiesPerWave[3] == 2,
         "source fixture records the complete Level 1 wave composition");
+    Expect(
+        Combat::kWaveCount == legacy::kLevelOneWaveCount &&
+            Combat::kNextWaveCountdownMinimum ==
+                legacy::kNextWaveCountdownMinimum &&
+            Combat::kNextWaveCountdownMaximum ==
+                legacy::kNextWaveCountdownMaximum &&
+            Combat::kWaveAccelerationCountdown ==
+                legacy::kWaveAccelerationCountdown &&
+            Combat::kWaveAccelerationMinimumAge ==
+                legacy::kWaveAccelerationMinimumAge,
+        "complete wave scheduler uses the audited legacy boundaries");
+    Expect(
+        Combat::kZombieLossXMilliPixels ==
+                legacy::kZombieLossXMilliPixels &&
+            Combat::kMowerReadyXMilliPixels ==
+                legacy::kMowerReadyXMilliPixels &&
+            Combat::kMowerSpeedMilliPixelsPerTick ==
+                legacy::kMowerSpeedMilliPixelsPerTick &&
+            Combat::kMowerMaximumXMilliPixels ==
+                legacy::kMowerSpentXMilliPixels,
+        "mower and loss boundaries use the audited legacy coordinates");
 }
 
 void TestTutorialSunAndFirstWaveGate()
@@ -239,31 +263,35 @@ void TestTutorialSunAndFirstWaveGate()
         "first wave spawns one fixed-width normal zombie");
 }
 
-void TestCombatClearsFirstWaveDeterministically()
+void TestCombatCompletesAllFourWavesDeterministically()
 {
     pvz::game::LevelOneCombat aCombat;
     static_cast<void>(aCombat.AddPeashooter(2, 2));
     static_cast<void>(aCombat.AddPeashooter(3, 2));
 
     std::uint32_t aTicks{};
-    while (aCombat.GetState().mPhase !=
-               pvz::game::LevelOneCombatPhase::
-                   FirstWaveCleared &&
-           aTicks < 5'000)
+    while (aCombat.GetState().mPhase ==
+               pvz::game::LevelOneCombatPhase::Active &&
+           aTicks < 20'000)
     {
         aCombat.Update();
         ++aTicks;
     }
     const auto aState = aCombat.GetState();
+    if (aTicks != 4'995)
+        std::cerr << "complete-level tick mismatch: " << aTicks << '\n';
     Expect(
         aState.mPhase ==
-                pvz::game::LevelOneCombatPhase::
-                    FirstWaveCleared &&
+                pvz::game::LevelOneCombatPhase::Won &&
             aState.mZombieCount == 0 &&
             aState.mFirstWaveCleared &&
-            aState.mPlantCount == 2 &&
-            aState.mProjectileCount <= 2,
-        "two Peashooters deterministically clear the first wave");
+            aState.mCurrentWave ==
+                pvz::game::LevelOneCombat::kWaveCount &&
+            aState.mAwardSpawned &&
+            aState.mPlantCount >= 1 &&
+            aState.mProjectileCount <= 2 &&
+            aTicks == 4'995,
+        "two Peashooters deterministically clear all four waves");
 }
 
 void TestSemanticRandomDecisionTape()
@@ -366,6 +394,405 @@ void TestSemanticRandomDecisionTape()
         "semantic tape rejects kind drift instead of consuming it");
 }
 
+void TestWaveScheduleDecisionAndAcceleration()
+{
+    constexpr std::array<pvz::game::LevelOneRandomDecision, 2>
+        kDecisions{
+            pvz::game::LevelOneRandomDecision{
+                .mKind = pvz::game::LevelOneRandomDecisionKind::NormalZombie,
+                .mXMilliPixels = 800'000,
+                .mSpeedMicroPixelsPerTick = 275'000,
+            },
+            pvz::game::LevelOneRandomDecision{
+                .mKind = pvz::game::LevelOneRandomDecisionKind::WaveSchedule,
+                .mNextCountdown = 2'777,
+                .mWaveHealthThreshold = 150,
+            },
+        };
+    pvz::game::LevelOneRandomDecisionTape aTape(
+        kDecisions,
+        true);
+    pvz::game::LevelOneCombat aCombat;
+    aCombat.SetRandomDecisionSource(&aTape);
+    auto aState = aCombat.GetState();
+    aState.mPhase = pvz::game::LevelOneCombatPhase::Active;
+    aState.mSunCountdown = 500;
+    aState.mZombieCountdown = 1;
+    aState.mZombieCountdownStart =
+        pvz::game::LevelOneCombat::kFirstWaveCountdown;
+    Expect(
+        aCombat.RestoreState(aState),
+        "pre-wave schedule fixture restores");
+    aCombat.Update();
+    const auto aSpawned = aCombat.GetState();
+    Expect(
+        aSpawned.mCurrentWave == 1 &&
+            aSpawned.mZombieCount == 1 &&
+            aSpawned.mZombieCountdown == 2'777 &&
+            aSpawned.mZombieCountdownStart == 2'777 &&
+            aSpawned.mZombieHealthWaveStart == 270 &&
+            aSpawned.mZombieHealthToNextWave == 150 &&
+            aTape.GetReadCount() == 2 &&
+            !aCombat.HasRandomDecisionFailure(),
+        "semantic schedule captures countdown and health threshold");
+
+    auto anAcceleratedState = aSpawned;
+    anAcceleratedState.mZombieCountdown = 2'376;
+    anAcceleratedState.mZombies[0].mHealth = 150;
+    Expect(
+        aCombat.RestoreState(anAcceleratedState),
+        "wave-acceleration fixture restores");
+    aCombat.Update();
+    Expect(
+        aCombat.GetState().mZombieCountdown ==
+            pvz::game::LevelOneCombat::kWaveAccelerationCountdown,
+        "damaged wave accelerates at the legacy age and health boundary");
+}
+
+void TestPeashooterScheduleDecision()
+{
+    constexpr std::array<pvz::game::LevelOneRandomDecision, 2>
+        kDecisions{
+            pvz::game::LevelOneRandomDecision{
+                .mKind = pvz::game::LevelOneRandomDecisionKind::
+                    PeashooterSchedule,
+                .mNextCountdown = 2,
+                .mPlantColumn = 2,
+            },
+            pvz::game::LevelOneRandomDecision{
+                .mKind = pvz::game::LevelOneRandomDecisionKind::
+                    PeashooterSchedule,
+                .mNextCountdown = 140,
+                .mPlantColumn = 2,
+                .mShootingCounter = 33,
+            },
+        };
+    pvz::game::LevelOneRandomDecisionTape aTape(
+        kDecisions,
+        false,
+        true);
+    pvz::game::LevelOneCombat aCombat;
+    aCombat.SetRandomDecisionSource(&aTape);
+    Expect(
+        aCombat.AddPeashooter(2, 2) &&
+            aCombat.GetState().mPlants[0].mLaunchCounter == 2 &&
+            aTape.GetReadCount() == 1,
+        "new Peashooter consumes its source launch schedule");
+
+    aCombat.Update();
+    Expect(
+        aCombat.GetState().mPlants[0].mLaunchCounter == 1 &&
+            aTape.GetReadCount() == 1,
+        "Peashooter launch schedule counts down without drift");
+
+    aCombat.Update();
+    Expect(
+        aCombat.GetState().mPlants[0].mLaunchCounter == 140 &&
+            aCombat.GetState().mPlants[0].mShootingCounter == 33 &&
+            aTape.GetReadCount() == 2 &&
+            aTape.GetRemainingCount() == 0 &&
+            !aCombat.HasRandomDecisionFailure(),
+        "Peashooter reload consumes cadence and firing decisions together");
+
+    constexpr std::array<pvz::game::LevelOneRandomDecision, 0>
+        kMissingDecisions{};
+    pvz::game::LevelOneRandomDecisionTape aMissingTape(
+        kMissingDecisions,
+        false,
+        true);
+    pvz::game::LevelOneCombat aRejectedCombat;
+    aRejectedCombat.SetRandomDecisionSource(&aMissingTape);
+    Expect(
+        !aRejectedCombat.AddPeashooter(2, 2) &&
+            aRejectedCombat.HasRandomDecisionFailure() &&
+            aMissingTape.GetError() ==
+                pvz::game::LevelOneRandomDecisionReadError::Exhausted,
+        "advertised Peashooter scheduling rejects a missing decision");
+}
+
+void TestProjectileSpawnDecision()
+{
+    constexpr std::array<pvz::game::LevelOneRandomDecision, 1>
+        kDecisions{
+            pvz::game::LevelOneRandomDecision{
+                .mKind = pvz::game::LevelOneRandomDecisionKind::
+                    ProjectileSpawn,
+                .mXMilliPixels = 123'000,
+                .mGroundYMilliPixels = 456'000,
+                .mPlantColumn = 2,
+            },
+        };
+    pvz::game::LevelOneRandomDecisionTape aTape(
+        kDecisions,
+        false,
+        false,
+        true);
+    pvz::game::LevelOneCombat aCombat;
+    Expect(
+        aCombat.AddPeashooter(2, 2),
+        "projectile fixture adds its Peashooter");
+    auto aState = aCombat.GetState();
+    aState.mPlants[0].mLaunchCounter = 100;
+    aState.mPlants[0].mShootingCounter = 2;
+    Expect(
+        aCombat.RestoreState(aState),
+        "projectile spawn fixture restores");
+    aCombat.SetRandomDecisionSource(&aTape);
+
+    aCombat.Update();
+    const auto aSpawned = aCombat.GetState();
+    Expect(
+        aSpawned.mProjectileCount == 1 &&
+            aSpawned.mProjectiles[0].mActive &&
+            aSpawned.mProjectiles[0].mXMilliPixels == 126'330 &&
+            aSpawned.mProjectiles[0].mYMilliPixels == 456'000 &&
+            aTape.GetReadCount() == 1 &&
+            aTape.GetRemainingCount() == 0 &&
+            !aCombat.HasRandomDecisionFailure(),
+        "captured projectile origin precedes portable same-tick movement");
+}
+
+void TestZombieMotionDecision()
+{
+    constexpr std::array<pvz::game::LevelOneRandomDecision, 1>
+        kDecisions{
+            pvz::game::LevelOneRandomDecision{
+                .mKind = pvz::game::LevelOneRandomDecisionKind::
+                    ZombieMotion,
+                .mXMilliPixels = 699'640,
+                .mPlantColumn = 0,
+                .mShootingCounter = 1,
+            },
+        };
+    pvz::game::LevelOneRandomDecisionTape aTape(
+        kDecisions,
+        false,
+        false,
+        false,
+        true);
+    pvz::game::LevelOneCombat aCombat;
+    auto aState = aCombat.GetState();
+    aState.mPhase = pvz::game::LevelOneCombatPhase::Active;
+    aState.mSunCountdown = 500;
+    aState.mFirstWaveSpawned = true;
+    aState.mCurrentWave = 1;
+    aState.mZombieCountdown = 2'500;
+    aState.mZombieCountdownStart = 2'500;
+    aState.mZombieHealthWaveStart = 270;
+    aState.mZombieHealthToNextWave = 135;
+    aState.mZombieCount = 1;
+    aState.mZombies[0] = {
+        .mActive = true,
+        .mRow = 2,
+        .mHealth = 270,
+        .mXMilliPixels = 700'000,
+        .mSpeedMicroPixelsPerTick = 270'000,
+        .mFromWave = 0,
+    };
+    Expect(
+        aCombat.RestoreState(aState),
+        "zombie motion fixture restores");
+    aCombat.SetRandomDecisionSource(&aTape);
+
+    aCombat.Update();
+    Expect(
+        aCombat.GetState().mZombies[0].mXMilliPixels == 699'640 &&
+            aCombat.GetState().mZombies[0].mHealth == 269 &&
+            aCombat.GetState().mZombies[0].mMovementRemainderMicroPixels ==
+                0 &&
+            aTape.GetReadCount() == 1 &&
+            aTape.GetRemainingCount() == 0 &&
+            !aCombat.HasRandomDecisionFailure(),
+        "captured zombie motion includes the headless decay choice");
+}
+
+void TestProjectileCollisionUsesPreviousIntegerPosition()
+{
+    constexpr std::array<pvz::game::LevelOneRandomDecision, 2>
+        kDecisions{
+            pvz::game::LevelOneRandomDecision{
+                .mKind = pvz::game::LevelOneRandomDecisionKind::
+                    ZombieMotion,
+                .mXMilliPixels = 500'000,
+                .mPlantColumn = 0,
+            },
+            pvz::game::LevelOneRandomDecision{
+                .mKind = pvz::game::LevelOneRandomDecisionKind::
+                    ProjectileMotion,
+                .mXMilliPixels = 498'000,
+                .mPlantColumn = 0,
+            },
+        };
+    pvz::game::LevelOneRandomDecisionTape aTape(
+        kDecisions,
+        false,
+        false,
+        false,
+        true,
+        true);
+    pvz::game::LevelOneCombat aCombat;
+    auto aState = aCombat.GetState();
+    aState.mPhase = pvz::game::LevelOneCombatPhase::Active;
+    aState.mSunCountdown = 500;
+    aState.mFirstWaveSpawned = true;
+    aState.mCurrentWave = 1;
+    aState.mZombieCountdown = 2'500;
+    aState.mZombieCountdownStart = 2'500;
+    aState.mZombieHealthWaveStart = 270;
+    aState.mZombieHealthToNextWave = 135;
+    aState.mZombieCount = 1;
+    aState.mProjectileCount = 1;
+    aState.mZombies[0] = {
+        .mActive = true,
+        .mRow = 2,
+        .mHealth = 270,
+        .mXMilliPixels = 500'000,
+        .mSpeedMicroPixelsPerTick = 270'000,
+        .mFromWave = 0,
+    };
+    aState.mProjectiles[0] = {
+        .mActive = true,
+        .mRow = 2,
+        .mXMilliPixels = 495'000,
+        .mYMilliPixels = 337'000,
+    };
+    Expect(
+        aCombat.RestoreState(aState),
+        "projectile collision-order fixture restores");
+    aCombat.SetRandomDecisionSource(&aTape);
+
+    aCombat.Update();
+    const auto& anUpdated = aCombat.GetState();
+    Expect(
+        anUpdated.mProjectiles[0].mActive &&
+            anUpdated.mProjectiles[0].mXMilliPixels == 498'000 &&
+            anUpdated.mZombies[0].mHealth == 270 &&
+            !aCombat.HasRandomDecisionFailure(),
+        "projectile collision uses legacy previous integer position");
+}
+
+void TestFinalZombieHeadLossDropsAward()
+{
+    constexpr std::array<pvz::game::LevelOneRandomDecision, 2>
+        kDecisions{
+            pvz::game::LevelOneRandomDecision{
+                .mKind = pvz::game::LevelOneRandomDecisionKind::
+                    ZombieMotion,
+                .mXMilliPixels = 579'000,
+                .mPlantColumn = 0,
+            },
+            pvz::game::LevelOneRandomDecision{
+                .mKind = pvz::game::LevelOneRandomDecisionKind::
+                    ProjectileMotion,
+                .mXMilliPixels = 579'000,
+                .mPlantColumn = 0,
+            },
+        };
+    pvz::game::LevelOneRandomDecisionTape aTape(
+        kDecisions,
+        false,
+        false,
+        false,
+        true,
+        true);
+    pvz::game::LevelOneCombat aCombat;
+    auto aState = aCombat.GetState();
+    aState.mPhase = pvz::game::LevelOneCombatPhase::Active;
+    aState.mSunCountdown = 500;
+    aState.mFirstWaveSpawned = true;
+    aState.mFirstWaveCleared = true;
+    aState.mCurrentWave =
+        pvz::game::LevelOneCombat::kWaveCount;
+    aState.mZombieCountdown = 3'017;
+    aState.mZombieCountdownStart = 3'017;
+    aState.mZombieHealthWaveStart = 540;
+    aState.mZombieHealthToNextWave = 270;
+    aState.mZombieCount = 1;
+    aState.mProjectileCount = 1;
+    aState.mZombies[0] = {
+        .mActive = true,
+        .mRow = 2,
+        .mHealth =
+            pvz::game::LevelOneCombat::
+                kNormalZombieHeadLossHealth,
+        .mXMilliPixels = 579'000,
+        .mSpeedMicroPixelsPerTick = 270'000,
+        .mFromWave = 3,
+    };
+    aState.mProjectiles[0] = {
+        .mActive = true,
+        .mRow = 2,
+        .mXMilliPixels = 576'000,
+        .mYMilliPixels = 337'000,
+    };
+    Expect(
+        aCombat.RestoreState(aState),
+        "final-zombie head-loss fixture restores");
+    aCombat.SetRandomDecisionSource(&aTape);
+
+    aCombat.Update();
+    const auto& anUpdated = aCombat.GetState();
+    Expect(
+        anUpdated.mPhase ==
+                pvz::game::LevelOneCombatPhase::Won &&
+            anUpdated.mZombieCount == 0 &&
+            anUpdated.mAwardSpawned &&
+            anUpdated.mAwardXMilliPixels == 636'000 &&
+            aTape.GetRemainingCount() == 0 &&
+            !aCombat.HasRandomDecisionFailure(),
+        "final zombie drops the award at the native head-loss threshold");
+}
+
+void TestMowerPrecedesLossAndIsSingleUse()
+{
+    pvz::game::LevelOneCombat aCombat;
+    auto aState = aCombat.GetState();
+    aState.mPhase = pvz::game::LevelOneCombatPhase::Active;
+    aState.mSunCountdown = 500;
+    aState.mFirstWaveSpawned = true;
+    aState.mCurrentWave = 1;
+    aState.mZombieCountdown = 2'500;
+    aState.mZombieCountdownStart = 2'500;
+    aState.mZombieHealthWaveStart = 270;
+    aState.mZombieHealthToNextWave = 135;
+    aState.mZombieCount = 1;
+    aState.mZombies[0] = {
+        .mActive = true,
+        .mRow = 2,
+        .mHealth = 270,
+        .mXMilliPixels = -7'800,
+        .mSpeedMicroPixelsPerTick = 270'000,
+        .mFromWave = 0,
+    };
+    Expect(
+        aCombat.RestoreState(aState),
+        "ready-mower fixture restores");
+    aCombat.Update();
+    Expect(
+        aCombat.GetState().mPhase ==
+                pvz::game::LevelOneCombatPhase::Active &&
+            aCombat.GetState().mZombieCount == 0 &&
+            aCombat.GetState().mMowerPhase ==
+                pvz::game::LevelOneMowerPhase::Triggered &&
+            aCombat.GetState().mMowerXMilliPixels >
+                pvz::game::LevelOneCombat::kMowerReadyXMilliPixels,
+        "ready mower removes the approaching zombie before loss");
+
+    auto aSpentState = aState;
+    aSpentState.mMowerPhase =
+        pvz::game::LevelOneMowerPhase::Spent;
+    aSpentState.mMowerXMilliPixels = 803'330;
+    aSpentState.mZombies[0].mXMilliPixels = -99'800;
+    Expect(
+        aCombat.RestoreState(aSpentState),
+        "spent-mower fixture restores");
+    aCombat.Update();
+    Expect(
+        aCombat.GetState().mPhase ==
+            pvz::game::LevelOneCombatPhase::Lost,
+        "a later zombie reaches the legacy loss edge after mower use");
+}
+
 void TestEatingUsesFourTickDamageCadence()
 {
     pvz::game::LevelOneCombat aCombat;
@@ -373,6 +800,11 @@ void TestEatingUsesFourTickDamageCadence()
     aState.mPhase =
         pvz::game::LevelOneCombatPhase::Active;
     aState.mFirstWaveSpawned = true;
+    aState.mCurrentWave = 1;
+    aState.mZombieCountdown = 2'500;
+    aState.mZombieCountdownStart = 2'500;
+    aState.mZombieHealthWaveStart = 270;
+    aState.mZombieHealthToNextWave = 135;
     aState.mPlantCount = 1;
     aState.mZombieCount = 1;
     aState.mPlants[0] = {
@@ -392,6 +824,7 @@ void TestEatingUsesFourTickDamageCadence()
         .mMovementRemainderMicroPixels = 0,
         .mAge = 3,
         .mEating = false,
+        .mFromWave = 0,
     };
     Expect(
         aCombat.RestoreState(aState),
@@ -425,8 +858,8 @@ void TestCombatStateIsFixedWidthAndTransactional()
     pvz::engine::core::BinaryStateWriter aWriter;
     Expect(
         aCombat.SaveState(aWriter) &&
-            aWriter.GetBytesWritten() == 752,
-        "combat state has a stable explicit 752-byte schema");
+            aWriter.GetBytesWritten() == 782,
+        "combat state has a stable explicit 782-byte schema");
 
     pvz::game::LevelOneCombat aRestored;
     pvz::engine::core::BinaryStateReader aReader(
@@ -448,6 +881,23 @@ void TestCombatStateIsFixedWidthAndTransactional()
     constexpr std::size_t kVersionSevenZombieBytes = 19;
     constexpr std::size_t kZombieSlotCount = 8;
     const auto aCurrentBytes = aWriter.GetBytes();
+    std::vector<std::byte> aVersionSevenBytes(
+        aCurrentBytes.begin(),
+        aCurrentBytes.begin() + 752);
+    pvz::engine::core::BinaryStateReader aVersionSevenReader(
+        aVersionSevenBytes);
+    pvz::game::LevelOneCombat aVersionSevenRestored;
+    Expect(
+        aVersionSevenRestored.LoadState(
+            aVersionSevenReader,
+            true,
+            false) &&
+            aVersionSevenReader.GetBytesRemaining() == 0 &&
+            aVersionSevenRestored.GetState().mCurrentWave == 0 &&
+            aVersionSevenRestored.GetState().mMowerPhase ==
+                pvz::game::LevelOneMowerPhase::Ready,
+        "version-seven combat state defaults complete-level fields");
+
     std::vector<std::byte> aVersionSixBytes;
     aVersionSixBytes.reserve(712);
     aVersionSixBytes.insert(
@@ -508,7 +958,7 @@ void TestCombatStateIsFixedWidthAndTransactional()
     aVersionSixBytes.insert(
         aVersionSixBytes.end(),
         aCurrentBytes.begin() + aZombieOffset,
-        aCurrentBytes.end());
+        aCurrentBytes.begin() + 752);
     pvz::engine::core::BinaryStateReader aVersionSixReader(
         aVersionSixBytes);
     pvz::game::LevelOneCombat aVersionSixRestored;
@@ -530,6 +980,20 @@ void TestCombatStateIsFixedWidthAndTransactional()
         !aRestored.RestoreState(anInvalidState) &&
             aRestored.GetState().mPlantCount == 1,
         "invalid entity counts are rejected transactionally");
+
+    anInvalidState = aRestored.GetState();
+    anInvalidState.mZombieCountdown = 1;
+    Expect(
+        !aRestored.RestoreState(anInvalidState) &&
+            aRestored.GetState().mZombieCountdown == 0,
+        "countdown progress cannot exceed its fixed-width start value");
+
+    anInvalidState = aRestored.GetState();
+    anInvalidState.mAwardXMilliPixels = 1;
+    Expect(
+        !aRestored.RestoreState(anInvalidState) &&
+            !aRestored.GetState().mAwardSpawned,
+        "inactive award coordinates are rejected transactionally");
 }
 
 } // namespace
@@ -538,8 +1002,15 @@ void RunLevelOneCombatTests()
 {
     TestSourceAuditedCombatConstants();
     TestTutorialSunAndFirstWaveGate();
-    TestCombatClearsFirstWaveDeterministically();
+    TestCombatCompletesAllFourWavesDeterministically();
     TestSemanticRandomDecisionTape();
+    TestWaveScheduleDecisionAndAcceleration();
+    TestPeashooterScheduleDecision();
+    TestProjectileSpawnDecision();
+    TestZombieMotionDecision();
+    TestProjectileCollisionUsesPreviousIntegerPosition();
+    TestFinalZombieHeadLossDropsAward();
+    TestMowerPrecedesLossAndIsSingleUse();
     TestEatingUsesFourTickDamageCadence();
     TestCombatStateIsFixedWidthAndTransactional();
 }

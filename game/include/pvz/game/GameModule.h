@@ -95,6 +95,8 @@ private:
     ReanimationPlayer mZombiePlayer;
     ReanimationClip mSunClip;
     ReanimationPlayer mSunPlayer;
+    ReanimationClip mLawnMowerClip;
+    ReanimationPlayer mLawnMowerPlayer;
     std::vector<engine::SpriteDraw> mUiTextSprites;
     mutable std::vector<engine::SpriteDraw> mReanimationSprites;
     engine::TickIndex mLastTick{};

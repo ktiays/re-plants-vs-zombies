@@ -7,8 +7,23 @@ namespace pvz::game
 {
 
 LevelOneRandomDecisionTape::LevelOneRandomDecisionTape(
-    std::span<const LevelOneRandomDecision> theDecisions)
-    : mDecisions(theDecisions)
+    std::span<const LevelOneRandomDecision> theDecisions,
+    bool theSupportsWaveSchedule,
+    bool theSupportsPeashooterSchedule,
+    bool theSupportsProjectileSpawn,
+    bool theSupportsZombieMotion,
+    bool theSupportsProjectileMotion)
+    : mDecisions(theDecisions),
+      mSupportsWaveSchedule(
+          theSupportsWaveSchedule),
+      mSupportsPeashooterSchedule(
+          theSupportsPeashooterSchedule),
+      mSupportsProjectileSpawn(
+          theSupportsProjectileSpawn),
+      mSupportsZombieMotion(
+          theSupportsZombieMotion),
+      mSupportsProjectileMotion(
+          theSupportsProjectileMotion)
 {
 }
 
@@ -36,6 +51,22 @@ bool LevelOneRandomDecisionTape::ReadNext(
 
     theDecision = aDecision;
     ++mReadCount;
+    return true;
+}
+
+bool LevelOneRandomDecisionTape::Supports(
+    LevelOneRandomDecisionKind theKind) const
+{
+    if (theKind == LevelOneRandomDecisionKind::WaveSchedule)
+        return mSupportsWaveSchedule;
+    if (theKind == LevelOneRandomDecisionKind::PeashooterSchedule)
+        return mSupportsPeashooterSchedule;
+    if (theKind == LevelOneRandomDecisionKind::ProjectileSpawn)
+        return mSupportsProjectileSpawn;
+    if (theKind == LevelOneRandomDecisionKind::ZombieMotion)
+        return mSupportsZombieMotion;
+    if (theKind == LevelOneRandomDecisionKind::ProjectileMotion)
+        return mSupportsProjectileMotion;
     return true;
 }
 

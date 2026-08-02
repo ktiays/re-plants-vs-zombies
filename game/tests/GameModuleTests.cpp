@@ -543,7 +543,18 @@ void TestLifecycleAndState()
 
     pvz::engine::core::BinaryStateWriter aWriter;
     Expect(aGame.SaveState(aWriter), "initialized game saves state");
-    Expect(aWriter.GetBytesWritten() == 814, "state schema has stable size");
+    Expect(aWriter.GetBytesWritten() == 844, "state schema has stable size");
+
+    std::vector<std::byte> aVersionSevenBytes(
+        aWriter.GetBytes().begin(),
+        aWriter.GetBytes().begin() + 814);
+    aVersionSevenBytes[4] = std::byte{7};
+    pvz::engine::core::BinaryStateReader aVersionSevenReader(
+        aVersionSevenBytes);
+    Expect(
+        aGame.LoadState(aVersionSevenReader) &&
+            aVersionSevenReader.GetBytesRemaining() == 0,
+        "version-seven module state remains readable");
 
     TestServices aRestoredServices;
     pvz::game::GameModule aRestoredGame;
@@ -897,8 +908,18 @@ void TestSceneMusicTransitions()
                 pvz::game::BehaviorTutorialPhase::
                     LevelOneRefreshPeashooter &&
             anEconomyObservation.mFirstSunCountdown == 399 &&
-            !anEconomyObservation.mFirstSunSpawned,
-        "behavior observation exports post-input Level 1 economy state");
+            !anEconomyObservation.mFirstSunSpawned &&
+            anEconomyObservation.mCurrentWave == 0 &&
+            anEconomyObservation.mZombieCountdown == 0 &&
+            anEconomyObservation.mZombieCount == 0 &&
+            anEconomyObservation.mLevelOutcome ==
+                pvz::game::BehaviorLevelOutcome::Playing &&
+            anEconomyObservation.mMowerState ==
+                pvz::game::BehaviorMowerState::Ready &&
+            !anEconomyObservation.mLevelAwardSpawned &&
+            anEconomyObservation.mZombieWaveHealth == 0 &&
+            anEconomyObservation.mProjectileCount == 0,
+        "behavior observation exports Level 1 economy and combat state");
     pvz::engine::core::BinaryStateWriter aWriter;
     Expect(
         aGame.SaveState(aWriter),
@@ -988,8 +1009,16 @@ void TestSceneMusicTransitions()
     while (!aGame.GetLevelOneCombatState().mFirstWaveSpawned)
         aGame.Update(pvz::engine::GameTick{aCombatTick++}, anInput);
     Expect(
-        aGame.GetLevelOneCombatState().mZombieCount == 1,
-        "GameModule starts the first normal-zombie wave");
+        aGame.GetLevelOneCombatState().mZombieCount == 1 &&
+            aGame.GetBehaviorObservation().mCurrentWave == 1 &&
+            aGame.GetBehaviorObservation().mZombieCount == 1 &&
+            aGame.GetBehaviorObservation().mZombieWaveHealth ==
+                pvz::game::LevelOneCombat::kNormalZombieHealth &&
+            aGame.GetBehaviorObservation().mProjectileCount == 0 &&
+            aGame.GetBehaviorObservation().mZombieCountdown ==
+                pvz::game::LevelOneCombat::
+                    kNextWaveCountdownMinimum,
+        "GameModule starts and observes the first normal-zombie wave");
 
     anInput.PressKey(pvz::engine::KeyCode::Escape);
     aGame.Update(pvz::engine::GameTick{aCombatTick++}, anInput);
