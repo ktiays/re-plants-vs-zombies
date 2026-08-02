@@ -41,6 +41,7 @@ add_library(
         src/GameModule.cpp
         src/LevelOneBoard.cpp
         src/LevelOneCombat.cpp
+        src/LevelOneRandomDecision.cpp
         src/ParameterTrack.cpp
         src/ParticleDefinition.cpp
         src/ReanimationDefinition.cpp

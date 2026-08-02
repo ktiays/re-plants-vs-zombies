@@ -366,6 +366,27 @@ void RecordLegacyBehaviorObservation(
     }
 }
 
+void RecordLegacyRandomDecision(
+    game::LevelOneRandomDecision theDecision)
+{
+    auto& aState = GetCaptureState();
+    if (!aState.mEnabled ||
+        aState.mKind != CaptureKind::Behavior)
+    {
+        return;
+    }
+    parity::BehaviorCaptureError anError{};
+    if (!aState.mBehaviorCapture.AppendRandomDecision(
+            theDecision,
+            anError))
+    {
+        SetError(
+            aState,
+            std::string(
+                parity::GetBehaviorCaptureErrorMessage(anError)));
+    }
+}
+
 bool FinalizeLegacyInputCapture()
 {
     auto& aState = GetCaptureState();

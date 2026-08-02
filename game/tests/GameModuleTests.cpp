@@ -543,7 +543,7 @@ void TestLifecycleAndState()
 
     pvz::engine::core::BinaryStateWriter aWriter;
     Expect(aGame.SaveState(aWriter), "initialized game saves state");
-    Expect(aWriter.GetBytesWritten() == 765, "state schema has stable size");
+    Expect(aWriter.GetBytesWritten() == 814, "state schema has stable size");
 
     TestServices aRestoredServices;
     pvz::game::GameModule aRestoredGame;
@@ -941,16 +941,32 @@ void TestSceneMusicTransitions()
     aGame.Update(pvz::engine::GameTick{aCombatTick++}, anInput);
     anInput.Clear();
     Expect(
+        aGame.GetLevelOneBoardState().mSun == 50 &&
+            aGame.GetLevelOneCombatState().mSuns[0]
+                .mBeingCollected,
+        "engine-neutral input starts the falling-sun collection flight");
+    const auto aFirstCollectionDeadline = aCombatTick + 256;
+    while (aGame.GetLevelOneBoardState().mSun < 75 &&
+           aCombatTick < aFirstCollectionDeadline)
+    {
+        aGame.Update(pvz::engine::GameTick{aCombatTick++}, anInput);
+    }
+    Expect(
         aGame.GetLevelOneBoardState().mSun == 75,
-        "first falling sun is collected through engine-neutral input");
+        "first falling sun is credited after reaching the counter");
 
     while (aGame.GetLevelOneCombatState().mSunsSpawned < 2)
         aGame.Update(pvz::engine::GameTick{aCombatTick++}, anInput);
     anInput.PressPointer({405, 90});
     aGame.Update(pvz::engine::GameTick{aCombatTick++}, anInput);
     anInput.Clear();
-    while (aGame.GetLevelOneBoardState().mSeedRefreshing)
+    const auto aSecondCollectionDeadline = aCombatTick + 1'000;
+    while ((aGame.GetLevelOneBoardState().mSeedRefreshing ||
+            aGame.GetLevelOneBoardState().mSun < 100) &&
+           aCombatTick < aSecondCollectionDeadline)
+    {
         aGame.Update(pvz::engine::GameTick{aCombatTick++}, anInput);
+    }
     Expect(
         aGame.GetLevelOneBoardState().mSun == 100,
         "two tutorial suns fund the second Peashooter");

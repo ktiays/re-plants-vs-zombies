@@ -90,8 +90,6 @@ inline constexpr std::array<MenuItemLayout, 4> kMenuItemLayouts{{
 void GameFlow::Reset()
 {
     mState = {};
-    mLastPointerPosition = {};
-    mHasPointerPosition = false;
     mGridActivationRequested = false;
 }
 
@@ -199,7 +197,10 @@ bool GameFlow::RestoreState(const GameFlowState& theState)
     if (theState.mScene >= GameScene::Count ||
         theState.mMenuItem >= MainMenuItem::Count ||
         theState.mNoticeTicks > kUnavailableNoticeTicks ||
-        (theState.mOccupiedCells & ~kOccupiedCellMask) != 0)
+        (theState.mOccupiedCells & ~kOccupiedCellMask) != 0 ||
+        (!theState.mHasPointerPosition &&
+         (theState.mLastPointerPosition.mX != 0 ||
+          theState.mLastPointerPosition.mY != 0)))
     {
         return false;
     }
@@ -225,8 +226,6 @@ bool GameFlow::RestoreState(const GameFlowState& theState)
         return false;
 
     mState = theState;
-    mLastPointerPosition = {};
-    mHasPointerPosition = false;
     mGridActivationRequested = false;
     return true;
 }
@@ -260,7 +259,8 @@ void GameFlow::UpdateTitle(
             engine::PointerButton::Primary))
     {
         mState.mScene = GameScene::MainMenu;
-        mHasPointerPosition = false;
+        mState.mLastPointerPosition = {};
+        mState.mHasPointerPosition = false;
     }
 }
 
@@ -272,9 +272,9 @@ void GameFlow::UpdateMainMenu(
         theInput.WasPointerButtonPressed(
             engine::PointerButton::Primary);
     const bool hasPointerMoved =
-        !mHasPointerPosition ||
-        aPointer.mX != mLastPointerPosition.mX ||
-        aPointer.mY != mLastPointerPosition.mY;
+        !mState.mHasPointerPosition ||
+        aPointer.mX != mState.mLastPointerPosition.mX ||
+        aPointer.mY != mState.mLastPointerPosition.mY;
     if (hasPointerMoved || isPrimaryPressed)
     {
         for (const auto& aLayout : kMenuItemLayouts)
@@ -286,8 +286,8 @@ void GameFlow::UpdateMainMenu(
             }
         }
     }
-    mLastPointerPosition = aPointer;
-    mHasPointerPosition = true;
+    mState.mLastPointerPosition = aPointer;
+    mState.mHasPointerPosition = true;
 
     if (theInput.WasKeyPressed(engine::KeyCode::ArrowUp))
         SelectRelative(-1);
@@ -311,9 +311,9 @@ void GameFlow::UpdateMainMenu(
 void GameFlow::UpdateStartingAdventure(
     const engine::IInputFrame& theInput)
 {
-    mLastPointerPosition =
+    mState.mLastPointerPosition =
         theInput.GetPointerState().mPosition;
-    mHasPointerPosition = true;
+    mState.mHasPointerPosition = true;
     if (mState.mTransitionTicks > 0)
         --mState.mTransitionTicks;
     if (mState.mTransitionTicks == 0)
@@ -326,15 +326,15 @@ void GameFlow::UpdateStartingAdventure(
 void GameFlow::UpdateAdventureIntro(
     const engine::IInputFrame& theInput)
 {
-    mLastPointerPosition =
+    mState.mLastPointerPosition =
         theInput.GetPointerState().mPosition;
-    mHasPointerPosition = true;
+    mState.mHasPointerPosition = true;
     if (mState.mTransitionTicks > 0)
         --mState.mTransitionTicks;
     if (mState.mTransitionTicks == 0)
     {
         mState.mScene = GameScene::AdventureDay;
-        SelectGridCell(mLastPointerPosition, false);
+        SelectGridCell(mState.mLastPointerPosition, false);
         if (mState.mGridColumn == kNoGridCoordinate ||
             mState.mGridRow == kNoGridCoordinate)
         {
@@ -350,17 +350,28 @@ void GameFlow::UpdateAdventureDay(
     if (theInput.WasKeyPressed(engine::KeyCode::Escape))
     {
         mState.mScene = GameScene::MainMenu;
-        mHasPointerPosition = false;
+        mState.mLastPointerPosition = {};
+        mState.mHasPointerPosition = false;
         return;
     }
 
-    if (theInput.WasPointerButtonPressed(
-            engine::PointerButton::Primary))
+    const auto aPointer =
+        theInput.GetPointerState().mPosition;
+    const bool isPrimaryPressed =
+        theInput.WasPointerButtonPressed(
+            engine::PointerButton::Primary);
+    const bool hasPointerMoved =
+        !mState.mHasPointerPosition ||
+        aPointer.mX != mState.mLastPointerPosition.mX ||
+        aPointer.mY != mState.mLastPointerPosition.mY;
+    if (hasPointerMoved || isPrimaryPressed)
     {
         SelectGridCell(
-            theInput.GetPointerState().mPosition,
-            true);
+            aPointer,
+            isPrimaryPressed);
     }
+    mState.mLastPointerPosition = aPointer;
+    mState.mHasPointerPosition = true;
     if (theInput.WasKeyPressed(engine::KeyCode::ArrowLeft))
         MoveGridSelection(-1, 0);
     else if (theInput.WasKeyPressed(engine::KeyCode::ArrowRight))

@@ -275,6 +275,33 @@ void TestBoardInteraction()
             !aFlow.WasGridActivationRequested(),
         "clicking outside the lawn clears pointer grid focus");
 
+    const auto aHoverRect =
+        pvz::game::GameFlow::GetGridCellRect(5, 1);
+    anInput.MovePointer(
+        {
+            aHoverRect.mOrigin.mX + 10,
+            aHoverRect.mOrigin.mY + 10,
+        });
+    aFlow.Update(anInput);
+    Expect(
+        aFlow.GetGridColumn() == 5 &&
+            aFlow.GetGridRow() == 1 &&
+            !aFlow.WasGridActivationRequested(),
+        "pointer hover follows the legacy cursor preview without planting");
+    anInput.PressKey(pvz::engine::KeyCode::ArrowLeft);
+    aFlow.Update(anInput);
+    anInput.Clear();
+    pvz::game::GameFlow aRestoredHoverFlow;
+    Expect(
+        aFlow.GetGridColumn() == 4 &&
+            aRestoredHoverFlow.RestoreState(aFlow.GetState()),
+        "flow state saves keyboard focus and pointer-hover history");
+    aRestoredHoverFlow.Update(anInput);
+    Expect(
+        aRestoredHoverFlow.GetGridColumn() == 4 &&
+            aRestoredHoverFlow.GetGridRow() == 1,
+        "restored stationary pointer does not override keyboard focus");
+
     anInput.PressKey(pvz::engine::KeyCode::Escape);
     aFlow.Update(anInput);
     Expect(

@@ -20,7 +20,7 @@ backend can be replaced without changing game code.
 
 ## Current execution status
 
-Last updated: 2026-07-31
+Last updated: 2026-08-02
 
 - [x] Portable engine API and core CMake targets
 - [x] Shared 100 Hz application runner with bounded catch-up, suspension,
@@ -47,9 +47,11 @@ Last updated: 2026-07-31
   compares raw input with portable sessions
 - [x] Versioned fixed-width `PVZB` behavior captures combine exact logical
   input with post-update normalized scene, board stage, grid focus, occupied
-  cells, plant count, and version 2 Level 1 economy state; independent legacy
-  and portable exporters plus the behavior inspector report the first
-  differing tick and field while version 1 captures remain readable
+  cells, plant count, and Level 1 economy state; version 3 adds a strict
+  game-semantic tape for falling-sun and normal-zombie random choices;
+  independent legacy and portable exporters plus the behavior inspector report
+  the first differing tick, field, or decision while versions 1 and 2 remain
+  readable
 - [x] Engine-owned rendering, input, logging, state, and resource protocols
 - [x] Portable PAK indexing, normalization, validation, and resource reads
 - [x] Validation against the supplied retail PAK: 3,198 entries and
@@ -109,8 +111,9 @@ Last updated: 2026-07-31
   owns the two-plant tutorial gate, falling 25-sun pickups, 99-tick first-wave
   countdown, normal-zombie and Peashooter state, fixed-point movement, lane
   targeting, pea collision/damage, four-tick eating cadence, and first-wave
-  completion; source-ranged RNG choices remain provisional until Windows
-  runtime capture is restored
+  completion; a 9,169-tick Windows runtime replay now validates five falling-
+  sun decisions, one normal-zombie decision, delayed sun collection, pointer
+  hover focus, and both tutorial placements
 - [x] Local reference-first parity harness: independent, revisioned legacy
   board fixtures exhaustively cover day, pool, and roof geometry, pointer
   mapping, background cropping, and engine-neutral selection render commands
@@ -123,10 +126,12 @@ Last updated: 2026-07-31
   transform interpolation, disappearing-frame truncation, atlas-cell
   selection, alpha, and independent x/y skew produce backend-neutral affine
   sprite quads consumed directly by Metal
-- [x] Version-6 portable game state persists scene, menu, transition, notice,
+- [x] Version-7 portable game state persists scene, menu, transition, notice,
   grid selection, the 45-cell occupancy bitset, fixed-width reanimation tick,
-  sun, packet recharge, seed selection, and bounded combat entities through
-  explicit fields; versions 1 through 5 remain readable
+  logical pointer-hover history, sun, packet recharge, seed selection,
+  collection-flight state, micro-pixel zombie movement remainder, and bounded
+  combat entities through explicit fields; versions 1 through 6 remain
+  readable
 - [x] Fixed-width audio firewall: decoded PCM descriptors, sound and voice
   handles, playback parameters, resource diagnostics, decoder/device
   protocols, and the game-facing sound service expose no backend or
@@ -159,8 +164,8 @@ Last updated: 2026-07-31
   Adventure transition, starts the daytime music at order zero, and restores
   the title music when returning to the menu solely through `IMusicResources`
 - [ ] Complete Windows runtime behavior and screenshot baselines for the
-  reconstructed legacy target (the 8,765-tick Level 1 economy behavior
-  baseline matches; combat RNG decisions and screenshot coverage remain)
+  reconstructed legacy target (the 9,169-tick Level 1 first-zombie behavior
+  baseline matches; later combat waves and screenshot coverage remain)
 - [ ] Migration of the remaining gameplay `Board`, `Challenge`, data-array, and
   effect snapshots from raw object blocks to fieldwise fixed-width schemas
 - [x] Mapping portable XML tokens into runtime definitions used by effects

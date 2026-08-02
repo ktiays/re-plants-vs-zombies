@@ -18,6 +18,8 @@ namespace pvz::game
 class GameModule final : public engine::IGame
 {
 public:
+    [[nodiscard]] bool SetLevelOneRandomDecisionSource(
+        ILevelOneRandomDecisionSource* theSource);
     [[nodiscard]] engine::LifecycleResult Initialize(
         engine::IEngineServices& theServices) override;
     void Update(
@@ -39,6 +41,7 @@ public:
     [[nodiscard]] GameFlowState GetFlowState() const;
     [[nodiscard]] LevelOneBoardState GetLevelOneBoardState() const;
     [[nodiscard]] LevelOneCombatState GetLevelOneCombatState() const;
+    [[nodiscard]] bool HasRandomDecisionFailure() const;
     [[nodiscard]] BehaviorObservation GetBehaviorObservation() const;
     [[nodiscard]] std::uint64_t GetReanimationTick() const;
 
@@ -72,6 +75,7 @@ private:
     GameFlow mFlow;
     LevelOneBoard mLevelOneBoard;
     LevelOneCombat mLevelOneCombat;
+    ILevelOneRandomDecisionSource* mLevelOneRandomDecisionSource{};
     engine::ImageResource mTitleScreen;
     engine::ImageResource mTitleLogo;
     engine::ImageResource mDayBackground;

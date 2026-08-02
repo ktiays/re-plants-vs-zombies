@@ -74,6 +74,15 @@ void TestBehaviorCaptureBridge()
             LevelOneRefreshPeashooter;
     pvz::platform::windows::RecordLegacyBehaviorObservation(
         anObservation);
+    pvz::platform::windows::RecordLegacyRandomDecision(
+        {
+            .mKind =
+                pvz::game::LevelOneRandomDecisionKind::FallingSun,
+            .mNextCountdown = 507,
+            .mXMilliPixels = 245'000,
+            .mGroundYMilliPixels = 488'000,
+            .mSpeedMicroPixelsPerTick = 0,
+        });
 
     Expect(
         pvz::platform::windows::FinalizeLegacyInputCapture(),
@@ -120,7 +129,7 @@ void TestBehaviorCaptureBridge()
         Expect(
             aCapture.GetProducer() ==
                 pvz::parity::BehaviorProducer::LegacyWindows &&
-            aCapture.GetFormatVersion() == 2 &&
+            aCapture.GetFormatVersion() == 3 &&
             aCapture.GetInputReplay().GetFrames().size() == 1 &&
             anObservations.size() == 1 &&
             anObservations[0].mGridColumn == 1 &&
@@ -129,7 +138,11 @@ void TestBehaviorCaptureBridge()
             anObservations[0].mSun == 50 &&
             anObservations[0].mSeedRefreshCounter == 25 &&
             anObservations[0].mSeedRefreshTime == 750 &&
-            anObservations[0].mSeedRefreshing,
+            anObservations[0].mSeedRefreshing &&
+            aCapture.GetRandomDecisions().size() == 1 &&
+            aCapture.GetRandomDecisions()[0].mNextCountdown == 507 &&
+            aCapture.GetRandomDecisions()[0].mXMilliPixels ==
+                245'000,
             "reference behavior fields round trip");
     }
 

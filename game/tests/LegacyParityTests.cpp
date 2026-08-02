@@ -376,9 +376,11 @@ void TestLevelOneCombatMatchesLegacyReference()
                 legacy_combat::kNormalZombiesPerWave[0] &&
             aState.mZombies[0].mXMilliPixels ==
                 legacy_combat::kPortableSpawnXMilliPixels &&
-            aState.mZombies[0].mSpeedMilliPixelsPerTick ==
-                legacy_combat::
-                    kPortableSpeedMilliPixelsPerTick,
+            aState.mZombies[0].mSpeedMicroPixelsPerTick ==
+                static_cast<std::uint32_t>(
+                    legacy_combat::
+                        kPortableSpeedMilliPixelsPerTick) *
+                    1'000U,
         "first-wave entity state matches the audited deterministic fixture");
 }
 

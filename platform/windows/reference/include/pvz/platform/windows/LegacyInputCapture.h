@@ -1,6 +1,7 @@
 #pragma once
 
 #include "pvz/game/BehaviorObservation.h"
+#include "pvz/game/LevelOneRandomDecision.h"
 
 #include <cstdint>
 #include <string_view>
@@ -41,6 +42,8 @@ void RecordLegacyText(std::uint32_t theCodePoint);
 void CaptureLegacyInputTick();
 void RecordLegacyBehaviorObservation(
     game::BehaviorObservation theObservation);
+void RecordLegacyRandomDecision(
+    game::LevelOneRandomDecision theDecision);
 
 [[nodiscard]] bool FinalizeLegacyInputCapture();
 [[nodiscard]] std::string_view GetLegacyInputCaptureError();

@@ -35,6 +35,8 @@ struct GameFlowState
     std::uint8_t mGridColumn{0xFF};
     std::uint8_t mGridRow{0xFF};
     std::uint64_t mOccupiedCells{};
+    bool mHasPointerPosition{};
+    engine::PointI mLastPointerPosition{};
 };
 
 class GameFlow
@@ -84,8 +86,6 @@ private:
     void RequestSelectedGridCellActivation();
 
     GameFlowState mState;
-    engine::PointI mLastPointerPosition{};
-    bool mHasPointerPosition{};
     bool mGridActivationRequested{};
 };
 

@@ -14,11 +14,54 @@ namespace
 
 inline constexpr std::uint32_t kCaptureMagic = 0x425A5650;
 inline constexpr std::uint16_t kLegacyCaptureVersion = 1;
+inline constexpr std::uint16_t kEconomyCaptureVersion = 2;
 inline constexpr std::uint32_t kMaximumObservationCount = 1'000'000;
+inline constexpr std::uint32_t kMaximumRandomDecisionCount = 100'000;
 inline constexpr std::uint32_t kMaximumInputReplaySize =
     256U * 1'024U * 1'024U;
 inline constexpr std::uint64_t kLegacyObservationByteCount = 24;
 inline constexpr std::uint64_t kObservationByteCount = 36;
+inline constexpr std::uint64_t kRandomDecisionByteCount = 15;
+
+[[nodiscard]] bool ValidateRandomDecision(
+    const game::LevelOneRandomDecision& theDecision,
+    BehaviorCaptureError& theError)
+{
+    if (theDecision.mKind >=
+        game::LevelOneRandomDecisionKind::Count)
+    {
+        theError = BehaviorCaptureError::InvalidRandomDecisionKind;
+        return false;
+    }
+    if (theDecision.mKind ==
+        game::LevelOneRandomDecisionKind::FallingSun)
+    {
+        if (theDecision.mNextCountdown < 435 ||
+            theDecision.mNextCountdown > 1'224 ||
+            theDecision.mXMilliPixels < 100'000 ||
+            theDecision.mXMilliPixels > 649'000 ||
+            theDecision.mGroundYMilliPixels < 300'000 ||
+            theDecision.mGroundYMilliPixels > 549'000 ||
+            theDecision.mSpeedMicroPixelsPerTick != 0)
+        {
+            theError =
+                BehaviorCaptureError::InvalidRandomDecisionPayload;
+            return false;
+        }
+    }
+    else if (theDecision.mNextCountdown != 0 ||
+             theDecision.mXMilliPixels < 780'000 ||
+             theDecision.mXMilliPixels > 819'000 ||
+             theDecision.mGroundYMilliPixels != 0 ||
+             theDecision.mSpeedMicroPixelsPerTick < 230'000 ||
+             theDecision.mSpeedMicroPixelsPerTick > 320'000)
+    {
+        theError = BehaviorCaptureError::InvalidRandomDecisionPayload;
+        return false;
+    }
+    theError = BehaviorCaptureError::None;
+    return true;
+}
 
 [[nodiscard]] bool ValidateObservation(
     const game::BehaviorObservation& theObservation,
@@ -99,6 +142,7 @@ inline constexpr std::uint64_t kObservationByteCount = 36;
     BehaviorProducer theProducer,
     const engine::core::InputReplay& theInputReplay,
     std::span<const game::BehaviorObservation> theObservations,
+    std::span<const game::LevelOneRandomDecision> theRandomDecisions,
     BehaviorCaptureError& theError)
 {
     if (theProducer >= BehaviorProducer::Count)
@@ -111,11 +155,21 @@ inline constexpr std::uint64_t kObservationByteCount = 36;
         theError = BehaviorCaptureError::TooManyObservations;
         return false;
     }
+    if (theRandomDecisions.size() > kMaximumRandomDecisionCount)
+    {
+        theError = BehaviorCaptureError::TooManyRandomDecisions;
+        return false;
+    }
     if (theInputReplay.GetFrames().size() !=
         theObservations.size())
     {
         theError = BehaviorCaptureError::CountMismatch;
         return false;
+    }
+    for (const auto& aDecision : theRandomDecisions)
+    {
+        if (!ValidateRandomDecision(aDecision, theError))
+            return false;
     }
     for (std::size_t anIndex = 0;
          anIndex < theObservations.size();
@@ -195,6 +249,12 @@ std::string_view GetBehaviorCaptureErrorMessage(
         return "behavior capture seed refresh state is invalid";
     case BehaviorCaptureError::InvalidFirstSunState:
         return "behavior capture first-sun state is invalid";
+    case BehaviorCaptureError::TooManyRandomDecisions:
+        return "behavior capture has too many random decisions";
+    case BehaviorCaptureError::InvalidRandomDecisionKind:
+        return "behavior capture random-decision kind is invalid";
+    case BehaviorCaptureError::InvalidRandomDecisionPayload:
+        return "behavior capture random-decision payload is invalid";
     case BehaviorCaptureError::TrailingData:
         return "behavior capture has trailing data";
     }
@@ -233,12 +293,29 @@ bool BehaviorCapture::AppendObservation(
     return true;
 }
 
+bool BehaviorCapture::AppendRandomDecision(
+    game::LevelOneRandomDecision theDecision,
+    BehaviorCaptureError& theError)
+{
+    if (mRandomDecisions.size() >= kMaximumRandomDecisionCount)
+    {
+        theError = BehaviorCaptureError::TooManyRandomDecisions;
+        return false;
+    }
+    if (!ValidateRandomDecision(theDecision, theError))
+        return false;
+    mRandomDecisions.push_back(theDecision);
+    theError = BehaviorCaptureError::None;
+    return true;
+}
+
 void BehaviorCapture::Clear()
 {
     mFormatVersion = kCurrentFormatVersion;
     mProducer = BehaviorProducer::Unknown;
     mInputReplay.Clear();
     mObservations.clear();
+    mRandomDecisions.clear();
 }
 
 bool BehaviorCapture::Save(
@@ -249,6 +326,7 @@ bool BehaviorCapture::Save(
             mProducer,
             mInputReplay,
             mObservations,
+            mRandomDecisions,
             theError))
     {
         return false;
@@ -322,6 +400,27 @@ bool BehaviorCapture::Save(
             return false;
         }
     }
+    if (!theWriter.WriteU32(
+            static_cast<std::uint32_t>(mRandomDecisions.size())))
+    {
+        theError = BehaviorCaptureError::IoError;
+        return false;
+    }
+    for (const auto& aDecision : mRandomDecisions)
+    {
+        if (!theWriter.WriteU8(
+                static_cast<std::uint8_t>(aDecision.mKind)) ||
+            !theWriter.WriteU16(aDecision.mNextCountdown) ||
+            !theWriter.WriteI32(aDecision.mXMilliPixels) ||
+            !theWriter.WriteI32(
+                aDecision.mGroundYMilliPixels) ||
+            !theWriter.WriteU32(
+                aDecision.mSpeedMicroPixelsPerTick))
+        {
+            theError = BehaviorCaptureError::IoError;
+            return false;
+        }
+    }
     theError = BehaviorCaptureError::None;
     return true;
 }
@@ -350,6 +449,7 @@ bool BehaviorCapture::Load(
         return false;
     }
     if (aVersion != kLegacyCaptureVersion &&
+        aVersion != kEconomyCaptureVersion &&
         aVersion != kCurrentFormatVersion)
     {
         theError = BehaviorCaptureError::UnsupportedVersion;
@@ -446,7 +546,7 @@ bool BehaviorCapture::Load(
             theError = BehaviorCaptureError::IoError;
             return false;
         }
-        if (aVersion == kCurrentFormatVersion &&
+        if (aVersion >= kEconomyCaptureVersion &&
             (!theReader.ReadU16(anObservation.mSun) ||
              !theReader.ReadU16(
                  anObservation.mSeedRefreshCounter) ||
@@ -483,6 +583,53 @@ bool BehaviorCapture::Load(
         }
         anObservations.push_back(anObservation);
     }
+    std::vector<game::LevelOneRandomDecision> aRandomDecisions;
+    if (aVersion >= kCurrentFormatVersion)
+    {
+        std::uint32_t aDecisionCount{};
+        if (!theReader.ReadU32(aDecisionCount))
+        {
+            theError = BehaviorCaptureError::IoError;
+            return false;
+        }
+        if (aDecisionCount > kMaximumRandomDecisionCount)
+        {
+            theError = BehaviorCaptureError::TooManyRandomDecisions;
+            return false;
+        }
+        if (theReader.GetBytesRemaining() <
+            static_cast<std::uint64_t>(aDecisionCount) *
+                kRandomDecisionByteCount)
+        {
+            theError = BehaviorCaptureError::IoError;
+            return false;
+        }
+        aRandomDecisions.reserve(aDecisionCount);
+        for (std::uint32_t anIndex = 0;
+             anIndex < aDecisionCount;
+             ++anIndex)
+        {
+            game::LevelOneRandomDecision aDecision;
+            std::uint8_t aKind{};
+            if (!theReader.ReadU8(aKind) ||
+                !theReader.ReadU16(aDecision.mNextCountdown) ||
+                !theReader.ReadI32(aDecision.mXMilliPixels) ||
+                !theReader.ReadI32(
+                    aDecision.mGroundYMilliPixels) ||
+                !theReader.ReadU32(
+                    aDecision.mSpeedMicroPixelsPerTick))
+            {
+                theError = BehaviorCaptureError::IoError;
+                return false;
+            }
+            aDecision.mKind =
+                static_cast<game::LevelOneRandomDecisionKind>(
+                    aKind);
+            if (!ValidateRandomDecision(aDecision, theError))
+                return false;
+            aRandomDecisions.push_back(aDecision);
+        }
+    }
     if (theReader.GetBytesRemaining() != 0)
     {
         theError = BehaviorCaptureError::TrailingData;
@@ -492,6 +639,7 @@ bool BehaviorCapture::Load(
     mProducer = static_cast<BehaviorProducer>(aProducer);
     mInputReplay = std::move(anInputReplay);
     mObservations = std::move(anObservations);
+    mRandomDecisions = std::move(aRandomDecisions);
     theError = BehaviorCaptureError::None;
     return true;
 }
@@ -516,6 +664,12 @@ std::span<const game::BehaviorObservation>
 BehaviorCapture::GetObservations() const
 {
     return mObservations;
+}
+
+std::span<const game::LevelOneRandomDecision>
+BehaviorCapture::GetRandomDecisions() const
+{
+    return mRandomDecisions;
 }
 
 } // namespace pvz::parity

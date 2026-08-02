@@ -7,6 +7,7 @@
 #include "pvz/engine/core/NullSoundResources.h"
 #include "pvz/engine/core/ReplaySession.h"
 #include "pvz/game/GameModule.h"
+#include "pvz/game/LevelOneRandomDecision.h"
 #include "pvz/parity/BehaviorCapture.h"
 
 #include <cstddef>
@@ -165,12 +166,14 @@ private:
     pvz::engine::core::InputReplay& theReplay)
 {
     constexpr pvz::engine::TickIndex kFrameCount = 1'310;
+    pvz::engine::PointI aPointerPosition{};
     for (pvz::engine::TickIndex aTick = 0;
          aTick < kFrameCount;
          ++aTick)
     {
         pvz::engine::core::RecordedInputFrame aFrame;
         aFrame.mTick = aTick;
+        aFrame.mPointer.mPosition = aPointerPosition;
         if (aTick == 0 || aTick == 1)
         {
             aFrame.SetKeyDown(
@@ -189,6 +192,7 @@ private:
                 pvz::engine::PointerButton::Primary,
                 true);
             aFrame.mPointer.mPosition = {100, 20};
+            aPointerPosition = aFrame.mPointer.mPosition;
         }
         else if (aTick == 1'308)
         {
@@ -199,6 +203,7 @@ private:
                 pvz::engine::PointerButton::Primary,
                 true);
             aFrame.mPointer.mPosition = {320, 330};
+            aPointerPosition = aFrame.mPointer.mPosition;
         }
         else if (aTick == 1'309)
         {
@@ -217,7 +222,9 @@ private:
 
 [[nodiscard]] bool LoadReplayInput(
     const std::filesystem::path& thePath,
-    pvz::engine::core::InputReplay& theReplay)
+    pvz::engine::core::InputReplay& theReplay,
+    std::vector<pvz::game::LevelOneRandomDecision>& theRandomDecisions,
+    bool& theHasRandomDecisionTape)
 {
     std::error_code anError;
     const auto aFileSize =
@@ -306,6 +313,11 @@ private:
             return false;
         }
         theReplay = aCapture.GetInputReplay();
+        theRandomDecisions.assign(
+            aCapture.GetRandomDecisions().begin(),
+            aCapture.GetRandomDecisions().end());
+        theHasRandomDecisionTape =
+            aCapture.GetFormatVersion() >= 3;
         return true;
     }
     std::cerr
@@ -395,9 +407,16 @@ int main(int theArgumentCount, char** theArguments)
     pvz::engine::core::ReplayRecordingGame
         aRecordingGame(aGame);
     pvz::engine::core::InputReplay aReplay;
+    std::vector<pvz::game::LevelOneRandomDecision>
+        aRandomDecisions;
+    bool hasRandomDecisionTape = false;
 
     if (aReplayInputPath.has_value()
-            ? !LoadReplayInput(*aReplayInputPath, aReplay)
+            ? !LoadReplayInput(
+                  *aReplayInputPath,
+                  aReplay,
+                  aRandomDecisions,
+                  hasRandomDecisionTape)
             : !BuildAdventureReplay(aReplay))
     {
         return 1;
@@ -418,6 +437,27 @@ int main(int theArgumentCount, char** theArguments)
         pvz::parity::BehaviorProducer::PortableGameModule);
     aBehaviorCapture.SetInputReplay(aLoadedReplay);
     pvz::parity::BehaviorCaptureError aBehaviorError{};
+    for (const auto& aDecision : aRandomDecisions)
+    {
+        if (!aBehaviorCapture.AppendRandomDecision(
+                aDecision,
+                aBehaviorError))
+        {
+            return 1;
+        }
+    }
+
+    std::optional<pvz::game::LevelOneRandomDecisionTape>
+        aRandomDecisionTape;
+    if (hasRandomDecisionTape)
+    {
+        aRandomDecisionTape.emplace(aRandomDecisions);
+        if (!aGame.SetLevelOneRandomDecisionSource(
+                &*aRandomDecisionTape))
+        {
+            return 1;
+        }
+    }
 
     if (aRecordingGame.Initialize(aServices) !=
         pvz::engine::LifecycleResult::Success)
@@ -443,6 +483,20 @@ int main(int theArgumentCount, char** theArguments)
     if (aRecordingGame.GetRecordingError() !=
         pvz::engine::core::ReplayRecordingError::None)
     {
+        return 1;
+    }
+    if (aGame.HasRandomDecisionFailure())
+    {
+        std::cerr << "random-decision-tape-rejected\n";
+        return 1;
+    }
+    if (aRandomDecisionTape.has_value() &&
+        aRandomDecisionTape->GetRemainingCount() != 0)
+    {
+        std::cerr
+            << "random-decision-tape-unused="
+            << aRandomDecisionTape->GetRemainingCount()
+            << '\n';
         return 1;
     }
 
@@ -497,8 +551,8 @@ int main(int theArgumentCount, char** theArguments)
         aBehaviorObservations.back().mOccupiedCells ==
             aFlowState.mOccupiedCells &&
         aBehaviorObservations.back().mPlantCount == 1 &&
-        aFinalHash == 17'741'208'059'383'384'452ULL &&
-        aTranscriptHash == 912'691'141'119'886'216ULL;
+        aFinalHash == 18'030'610'087'916'243'024ULL &&
+        aTranscriptHash == 7'473'042'268'779'290'947ULL;
 
     pvz::engine::core::BinaryStateWriter aSessionWriter;
     pvz::engine::core::ReplaySessionError aSessionError{};
@@ -554,7 +608,9 @@ int main(int theArgumentCount, char** theArguments)
         aLoadedBehavior.GetProducer() !=
             pvz::parity::BehaviorProducer::PortableGameModule ||
         aLoadedBehavior.GetObservations().size() !=
-            aLoadedReplay.GetFrames().size())
+            aLoadedReplay.GetFrames().size() ||
+        aLoadedBehavior.GetRandomDecisions().size() !=
+            aRandomDecisions.size())
     {
         return 1;
     }
@@ -582,6 +638,8 @@ int main(int theArgumentCount, char** theArguments)
               << aSessionWriter.GetBytesWritten()
               << " behavior-bytes="
               << aBehaviorWriter.GetBytesWritten()
+              << " random-decisions="
+              << aRandomDecisions.size()
               << " state-fnv1a=" << aFinalHash
               << " transcript-fnv1a=" << aTranscriptHash
               << '\n';

@@ -20,11 +20,27 @@ inline constexpr std::uint16_t kFlowStateVersion = 2;
 inline constexpr std::uint16_t kReanimationStateVersion = 3;
 inline constexpr std::uint16_t kAdventureIntroStateVersion = 4;
 inline constexpr std::uint16_t kLevelOneStateVersion = 5;
-inline constexpr std::uint16_t kStateVersion = 6;
+inline constexpr std::uint16_t kCombatStateVersion = 6;
+inline constexpr std::uint16_t kStateVersion = 7;
 inline constexpr std::uint32_t kTitleMusicOrder = 0x98;
 inline constexpr std::uint32_t kAdventureMusicOrder = 0;
 inline constexpr float kLogicalWidth = 800.0F;
 inline constexpr float kLogicalHeight = 600.0F;
+
+[[nodiscard]] std::uint16_t CountSunBeingCollected(
+    const LevelOneCombatState& theState)
+{
+    const auto aCount = std::count_if(
+        theState.mSuns.begin(),
+        theState.mSuns.end(),
+        [](const LevelOneSunState& theSun)
+        {
+            return theSun.mActive &&
+                   theSun.mBeingCollected;
+        });
+    return static_cast<std::uint16_t>(aCount) *
+           LevelOneCombat::kSunValue;
+}
 
 inline constexpr std::array<std::string_view, 4> kMenuButtonIds{
     "IMAGE_REANIM_SELECTORSCREEN_STARTADVENTURE_BUTTON",
@@ -140,6 +156,16 @@ inline constexpr std::array<std::string_view, 4>
 }
 
 } // namespace
+
+bool GameModule::SetLevelOneRandomDecisionSource(
+    ILevelOneRandomDecisionSource* theSource)
+{
+    if (mInitialized)
+        return false;
+    mLevelOneRandomDecisionSource = theSource;
+    mLevelOneCombat.SetRandomDecisionSource(theSource);
+    return true;
+}
 
 engine::LifecycleResult GameModule::Initialize(
     engine::IEngineServices& theServices)
@@ -384,11 +410,6 @@ void GameModule::Update(
         {
             collectedSun =
                 mLevelOneCombat.TryCollectSun(aPointer);
-            if (collectedSun)
-            {
-                mLevelOneBoard.AddSun(
-                    mLevelOneCombat.ConsumeCollectedSun());
-            }
         }
         if (theInput.WasPointerButtonPressed(
                 engine::PointerButton::Secondary))
@@ -435,8 +456,12 @@ void GameModule::Update(
             }
         }
 
-        mLevelOneBoard.Update();
         mLevelOneCombat.Update();
+        const auto aCollectedSun =
+            mLevelOneCombat.ConsumeCollectedSun();
+        if (aCollectedSun != 0)
+            mLevelOneBoard.AddSun(aCollectedSun);
+        mLevelOneBoard.Update();
         const auto aDestroyedCells =
             mLevelOneCombat.ConsumeDestroyedCells();
         if (aDestroyedCells != 0)
@@ -471,6 +496,8 @@ void GameModule::Update(
             aCurrentBoardState.mSeedRefreshing ||
         aPreviousBoardState.mSeedSelection !=
             aCurrentBoardState.mSeedSelection ||
+        CountSunBeingCollected(aPreviousCombatState) !=
+            CountSunBeingCollected(aCurrentCombatState) ||
         aPreviousCombatState.mPhase !=
             aCurrentCombatState.mPhase)
     {
@@ -534,6 +561,7 @@ bool GameModule::LoadState(engine::IStateReader& theReader)
          aVersion != kReanimationStateVersion &&
          aVersion != kAdventureIntroStateVersion &&
          aVersion != kLevelOneStateVersion &&
+         aVersion != kCombatStateVersion &&
          aVersion != kStateVersion))
     {
         return false;
@@ -544,6 +572,7 @@ bool GameModule::LoadState(engine::IStateReader& theReader)
         aVersion == kReanimationStateVersion ||
         aVersion == kAdventureIntroStateVersion ||
         aVersion == kLevelOneStateVersion ||
+        aVersion == kCombatStateVersion ||
         aVersion == kStateVersion)
     {
         std::uint8_t aScene{};
@@ -555,7 +584,13 @@ bool GameModule::LoadState(engine::IStateReader& theReader)
             !theReader.ReadU16(aState.mNoticeTicks) ||
             !theReader.ReadU8(aState.mGridColumn) ||
             !theReader.ReadU8(aState.mGridRow) ||
-            !theReader.ReadU64(aState.mOccupiedCells))
+            !theReader.ReadU64(aState.mOccupiedCells) ||
+            (aVersion == kStateVersion &&
+             (!theReader.ReadBool(aState.mHasPointerPosition) ||
+              !theReader.ReadI32(
+                  aState.mLastPointerPosition.mX) ||
+              !theReader.ReadI32(
+                  aState.mLastPointerPosition.mY))))
         {
             return false;
         }
@@ -572,6 +607,7 @@ bool GameModule::LoadState(engine::IStateReader& theReader)
     if ((aVersion == kReanimationStateVersion ||
          aVersion == kAdventureIntroStateVersion ||
          aVersion == kLevelOneStateVersion ||
+         aVersion == kCombatStateVersion ||
          aVersion == kStateVersion) &&
         !theReader.ReadU64(aReanimationTick))
     {
@@ -580,6 +616,7 @@ bool GameModule::LoadState(engine::IStateReader& theReader)
     LevelOneBoard aLevelOneBoard;
     aLevelOneBoard.Reset();
     if (aVersion == kLevelOneStateVersion ||
+        aVersion == kCombatStateVersion ||
         aVersion == kStateVersion)
     {
         std::uint8_t aSeedSelection{};
@@ -604,9 +641,12 @@ bool GameModule::LoadState(engine::IStateReader& theReader)
 
     LevelOneCombat aLevelOneCombat;
     aLevelOneCombat.Reset();
-    if (aVersion == kStateVersion)
+    if (aVersion == kCombatStateVersion ||
+        aVersion == kStateVersion)
     {
-        if (!aLevelOneCombat.LoadState(theReader) ||
+        if (!aLevelOneCombat.LoadState(
+                theReader,
+                aVersion == kStateVersion) ||
             aLevelOneCombat.GetOccupiedCells() !=
                 aFlow.GetState().mOccupiedCells)
         {
@@ -645,6 +685,8 @@ bool GameModule::LoadState(engine::IStateReader& theReader)
     mFlow = aFlow;
     mLevelOneBoard = aLevelOneBoard;
     mLevelOneCombat = aLevelOneCombat;
+    mLevelOneCombat.SetRandomDecisionSource(
+        mLevelOneRandomDecisionSource);
     mPeashooterPlayer.RestoreTick(aReanimationTick);
     mZombiePlayer.RestoreTick(aReanimationTick);
     mSunPlayer.RestoreTick(aReanimationTick);
@@ -676,6 +718,9 @@ bool GameModule::SaveState(engine::IStateWriter& theWriter) const
         theWriter.WriteU8(aState.mGridColumn) &&
         theWriter.WriteU8(aState.mGridRow) &&
         theWriter.WriteU64(aState.mOccupiedCells) &&
+        theWriter.WriteBool(aState.mHasPointerPosition) &&
+        theWriter.WriteI32(aState.mLastPointerPosition.mX) &&
+        theWriter.WriteI32(aState.mLastPointerPosition.mY) &&
         theWriter.WriteU64(mPeashooterPlayer.GetTick()) &&
         theWriter.WriteU16(aLevelOneBoardState.mSun) &&
         theWriter.WriteU16(
@@ -841,6 +886,11 @@ LevelOneCombatState GameModule::GetLevelOneCombatState() const
     return mLevelOneCombat.GetState();
 }
 
+bool GameModule::HasRandomDecisionFailure() const
+{
+    return mLevelOneCombat.HasRandomDecisionFailure();
+}
+
 BehaviorObservation GameModule::GetBehaviorObservation() const
 {
     const auto aFlowState = mFlow.GetState();
@@ -903,7 +953,8 @@ BehaviorObservation GameModule::GetBehaviorObservation() const
         }
         else if (aBoardState.mSeedRefreshing ||
                  (anObservation.mPlantCount == 1 &&
-                  aBoardState.mSun <
+                  aBoardState.mSun +
+                          CountSunBeingCollected(aCombatState) <
                       LevelOneBoard::kPeashooterCost))
         {
             anObservation.mTutorialPhase =

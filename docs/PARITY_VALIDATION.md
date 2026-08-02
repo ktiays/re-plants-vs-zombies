@@ -81,15 +81,15 @@ selection in the reconstructed legacy source. Portable tests cover:
 - selection requirements and non-destructive occupied-cell rejection;
 - center-row-only planting for the first level;
 - the exact refresh boundary, which becomes ready only after counter 750;
-- fixed-width, transactional version-6 persistence with versions 1 through 5
+- fixed-width, transactional version-7 persistence with versions 1 through 6
   retained as readable inputs;
 - a 1,310-tick replay whose final sun, recharge, occupancy, state hash, and
   rolling transcript hash are fixed.
 
-This is source-audited and locally differential-tested, but not yet confirmed
-by a new Windows runtime capture because the reference device is temporarily
-unavailable. It remains explicitly pending runtime verification rather than
-being reported as full parity.
+The version 3 Windows runtime replay now confirms this economy slice through
+two placements and three collected suns. It also verifies pointer-hover grid
+focus, the delayed collection flight, and the tutorial transition that counts
+sun already moving toward the counter.
 
 ## Current Level 1 first-wave combat gate
 
@@ -109,14 +109,16 @@ audited from `Board::SetTutorialState`, `Board::PickZombieWaves`,
   every four zombie-age ticks;
 - a deterministic first-wave simulation, an engine-input integration path from
   sun collection through zombie spawn, and transactional round-trip coverage
-  for the fixed 712-byte combat record;
+  for the fixed 752-byte combat record;
 - independently collectible overlapping sky suns, proving that the spawn
   countdown continues while an earlier pickup remains active.
 
-Legacy spawn position, walk speed, shot reset, and sun coordinates use the
-global Windows random stream. Until a runtime seed/capture is available, the
-portable fixture uses explicit fixed values inside the audited legacy ranges.
-Those choices are documented provisional inputs, not claimed RNG parity.
+The version 3 semantic tape records post-choice sun countdown/X/ground-Y and
+normal-zombie X/speed values rather than copying the legacy global PRNG. The
+portable game consumes those decisions through an engine-neutral interface,
+rejects ordering or range drift, and carries micro-pixel zombie speed through
+fixed-width movement state. A 9,169-tick Windows capture with five sun choices
+and one zombie choice matches the portable behavior stream exactly.
 
 Run this gate locally:
 
@@ -141,9 +143,9 @@ ctest --test-dir out/portable --output-on-failure
 The board gates cover deterministic geometry, render-command alignment, and the
 first Level 1 economy rules. The remaining cross-runtime infrastructure is:
 
-- a game-semantic random-decision stream for post-tutorial sun placement,
-  wave composition, and zombie speed without coupling portable logic to the
-  legacy renderer's global RNG consumption;
+- the Level 1 game-semantic random-decision stream is complete for falling suns
+  and normal-zombie spawn position/speed; later wave-composition kinds should
+  extend the same strict interface;
 - the logical-tick input hook is complete: the Windows reference emits `PVZR`,
   while the macOS application and headless runner emit portable-state `PVZC`
   sessions; the headless runner can consume the Windows stream;
@@ -151,10 +153,11 @@ first Level 1 economy rules. The remaining cross-runtime infrastructure is:
   screenshots;
 - a parity manifest that records coverage and approved deviations per scene.
 
-The version 2 seed-bank economy gate and its fresh Windows runtime capture are
-complete. It compares spendable sun, packet recharge, seed selection, tutorial
-phase, and the deterministic first falling-sun trigger. See
-`WINDOWS_REFERENCE_CAPTURE.md` for the 8,765-tick evidence record.
+The version 3 Level 1 gate and its fresh Windows runtime capture are complete
+through the first normal-zombie spawn. It compares spendable sun, packet
+recharge, seed selection, tutorial phase, grid focus, the first-sun gate, and
+the ordered semantic choices. See `WINDOWS_REFERENCE_CAPTURE.md` for the
+9,169-tick evidence record.
 
 Until the relevant evidence exists, a migrated visual or gameplay slice should
 be reported as implemented but not parity-validated.

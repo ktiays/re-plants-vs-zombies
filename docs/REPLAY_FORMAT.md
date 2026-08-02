@@ -179,7 +179,7 @@ post-update observation per frame:
 | Field | Type | Meaning |
 | --- | --- | --- |
 | Magic | `uint32` | `0x425A5650` (`PVZB`) |
-| Version | `uint16` | `1` or `2`; new captures write `2` |
+| Version | `uint16` | `1`, `2`, or `3`; new captures write `3` |
 | Simulation frequency | `uint32` | `100` |
 | Producer | `uint8` | Unknown, portable game, or legacy Windows |
 | Replay byte count | `uint32` | At most 256 MiB |
@@ -211,14 +211,37 @@ Version 2 appends twelve fixed-width bytes, for a 36-byte observation:
 | First-sun countdown | `uint16` | Deterministic tutorial countdown before the first falling sun; zero afterward |
 | First sun spawned | `uint8` boolean | Whether the deterministic first falling-sun gate has fired |
 
-The first-sun fields deliberately stop at the deterministic gate. Later sun
-delay, position, and ground-height choices use the legacy global RNG and are
-not treated as exact input-replay state until a game-semantic random-decision
-stream is available. This prevents renderer or loading RNG consumption from
-being mistaken for portable gameplay drift.
+Version 3 appends a game-semantic random-decision tape after all observations:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| Decision count | `uint32` | At most 100,000 semantic gameplay decisions |
+| Decisions | repeated 15-byte records | Ordered falling-sun and normal-zombie choices |
+
+Each decision record is fieldwise encoded:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| Kind | `uint8` enum | Falling sun or normal zombie |
+| Next countdown | `uint16` | Next sky-sun delay; zero for a zombie |
+| X | `int32` | Spawn position in milli-pixels |
+| Ground Y | `int32` | Falling-sun destination in milli-pixels; zero for a zombie |
+| Speed | `uint32` | Zombie speed in micro-pixels per tick; zero for a sun |
+
+The Windows exporter records values after the legacy game has made each
+choice. It does not record the global PRNG state: rendering, loading, or other
+legacy systems may consume that stream independently. The portable game reads
+the semantic tape strictly in event order and fails on exhaustion, a kind
+mismatch, an invalid range, or an unused decision. Zombie movement carries the
+captured micro-pixel remainder in fixed-width state so sub-milli speed is not
+rounded away over long runs.
+
+Version 1 and 2 captures remain readable and run with the portable deterministic
+fallback choices because they contain no decision tape.
 
 The producer is provenance only and is not compared. When versions differ,
-the inspector compares the common schema prefix. The Windows exporter
+the inspector compares the common schema prefix. When both captures are
+version 3, it also compares every semantic decision. The Windows exporter
 converts legacy enums and live `DataArray<Plant>` objects field by field; it
 does not persist array metadata, pointers, padding, or native object memory.
 The portable exporter derives the same schema from `GameModule`.

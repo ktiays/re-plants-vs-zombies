@@ -150,6 +150,8 @@ void PrintSummary(
         << theCapture.GetInputReplay().GetFrames().size()
         << " observations="
         << theCapture.GetObservations().size()
+        << " random-decisions="
+        << theCapture.GetRandomDecisions().size()
         << '\n';
 }
 
@@ -222,13 +224,24 @@ void PrintTimeline(
         }
     }
 
-    for (const auto& aFrame :
-         theCapture.GetInputReplay().GetFrames())
+    const auto aFrames =
+        theCapture.GetInputReplay().GetFrames();
+    for (std::size_t anIndex = 0;
+         anIndex < aFrames.size();
+         ++anIndex)
     {
+        const auto& aFrame = aFrames[anIndex];
+        const bool hasPointerMove =
+            anIndex == 0 ||
+            aFrame.mPointer.mPosition.mX !=
+                aFrames[anIndex - 1].mPointer.mPosition.mX ||
+            aFrame.mPointer.mPosition.mY !=
+                aFrames[anIndex - 1].mPointer.mPosition.mY;
         if (aFrame.mKeysPressed == 0 &&
             aFrame.mPointerButtonsPressed == 0 &&
             aFrame.mPointer.mWheelDelta == 0 &&
-            aFrame.mTextInput.empty())
+            aFrame.mTextInput.empty() &&
+            !hasPointerMove)
         {
             continue;
         }
@@ -247,6 +260,30 @@ void PrintTimeline(
             << aFrame.mPointer.mWheelDelta
             << " text-count="
             << aFrame.mTextInput.size()
+            << '\n';
+    }
+
+    for (std::size_t anIndex = 0;
+         anIndex < theCapture.GetRandomDecisions().size();
+         ++anIndex)
+    {
+        const auto& aDecision =
+            theCapture.GetRandomDecisions()[anIndex];
+        std::cout
+            << "random-decision-index=" << anIndex
+            << " kind="
+            << (aDecision.mKind ==
+                        pvz::game::LevelOneRandomDecisionKind::FallingSun
+                    ? "falling-sun"
+                    : "normal-zombie")
+            << " next-countdown="
+            << aDecision.mNextCountdown
+            << " x-millipixels="
+            << aDecision.mXMilliPixels
+            << " ground-y-millipixels="
+            << aDecision.mGroundYMilliPixels
+            << " speed-micropixels-per-tick="
+            << aDecision.mSpeedMicroPixelsPerTick
             << '\n';
     }
 }
@@ -282,6 +319,42 @@ void PrintTimeline(
     for (std::size_t anIndex = 0; anIndex < aCount; ++anIndex)
     {
         if (!FramesEqual(aLeft[anIndex], aRight[anIndex]))
+            return static_cast<std::uint64_t>(anIndex);
+    }
+    if (aLeft.size() != aRight.size())
+        return static_cast<std::uint64_t>(aCount);
+    return kNoDifference;
+}
+
+[[nodiscard]] bool RandomDecisionsEqual(
+    const pvz::game::LevelOneRandomDecision& theLeft,
+    const pvz::game::LevelOneRandomDecision& theRight)
+{
+    return
+        theLeft.mKind == theRight.mKind &&
+        theLeft.mNextCountdown == theRight.mNextCountdown &&
+        theLeft.mXMilliPixels == theRight.mXMilliPixels &&
+        theLeft.mGroundYMilliPixels ==
+            theRight.mGroundYMilliPixels &&
+        theLeft.mSpeedMicroPixelsPerTick ==
+            theRight.mSpeedMicroPixelsPerTick;
+}
+
+[[nodiscard]] std::uint64_t FindFirstRandomDecisionDifference(
+    const pvz::parity::BehaviorCapture& theLeft,
+    const pvz::parity::BehaviorCapture& theRight)
+{
+    if (theLeft.GetFormatVersion() < 3 ||
+        theRight.GetFormatVersion() < 3)
+    {
+        return kNoDifference;
+    }
+    const auto aLeft = theLeft.GetRandomDecisions();
+    const auto aRight = theRight.GetRandomDecisions();
+    const auto aCount = std::min(aLeft.size(), aRight.size());
+    for (std::size_t anIndex = 0; anIndex < aCount; ++anIndex)
+    {
+        if (!RandomDecisionsEqual(aLeft[anIndex], aRight[anIndex]))
             return static_cast<std::uint64_t>(anIndex);
     }
     if (aLeft.size() != aRight.size())
@@ -469,6 +542,8 @@ int main(int theArgumentCount, char** theArguments)
             std::min(
                 aLeft.GetFormatVersion(),
                 aRight.GetFormatVersion()));
+    const auto aRandomDecisionDifference =
+        FindFirstRandomDecisionDifference(aLeft, aRight);
     if (anInputDifference != kNoDifference)
     {
         std::cout
@@ -484,9 +559,17 @@ int main(int theArgumentCount, char** theArguments)
             aLeft,
             aRight);
     }
+    if (aRandomDecisionDifference != kNoDifference)
+    {
+        std::cout
+            << "random-decision-mismatch-index="
+            << aRandomDecisionDifference
+            << '\n';
+    }
     if (anInputDifference == kNoDifference &&
         aBehaviorDifference.mTick ==
-            pvz::parity::kNoBehaviorDifferenceTick)
+            pvz::parity::kNoBehaviorDifferenceTick &&
+        aRandomDecisionDifference == kNoDifference)
     {
         std::cout << "behavior-captures-match\n";
         return 0;

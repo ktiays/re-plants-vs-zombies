@@ -2,6 +2,7 @@
 
 #include "pvz/engine/StateIO.h"
 #include "pvz/engine/Types.h"
+#include "pvz/game/LevelOneRandomDecision.h"
 
 #include <array>
 #include <cstdint>
@@ -22,6 +23,7 @@ enum class LevelOneCombatPhase : std::uint8_t
 struct LevelOneSunState
 {
     bool mActive{};
+    bool mBeingCollected{};
     std::int32_t mXMilliPixels{};
     std::int32_t mYMilliPixels{};
     std::int32_t mGroundYMilliPixels{};
@@ -44,7 +46,8 @@ struct LevelOneZombieState
     std::uint8_t mRow{};
     std::uint16_t mHealth{};
     std::int32_t mXMilliPixels{};
-    std::uint16_t mSpeedMilliPixelsPerTick{};
+    std::uint32_t mSpeedMicroPixelsPerTick{};
+    std::uint16_t mMovementRemainderMicroPixels{};
     std::uint32_t mAge{};
     bool mEating{};
 };
@@ -112,6 +115,8 @@ public:
     static constexpr std::uint16_t
         kDeterministicZombieSpeedMilliPixelsPerTick = 270;
 
+    void SetRandomDecisionSource(
+        ILevelOneRandomDecisionSource* theSource);
     void Reset();
     void Update();
     [[nodiscard]] bool AddPeashooter(
@@ -127,7 +132,11 @@ public:
     [[nodiscard]] bool SaveState(
         engine::IStateWriter& theWriter) const;
     [[nodiscard]] bool LoadState(engine::IStateReader& theReader);
+    [[nodiscard]] bool LoadState(
+        engine::IStateReader& theReader,
+        bool theHasExtendedCombatState);
     [[nodiscard]] std::uint64_t GetOccupiedCells() const;
+    [[nodiscard]] bool HasRandomDecisionFailure() const;
 
 private:
     void UpdatePlants();
@@ -142,10 +151,18 @@ private:
         const LevelOneZombieState& theZombie);
     void SpawnFirstWave();
     void RecountEntities();
+    [[nodiscard]] bool ReadFallingSunDecision(
+        LevelOneRandomDecision& theDecision);
+    [[nodiscard]] bool ReadNormalZombieDecision(
+        LevelOneRandomDecision& theDecision);
+    [[nodiscard]] static std::uint16_t CalculateSunLifetime(
+        std::int32_t theGroundYMilliPixels);
 
     LevelOneCombatState mState;
+    ILevelOneRandomDecisionSource* mRandomDecisionSource{};
     std::uint16_t mCollectedSun{};
     std::uint64_t mDestroyedCells{};
+    bool mRandomDecisionFailure{};
 };
 
 static_assert(sizeof(LevelOneCombatPhase) == 1);

@@ -35,6 +35,14 @@ In behavior mode, a normalized observation is recorded after that same update:
   state, seed selection, tutorial phase, and the deterministic first falling-
   sun countdown/spawn gate.
 
+Version 3 additionally records ordered, game-semantic Level 1 random choices:
+
+- falling-sun next countdown, spawn X, and ground Y;
+- normal-zombie spawn X and speed in micro-pixels per tick.
+
+The adapter observes the chosen gameplay values; it does not expose or copy
+the legacy global PRNG state.
+
 These values are converted field by field. Legacy pointers, `DataArray`
 metadata, object padding, and native integer widths never enter the file.
 
@@ -140,26 +148,38 @@ capture to produce the portable observation stream:
   /absolute/path/portable-behavior.pvzb
 ```
 
-The behavior inspector returns success only when the nested input frames and
-all normalized observations match. On failure it reports the first input tick
-or the first behavior tick and field.
+For a version 3 input, the headless runner injects the captured decisions
+through the portable game interface and rejects exhausted, wrong-kind, invalid,
+or unused tape entries. The behavior inspector returns success only when the
+nested input frames, all normalized observations, and both version 3 decision
+tapes match. On failure it reports the first input tick, behavior tick and
+field, or decision index.
 
 ## Latest runtime evidence
 
-On 2026-08-02, the isolated x64 Windows build and the macOS headless replay
-both passed all eight tests. A fresh-profile Level 1 version 2 capture then
-replayed 8,765 logical ticks with identical inputs and normalized observations:
+On 2026-08-02, an isolated x64 Windows build produced a fresh-profile Level 1
+version 3 capture. The portable headless game replayed all 9,169 logical ticks
+with identical inputs, normalized observations, and six semantic decisions:
 
-- title to main menu at tick 2,510;
-- Adventure intro at tick 6,162 and playable lawn at tick 7,017;
-- Peashooter selection at tick 7,513 and placement at tick 7,564;
-- sun changed from 150 to 50, packet recharge advanced from 1 through 750,
-  and the deterministic first falling sun spawned at tick 7,963;
+- playable lawn at tick 5,778, first packet selection at 6,275, and first
+  Peashooter placement at 6,325;
+- five falling-sun decisions with their actual countdown, X, and ground-Y
+  choices, plus one normal-zombie spawn at 793 pixels with a captured speed of
+  293,494 micro-pixels per tick;
+- sun credit at ticks 6,836, 7,541, and 8,523, including the legacy collection
+  flight and the tutorial transition caused by sun already in flight;
+- second packet selection at tick 8,716 and second placement at 8,767;
 - `pvz_behavior_inspect` returned `behavior-captures-match`.
 
-The local Windows evidence artifact was 560,993 bytes with SHA-256
-`3c2fb029868d0c220209faf1e9f7f72e89fbc978e055432966c1cd2673bb27c3`.
-The portable artifact had the same size; its producer byte differs by design.
+This replay exposed and fixed two portable defects before the gate passed:
+cursor-preview focus was not following pointer movement without a click, and
+sun was credited immediately instead of after its flight to the counter.
+
+The Windows evidence artifact is 586,943 bytes with SHA-256
+`a202846a60db27bc39b7ea2755aea8ba8a493c2af5a86cd1e7db28a5e105e1ae`.
+The portable artifact has the same size and SHA-256
+`08860a6be91b9ad8212dabc8bd4049f2f82406405b20dec023a4c72fff3b6098`;
+the producer byte differs by design.
 
 The headless runner rejects malformed, oversized, non-100-Hz, or
 non-sequential streams before running the game. `pvz_replay_inspect` can compare
@@ -180,7 +200,8 @@ hash and the rolling transcript hash.
 `PVZR` proves what logical input reached each legacy update. `PVZB` adds the
 cross-runtime behavior layer without pretending the object graphs are
 equivalent. Version 1 covers lifecycle, focus, and occupancy; version 2 adds
-the deterministic Level 1 economy slice. Future gameplay slices must extend
-the format and independent exporters rather than adding legacy memory hashes.
+the Level 1 economy slice; version 3 adds ordered gameplay decisions without
+coupling to global PRNG consumption. Future gameplay slices must extend the
+format and independent exporters rather than adding legacy memory hashes.
 Screenshot comparison remains a separate rendering gate because a behavior
 match does not prove pixel parity.

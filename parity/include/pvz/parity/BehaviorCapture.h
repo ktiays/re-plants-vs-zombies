@@ -3,6 +3,7 @@
 #include "pvz/engine/StateIO.h"
 #include "pvz/engine/core/InputReplay.h"
 #include "pvz/game/BehaviorObservation.h"
+#include "pvz/game/LevelOneRandomDecision.h"
 
 #include <cstdint>
 #include <span>
@@ -41,6 +42,9 @@ enum class BehaviorCaptureError : std::uint8_t
     InvalidTutorialPhase,
     InvalidSeedRefresh,
     InvalidFirstSunState,
+    TooManyRandomDecisions,
+    InvalidRandomDecisionKind,
+    InvalidRandomDecisionPayload,
     TrailingData,
 };
 
@@ -52,13 +56,16 @@ enum class BehaviorCaptureError : std::uint8_t
 class BehaviorCapture
 {
 public:
-    static constexpr std::uint16_t kCurrentFormatVersion = 2;
+    static constexpr std::uint16_t kCurrentFormatVersion = 3;
 
     void SetProducer(BehaviorProducer theProducer);
     void SetInputReplay(
         engine::core::InputReplay theInputReplay);
     [[nodiscard]] bool AppendObservation(
         game::BehaviorObservation theObservation,
+        BehaviorCaptureError& theError);
+    [[nodiscard]] bool AppendRandomDecision(
+        game::LevelOneRandomDecision theDecision,
         BehaviorCaptureError& theError);
     void Clear();
 
@@ -75,12 +82,15 @@ public:
         GetInputReplay() const;
     [[nodiscard]] std::span<const game::BehaviorObservation>
         GetObservations() const;
+    [[nodiscard]] std::span<const game::LevelOneRandomDecision>
+        GetRandomDecisions() const;
 
 private:
     std::uint16_t mFormatVersion{kCurrentFormatVersion};
     BehaviorProducer mProducer{BehaviorProducer::Unknown};
     engine::core::InputReplay mInputReplay;
     std::vector<game::BehaviorObservation> mObservations;
+    std::vector<game::LevelOneRandomDecision> mRandomDecisions;
 };
 
 static_assert(sizeof(BehaviorProducer) == 1);

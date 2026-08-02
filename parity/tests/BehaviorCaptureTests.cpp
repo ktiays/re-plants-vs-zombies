@@ -70,12 +70,12 @@ void TestGoldenBytesAndRoundTrip()
     const auto aBytes = SaveCapture(MakeCapture());
     constexpr auto kExpected = []
     {
-        std::array<std::uint8_t, 97> aResult{};
+        std::array<std::uint8_t, 101> aResult{};
         aResult[0] = 0x50;
         aResult[1] = 0x56;
         aResult[2] = 0x5A;
         aResult[3] = 0x42;
-        aResult[4] = 0x02;
+        aResult[4] = 0x03;
         aResult[6] = 0x64;
         aResult[10] = 0x01;
         aResult[11] = 0x2A;
@@ -126,9 +126,21 @@ void TestGoldenBytesAndRoundTrip()
             pvz::game::BehaviorScene::Title,
         "observation should round trip");
 
+    auto anEconomyBytes = aBytes;
+    anEconomyBytes[4] = std::byte{2};
+    anEconomyBytes.resize(97);
+    pvz::engine::core::BinaryStateReader anEconomyReader(
+        anEconomyBytes);
+    pvz::parity::BehaviorCapture anEconomyCapture;
+    Expect(
+        anEconomyCapture.Load(anEconomyReader, anError) &&
+        anEconomyCapture.GetFormatVersion() == 2 &&
+        anEconomyCapture.GetRandomDecisions().empty(),
+        "version 2 behavior capture should remain readable");
+
     auto aLegacyBytes = aBytes;
     aLegacyBytes[4] = std::byte{1};
-    aLegacyBytes.resize(aLegacyBytes.size() - 12);
+    aLegacyBytes.resize(85);
     pvz::engine::core::BinaryStateReader aLegacyReader(
         aLegacyBytes);
     pvz::parity::BehaviorCapture aLegacyCapture;
@@ -172,7 +184,7 @@ void TestMalformedCaptures()
         "invalid behavior magic should fail");
 
     aBytes = aGolden;
-    aBytes[4] = std::byte{3};
+    aBytes[4] = std::byte{4};
     ExpectLoadError(
         std::move(aBytes),
         pvz::parity::BehaviorCaptureError::UnsupportedVersion,
@@ -311,6 +323,45 @@ void TestMalformedCaptures()
         std::move(aBytes),
         pvz::parity::BehaviorCaptureError::IoError,
         "truncated behavior data should fail");
+
+    auto aDecisionCapture = MakeCapture();
+    pvz::parity::BehaviorCaptureError anError{};
+    Expect(
+        aDecisionCapture.AppendRandomDecision(
+            {
+                .mKind = pvz::game::LevelOneRandomDecisionKind::FallingSun,
+                .mNextCountdown = 512,
+                .mXMilliPixels = 321'000,
+                .mGroundYMilliPixels = 444'000,
+                .mSpeedMicroPixelsPerTick = 0,
+            },
+            anError),
+        "valid random decision should append");
+    const auto aDecisionGolden = SaveCapture(aDecisionCapture);
+
+    aBytes = aDecisionGolden;
+    aBytes[97] = std::byte{0xA1};
+    aBytes[98] = std::byte{0x86};
+    aBytes[99] = std::byte{0x01};
+    ExpectLoadError(
+        std::move(aBytes),
+        pvz::parity::BehaviorCaptureError::TooManyRandomDecisions,
+        "oversized random-decision count should fail");
+
+    aBytes = aDecisionGolden;
+    aBytes[101] = std::byte{2};
+    ExpectLoadError(
+        std::move(aBytes),
+        pvz::parity::BehaviorCaptureError::InvalidRandomDecisionKind,
+        "invalid random-decision kind should fail");
+
+    aBytes = aDecisionGolden;
+    aBytes[102] = std::byte{};
+    aBytes[103] = std::byte{};
+    ExpectLoadError(
+        std::move(aBytes),
+        pvz::parity::BehaviorCaptureError::InvalidRandomDecisionPayload,
+        "invalid random-decision payload should fail");
 }
 
 void TestAppendAndSaveValidation()
@@ -333,6 +384,18 @@ void TestAppendAndSaveValidation()
         !aCapture.Save(aWriter, anError) &&
         anError == pvz::parity::BehaviorCaptureError::CountMismatch,
         "save should reject unequal input and behavior counts");
+
+    Expect(
+        !aCapture.AppendRandomDecision(
+            {
+                .mKind =
+                    pvz::game::LevelOneRandomDecisionKind::NormalZombie,
+            },
+            anError) &&
+        anError ==
+            pvz::parity::BehaviorCaptureError::
+                InvalidRandomDecisionPayload,
+        "append should reject invalid random decisions");
 }
 
 void TestFirstBehaviorDifference()

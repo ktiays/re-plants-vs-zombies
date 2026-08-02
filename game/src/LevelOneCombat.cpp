@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstdlib>
 #include <limits>
 
 namespace pvz::game
@@ -18,6 +19,24 @@ inline constexpr std::int32_t kMinimumStateXMilliPixels = -200'000;
 inline constexpr std::int32_t kMaximumStateXMilliPixels = 1'000'000;
 inline constexpr std::int32_t kMinimumStateYMilliPixels = -100'000;
 inline constexpr std::int32_t kMaximumStateYMilliPixels = 700'000;
+inline constexpr std::uint16_t kSunGroundDisappearTicks = 750;
+inline constexpr std::uint8_t kSunFadeTicks = 15;
+inline constexpr std::uint16_t kMaximumSunCountdown = 1'224;
+inline constexpr std::int32_t kMinimumSunSpawnXMilliPixels = 100'000;
+inline constexpr std::int32_t kMaximumSunSpawnXMilliPixels = 649'000;
+inline constexpr std::int32_t kMinimumSunGroundYMilliPixels = 300'000;
+inline constexpr std::int32_t kMaximumSunGroundYMilliPixels = 549'000;
+inline constexpr std::int32_t kMinimumZombieSpawnXMilliPixels = 780'000;
+inline constexpr std::int32_t kMaximumZombieSpawnXMilliPixels = 819'000;
+inline constexpr std::uint32_t kMinimumZombieSpeedMicroPixelsPerTick =
+    230'000;
+inline constexpr std::uint32_t kMaximumZombieSpeedMicroPixelsPerTick =
+    320'000;
+inline constexpr std::int32_t kSunCollectionDestinationXMilliPixels =
+    15'000;
+inline constexpr std::int32_t kSunCollectionDestinationYMilliPixels = 0;
+inline constexpr std::int32_t kSunScoringDistanceMilliPixels = 8'000;
+inline constexpr std::uint16_t kMaximumSunCollectionTicks = 256;
 
 [[nodiscard]] std::int32_t ToPixels(
     std::int32_t theMilliPixels)
@@ -65,11 +84,18 @@ template <typename Entry, std::size_t Size>
 
 } // namespace
 
+void LevelOneCombat::SetRandomDecisionSource(
+    ILevelOneRandomDecisionSource* theSource)
+{
+    mRandomDecisionSource = theSource;
+}
+
 void LevelOneCombat::Reset()
 {
     mState = {};
     mCollectedSun = 0;
     mDestroyedCells = 0;
+    mRandomDecisionFailure = false;
 }
 
 void LevelOneCombat::Update()
@@ -161,7 +187,7 @@ bool LevelOneCombat::TryCollectSun(
     constexpr std::int32_t kSunSize = 60;
     for (auto& aSun : mState.mSuns)
     {
-        if (!aSun.mActive)
+        if (!aSun.mActive || aSun.mBeingCollected)
             continue;
         const auto anX = ToPixels(aSun.mXMilliPixels);
         const auto aY = ToPixels(aSun.mYMilliPixels);
@@ -175,10 +201,7 @@ bool LevelOneCombat::TryCollectSun(
             continue;
         }
 
-        aSun = {};
-        mCollectedSun = static_cast<std::uint16_t>(
-            mCollectedSun + kSunValue);
-        RecountEntities();
+        aSun.mBeingCollected = true;
         return true;
     }
     return false;
@@ -207,8 +230,7 @@ bool LevelOneCombat::RestoreState(
     const LevelOneCombatState& theState)
 {
     if (theState.mPhase >= LevelOneCombatPhase::Count ||
-        theState.mSunCountdown >
-            kDeterministicNextSunCountdown ||
+        theState.mSunCountdown > kMaximumSunCountdown ||
         theState.mZombieCountdown > kFirstWaveCountdown)
     {
         return false;
@@ -216,7 +238,11 @@ bool LevelOneCombat::RestoreState(
     for (const auto& aSun : theState.mSuns)
     {
         if (!aSun.mActive)
+        {
+            if (aSun.mBeingCollected)
+                return false;
             continue;
+        }
         if (aSun.mXMilliPixels <
                 kMinimumStateXMilliPixels ||
             aSun.mXMilliPixels >
@@ -229,7 +255,12 @@ bool LevelOneCombat::RestoreState(
                 kMinimumStateYMilliPixels ||
             aSun.mGroundYMilliPixels >
                 kMaximumStateYMilliPixels ||
-            aSun.mAge > kDeterministicSunLifetime)
+            aSun.mAge >
+                CalculateSunLifetime(
+                    aSun.mGroundYMilliPixels) +
+                    (aSun.mBeingCollected
+                         ? kMaximumSunCollectionTicks
+                         : 0U))
         {
             return false;
         }
@@ -266,8 +297,11 @@ bool LevelOneCombat::RestoreState(
                 kMinimumStateXMilliPixels ||
             aZombie.mXMilliPixels >
                 kMaximumStateXMilliPixels ||
-            aZombie.mSpeedMilliPixelsPerTick < 230 ||
-            aZombie.mSpeedMilliPixelsPerTick > 320)
+            aZombie.mSpeedMicroPixelsPerTick <
+                kMinimumZombieSpeedMicroPixelsPerTick ||
+            aZombie.mSpeedMicroPixelsPerTick >
+                kMaximumZombieSpeedMicroPixelsPerTick ||
+            aZombie.mMovementRemainderMicroPixels >= 1'000)
         {
             return false;
         }
@@ -333,6 +367,7 @@ bool LevelOneCombat::SaveState(
     for (const auto& aSun : mState.mSuns)
     {
         if (!theWriter.WriteBool(aSun.mActive) ||
+            !theWriter.WriteBool(aSun.mBeingCollected) ||
             !theWriter.WriteI32(aSun.mXMilliPixels) ||
             !theWriter.WriteI32(aSun.mYMilliPixels) ||
             !theWriter.WriteI32(aSun.mGroundYMilliPixels) ||
@@ -369,8 +404,10 @@ bool LevelOneCombat::SaveState(
             !theWriter.WriteU8(aZombie.mRow) ||
             !theWriter.WriteU16(aZombie.mHealth) ||
             !theWriter.WriteI32(aZombie.mXMilliPixels) ||
+            !theWriter.WriteU32(
+                aZombie.mSpeedMicroPixelsPerTick) ||
             !theWriter.WriteU16(
-                aZombie.mSpeedMilliPixelsPerTick) ||
+                aZombie.mMovementRemainderMicroPixels) ||
             !theWriter.WriteU32(aZombie.mAge) ||
             !theWriter.WriteBool(aZombie.mEating))
         {
@@ -396,6 +433,13 @@ bool LevelOneCombat::SaveState(
 bool LevelOneCombat::LoadState(
     engine::IStateReader& theReader)
 {
+    return LoadState(theReader, true);
+}
+
+bool LevelOneCombat::LoadState(
+    engine::IStateReader& theReader,
+    bool theHasExtendedCombatState)
+{
     LevelOneCombatState aState;
     std::uint8_t aPhase{};
     if (!theReader.ReadU8(aPhase) ||
@@ -409,6 +453,8 @@ bool LevelOneCombat::LoadState(
     for (auto& aSun : aState.mSuns)
     {
         if (!theReader.ReadBool(aSun.mActive) ||
+            (theHasExtendedCombatState &&
+             !theReader.ReadBool(aSun.mBeingCollected)) ||
             !theReader.ReadI32(aSun.mXMilliPixels) ||
             !theReader.ReadI32(aSun.mYMilliPixels) ||
             !theReader.ReadI32(aSun.mGroundYMilliPixels) ||
@@ -443,16 +489,29 @@ bool LevelOneCombat::LoadState(
     }
     for (auto& aZombie : aState.mZombies)
     {
+        std::uint16_t aLegacySpeedMilliPixelsPerTick{};
         if (!theReader.ReadBool(aZombie.mActive) ||
             !theReader.ReadU8(aZombie.mRow) ||
             !theReader.ReadU16(aZombie.mHealth) ||
             !theReader.ReadI32(aZombie.mXMilliPixels) ||
-            !theReader.ReadU16(
-                aZombie.mSpeedMilliPixelsPerTick) ||
+            (theHasExtendedCombatState
+                 ? (!theReader.ReadU32(
+                        aZombie.mSpeedMicroPixelsPerTick) ||
+                    !theReader.ReadU16(
+                        aZombie.mMovementRemainderMicroPixels))
+                 : !theReader.ReadU16(
+                       aLegacySpeedMilliPixelsPerTick)) ||
             !theReader.ReadU32(aZombie.mAge) ||
             !theReader.ReadBool(aZombie.mEating))
         {
             return false;
+        }
+        if (!theHasExtendedCombatState)
+        {
+            aZombie.mSpeedMicroPixelsPerTick =
+                static_cast<std::uint32_t>(
+                    aLegacySpeedMilliPixelsPerTick) *
+                1'000U;
         }
     }
     for (auto& aProjectile : aState.mProjectiles)
@@ -483,6 +542,11 @@ std::uint64_t LevelOneCombat::GetOccupiedCells() const
         }
     }
     return anOccupiedCells;
+}
+
+bool LevelOneCombat::HasRandomDecisionFailure() const
+{
+    return mRandomDecisionFailure;
 }
 
 void LevelOneCombat::UpdatePlants()
@@ -524,9 +588,15 @@ void LevelOneCombat::UpdateZombies()
         ++aZombie.mAge;
         if (!aZombie.mEating)
         {
+            const auto aMovementMicroPixels =
+                aZombie.mSpeedMicroPixelsPerTick +
+                aZombie.mMovementRemainderMicroPixels;
             aZombie.mXMilliPixels -=
                 static_cast<std::int32_t>(
-                    aZombie.mSpeedMilliPixelsPerTick);
+                    aMovementMicroPixels / 1'000U);
+            aZombie.mMovementRemainderMicroPixels =
+                static_cast<std::uint16_t>(
+                    aMovementMicroPixels % 1'000U);
         }
 
         if (aZombie.mAge % kEatInterval == 0)
@@ -636,6 +706,49 @@ void LevelOneCombat::UpdateSun()
         if (!aSun.mActive)
             continue;
         ++aSun.mAge;
+        if (aSun.mBeingCollected)
+        {
+            const auto aDeltaX = std::abs(
+                aSun.mXMilliPixels -
+                kSunCollectionDestinationXMilliPixels);
+            const auto aDeltaY = std::abs(
+                aSun.mYMilliPixels -
+                kSunCollectionDestinationYMilliPixels);
+            if (aSun.mXMilliPixels >
+                kSunCollectionDestinationXMilliPixels)
+            {
+                aSun.mXMilliPixels -= aDeltaX / 21;
+            }
+            else if (aSun.mXMilliPixels <
+                     kSunCollectionDestinationXMilliPixels)
+            {
+                aSun.mXMilliPixels += aDeltaX / 21;
+            }
+            if (aSun.mYMilliPixels >
+                kSunCollectionDestinationYMilliPixels)
+            {
+                aSun.mYMilliPixels -= aDeltaY / 21;
+            }
+            else if (aSun.mYMilliPixels <
+                     kSunCollectionDestinationYMilliPixels)
+            {
+                aSun.mYMilliPixels += aDeltaY / 21;
+            }
+            const auto aDistanceSquared =
+                static_cast<std::int64_t>(aDeltaX) * aDeltaX +
+                static_cast<std::int64_t>(aDeltaY) * aDeltaY;
+            constexpr auto kScoringDistanceSquared =
+                static_cast<std::int64_t>(
+                    kSunScoringDistanceMilliPixels) *
+                kSunScoringDistanceMilliPixels;
+            if (aDistanceSquared < kScoringDistanceSquared)
+            {
+                aSun = {};
+                mCollectedSun = static_cast<std::uint16_t>(
+                    mCollectedSun + kSunValue);
+            }
+            continue;
+        }
         if (aSun.mYMilliPixels <
             aSun.mGroundYMilliPixels)
         {
@@ -645,7 +758,9 @@ void LevelOneCombat::UpdateSun()
                     aSun.mYMilliPixels +
                         kSunFallSpeedMilliPixelsPerTick);
         }
-        if (aSun.mAge >= kDeterministicSunLifetime)
+        if (aSun.mAge >=
+            CalculateSunLifetime(
+                aSun.mGroundYMilliPixels))
             aSun = {};
     }
 
@@ -664,14 +779,18 @@ void LevelOneCombat::UpdateSun()
     if (aSlot == mState.mSuns.end())
         return;
 
+    LevelOneRandomDecision aDecision;
+    if (!ReadFallingSunDecision(aDecision))
+        return;
+
     *aSlot = {
         .mActive = true,
-        .mXMilliPixels =
-            kDeterministicSunSpawnXMilliPixels,
+        .mBeingCollected = false,
+        .mXMilliPixels = aDecision.mXMilliPixels,
         .mYMilliPixels =
             kDeterministicSunSpawnYMilliPixels,
         .mGroundYMilliPixels =
-            kDeterministicSunGroundYMilliPixels,
+            aDecision.mGroundYMilliPixels,
         .mAge = 0,
     };
     if (mState.mSunsSpawned <
@@ -679,8 +798,7 @@ void LevelOneCombat::UpdateSun()
     {
         ++mState.mSunsSpawned;
     }
-    mState.mSunCountdown =
-        kDeterministicNextSunCountdown;
+    mState.mSunCountdown = aDecision.mNextCountdown;
 }
 
 void LevelOneCombat::UpdateWave()
@@ -796,14 +914,18 @@ void LevelOneCombat::SpawnFirstWave()
     if (aSlot == mState.mZombies.end())
         return;
 
+    LevelOneRandomDecision aDecision;
+    if (!ReadNormalZombieDecision(aDecision))
+        return;
+
     *aSlot = {
         .mActive = true,
         .mRow = kLaneRow,
         .mHealth = kNormalZombieHealth,
-        .mXMilliPixels =
-            kDeterministicZombieSpawnXMilliPixels,
-        .mSpeedMilliPixelsPerTick =
-            kDeterministicZombieSpeedMilliPixelsPerTick,
+        .mXMilliPixels = aDecision.mXMilliPixels,
+        .mSpeedMicroPixelsPerTick =
+            aDecision.mSpeedMicroPixelsPerTick,
+        .mMovementRemainderMicroPixels = 0,
         .mAge = 0,
         .mEating = false,
     };
@@ -821,6 +943,105 @@ void LevelOneCombat::RecountEntities()
         CountActive(mState.mZombies);
     mState.mProjectileCount =
         CountActive(mState.mProjectiles);
+}
+
+bool LevelOneCombat::ReadFallingSunDecision(
+    LevelOneRandomDecision& theDecision)
+{
+    if (mRandomDecisionFailure)
+        return false;
+    if (mRandomDecisionSource == nullptr)
+    {
+        theDecision = {
+            .mKind = LevelOneRandomDecisionKind::FallingSun,
+            .mNextCountdown = kDeterministicNextSunCountdown,
+            .mXMilliPixels = kDeterministicSunSpawnXMilliPixels,
+            .mGroundYMilliPixels =
+                kDeterministicSunGroundYMilliPixels,
+            .mSpeedMicroPixelsPerTick = 0,
+        };
+        return true;
+    }
+    if (!mRandomDecisionSource->ReadNext(
+            LevelOneRandomDecisionKind::FallingSun,
+            theDecision) ||
+        theDecision.mKind !=
+            LevelOneRandomDecisionKind::FallingSun ||
+        theDecision.mNextCountdown <
+            kDeterministicNextSunCountdown ||
+        theDecision.mNextCountdown > kMaximumSunCountdown ||
+        theDecision.mXMilliPixels <
+            kMinimumSunSpawnXMilliPixels ||
+        theDecision.mXMilliPixels >
+            kMaximumSunSpawnXMilliPixels ||
+        theDecision.mGroundYMilliPixels <
+            kMinimumSunGroundYMilliPixels ||
+        theDecision.mGroundYMilliPixels >
+            kMaximumSunGroundYMilliPixels ||
+        theDecision.mSpeedMicroPixelsPerTick != 0)
+    {
+        mRandomDecisionFailure = true;
+        return false;
+    }
+    return true;
+}
+
+bool LevelOneCombat::ReadNormalZombieDecision(
+    LevelOneRandomDecision& theDecision)
+{
+    if (mRandomDecisionFailure)
+        return false;
+    if (mRandomDecisionSource == nullptr)
+    {
+        theDecision = {
+            .mKind = LevelOneRandomDecisionKind::NormalZombie,
+            .mNextCountdown = 0,
+            .mXMilliPixels =
+                kDeterministicZombieSpawnXMilliPixels,
+            .mGroundYMilliPixels = 0,
+            .mSpeedMicroPixelsPerTick =
+                static_cast<std::uint32_t>(
+                    kDeterministicZombieSpeedMilliPixelsPerTick) *
+                1'000U,
+        };
+        return true;
+    }
+    if (!mRandomDecisionSource->ReadNext(
+            LevelOneRandomDecisionKind::NormalZombie,
+            theDecision) ||
+        theDecision.mKind !=
+            LevelOneRandomDecisionKind::NormalZombie ||
+        theDecision.mNextCountdown != 0 ||
+        theDecision.mXMilliPixels <
+            kMinimumZombieSpawnXMilliPixels ||
+        theDecision.mXMilliPixels >
+            kMaximumZombieSpawnXMilliPixels ||
+        theDecision.mGroundYMilliPixels != 0 ||
+        theDecision.mSpeedMicroPixelsPerTick <
+            kMinimumZombieSpeedMicroPixelsPerTick ||
+        theDecision.mSpeedMicroPixelsPerTick >
+            kMaximumZombieSpeedMicroPixelsPerTick)
+    {
+        mRandomDecisionFailure = true;
+        return false;
+    }
+    return true;
+}
+
+std::uint16_t LevelOneCombat::CalculateSunLifetime(
+    std::int32_t theGroundYMilliPixels)
+{
+    const auto aFallDistance =
+        theGroundYMilliPixels -
+        kDeterministicSunSpawnYMilliPixels;
+    const auto aFallTicks =
+        (aFallDistance +
+         kSunFallSpeedMilliPixelsPerTick - 1) /
+        kSunFallSpeedMilliPixelsPerTick;
+    return static_cast<std::uint16_t>(
+        aFallTicks +
+        static_cast<std::int32_t>(
+            kSunGroundDisappearTicks - 1U + kSunFadeTicks));
 }
 
 } // namespace pvz::game

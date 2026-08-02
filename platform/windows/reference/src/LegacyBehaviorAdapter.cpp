@@ -1,20 +1,36 @@
 #include "pvz/platform/windows/LegacyBehaviorAdapter.h"
 
 #include "Lawn/Board.h"
+#include "Lawn/Coin.h"
 #include "Lawn/CursorObject.h"
 #include "Lawn/SeedPacket.h"
+#include "Lawn/Zombie.h"
 #include "Lawn/Widget/TitleScreen.h"
 #include "LawnApp.h"
 #include "pvz/platform/windows/LegacyInputCapture.h"
 #include "widget/WidgetManager.h"
 
 #include <cstdint>
+#include <cmath>
 #include <limits>
 
 namespace pvz::platform::windows
 {
 namespace
 {
+
+struct LevelOneDecisionObserverState
+{
+    Board* mBoard{};
+    int mSunsFallen{};
+};
+
+[[nodiscard]] LevelOneDecisionObserverState&
+GetLevelOneDecisionObserverState()
+{
+    static LevelOneDecisionObserverState aState;
+    return aState;
+}
 
 void EnsureBehaviorCaptureEnvironment(LawnApp& theApp)
 {
@@ -148,6 +164,93 @@ void ObservePlants(
     return static_cast<std::uint16_t>(theValue);
 }
 
+[[nodiscard]] std::int32_t NormalizeScaledFloat(
+    float theValue,
+    float theScale)
+{
+    const auto aScaled = std::round(theValue * theScale);
+    constexpr auto aMinimum =
+        static_cast<float>(
+            std::numeric_limits<std::int32_t>::min());
+    constexpr auto aMaximum =
+        static_cast<float>(
+            std::numeric_limits<std::int32_t>::max());
+    if (aScaled <= aMinimum)
+        return std::numeric_limits<std::int32_t>::min();
+    if (aScaled >= aMaximum)
+        return std::numeric_limits<std::int32_t>::max();
+    return static_cast<std::int32_t>(aScaled);
+}
+
+void ObserveLevelOneRandomDecisions(Board& theBoard)
+{
+    auto& aState = GetLevelOneDecisionObserverState();
+    if (aState.mBoard != &theBoard)
+    {
+        aState.mBoard = &theBoard;
+        aState.mSunsFallen = theBoard.mNumSunsFallen;
+    }
+
+    if (theBoard.mNumSunsFallen > aState.mSunsFallen)
+    {
+        Coin* aNewestSun = nullptr;
+        Coin* aCoin = nullptr;
+        while (theBoard.IterateCoins(aCoin))
+        {
+            if (!aCoin->mDead &&
+                aCoin->mCoinAge == 0 &&
+                aCoin->mType == CoinType::COIN_SUN &&
+                aCoin->mCoinMotion ==
+                    CoinMotion::COIN_MOTION_FROM_SKY)
+            {
+                aNewestSun = aCoin;
+                break;
+            }
+        }
+        game::LevelOneRandomDecision aDecision;
+        aDecision.mKind =
+            game::LevelOneRandomDecisionKind::FallingSun;
+        if (aNewestSun != nullptr)
+        {
+            aDecision.mNextCountdown =
+                NormalizeU16(theBoard.mSunCountDown);
+            aDecision.mXMilliPixels =
+                NormalizeScaledFloat(aNewestSun->mPosX, 1'000.0F);
+            aDecision.mGroundYMilliPixels =
+                static_cast<std::int32_t>(
+                    aNewestSun->mGroundY) *
+                1'000;
+        }
+        RecordLegacyRandomDecision(aDecision);
+    }
+    aState.mSunsFallen = theBoard.mNumSunsFallen;
+
+    Zombie* aZombie = nullptr;
+    while (theBoard.IterateZombies(aZombie))
+    {
+        if (aZombie->mDead ||
+            aZombie->mZombieAge != 0 ||
+            aZombie->mZombieType != ZombieType::ZOMBIE_NORMAL ||
+            aZombie->mFromWave < 0)
+        {
+            continue;
+        }
+        game::LevelOneRandomDecision aDecision;
+        aDecision.mKind =
+            game::LevelOneRandomDecisionKind::NormalZombie;
+        aDecision.mXMilliPixels =
+            NormalizeScaledFloat(aZombie->mPosX, 1'000.0F);
+        const auto aSpeed =
+            NormalizeScaledFloat(aZombie->mVelX, 1'000'000.0F);
+        if (aSpeed > 0)
+        {
+            aDecision.mSpeedMicroPixelsPerTick =
+                static_cast<std::uint32_t>(aSpeed);
+        }
+        RecordLegacyRandomDecision(aDecision);
+    }
+}
+
 [[nodiscard]] game::BehaviorTutorialPhase GetTutorialPhase(
     TutorialState theState)
 {
@@ -251,6 +354,7 @@ void CaptureLegacyBehaviorTick(LawnApp& theApp)
                 game::BehaviorScene::AdventurePlaying &&
             theApp.mBoard->mLevel == 1)
         {
+            ObserveLevelOneRandomDecisions(*theApp.mBoard);
             ObserveLevelOneState(
                 *theApp.mBoard,
                 anObservation);
