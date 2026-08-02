@@ -203,20 +203,31 @@ bool LevelOneCombat::AddPeashooter(
 bool LevelOneCombat::TryCollectSun(
     engine::PointI thePosition)
 {
-    constexpr std::int32_t kClickMargin = 15;
-    constexpr std::int32_t kSunSize = 60;
+    constexpr std::int64_t kMilliPixelsPerPixel = 1'000;
+    constexpr std::int64_t kClickMarginMilliPixels = 15'000;
+    constexpr std::int64_t kSunSizeMilliPixels = 60'000;
+    const auto aPointerX =
+        static_cast<std::int64_t>(thePosition.mX) *
+        kMilliPixelsPerPixel;
+    const auto aPointerY =
+        static_cast<std::int64_t>(thePosition.mY) *
+        kMilliPixelsPerPixel;
     for (auto& aSun : mState.mSuns)
     {
         if (!aSun.mActive || aSun.mBeingCollected)
             continue;
-        const auto anX = ToPixels(aSun.mXMilliPixels);
-        const auto aY = ToPixels(aSun.mYMilliPixels);
-        if (thePosition.mX < anX - kClickMargin ||
-            thePosition.mX >=
-                anX + kSunSize + kClickMargin ||
-            thePosition.mY < aY - kClickMargin ||
-            thePosition.mY >=
-                aY + kSunSize + kClickMargin)
+        const auto aSunX =
+            static_cast<std::int64_t>(aSun.mXMilliPixels);
+        const auto aSunY =
+            static_cast<std::int64_t>(aSun.mYMilliPixels);
+        if (aPointerX < aSunX - kClickMarginMilliPixels ||
+            aPointerX >=
+                aSunX + kSunSizeMilliPixels +
+                    kClickMarginMilliPixels ||
+            aPointerY < aSunY - kClickMarginMilliPixels ||
+            aPointerY >=
+                aSunY + kSunSizeMilliPixels +
+                    kClickMarginMilliPixels)
         {
             continue;
         }

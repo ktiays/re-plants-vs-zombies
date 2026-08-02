@@ -263,6 +263,35 @@ void TestTutorialSunAndFirstWaveGate()
         "first wave spawns one fixed-width normal zombie");
 }
 
+void TestSunHitTestPreservesFractionalPosition()
+{
+    pvz::game::LevelOneCombat aCombat;
+    Expect(
+        aCombat.AddPeashooter(2, 2),
+        "fractional sun hit-test fixture adds its first plant");
+
+    auto aState = aCombat.GetState();
+    aState.mSunsSpawned = 1;
+    aState.mSunCount = 1;
+    aState.mSuns[0] = {
+        .mActive = true,
+        .mBeingCollected = false,
+        .mXMilliPixels = 608'000,
+        .mYMilliPixels = 95'510,
+        .mGroundYMilliPixels = 436'000,
+        .mAge = 53,
+    };
+    Expect(
+        aCombat.RestoreState(aState),
+        "fractional sun hit-test fixture restores");
+    Expect(
+        !aCombat.TryCollectSun({660, 171}),
+        "sun hit test keeps the native exclusive upper edge");
+    Expect(
+        aCombat.TryCollectSun({660, 170}),
+        "sun hit test uses the native fractional position at the edge");
+}
+
 void TestCombatCompletesAllFourWavesDeterministically()
 {
     pvz::game::LevelOneCombat aCombat;
@@ -1002,6 +1031,7 @@ void RunLevelOneCombatTests()
 {
     TestSourceAuditedCombatConstants();
     TestTutorialSunAndFirstWaveGate();
+    TestSunHitTestPreservesFractionalPosition();
     TestCombatCompletesAllFourWavesDeterministically();
     TestSemanticRandomDecisionTape();
     TestWaveScheduleDecisionAndAcceleration();

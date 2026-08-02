@@ -286,6 +286,43 @@ void PrintTimeline(
                        anObservation.mProjectileCount)
                 << '\n';
         }
+        if (theCapture.GetFormatVersion() >= 7)
+        {
+            for (std::size_t aSlot = 0;
+                 aSlot < pvz::game::kBehaviorSunSlotCount;
+                 ++aSlot)
+            {
+                const auto& aSun = anObservation.mSuns[aSlot];
+                const pvz::game::BehaviorSunObservation aPreviousSun =
+                    anIndex == 0
+                    ? pvz::game::BehaviorSunObservation{}
+                    : anObservations[anIndex - 1].mSuns[aSlot];
+                if (aSun.mActive == aPreviousSun.mActive &&
+                    aSun.mBeingCollected ==
+                        aPreviousSun.mBeingCollected)
+                {
+                    continue;
+                }
+                std::cout
+                    << "sun-slot-tick=" << anObservation.mTick
+                    << " slot=" << aSlot
+                    << " active=" << aSun.mActive
+                    << " collecting=" << aSun.mBeingCollected
+                    << " position=" << aSun.mXMilliPixels
+                    << ',' << aSun.mYMilliPixels
+                    << " ground-y=" << aSun.mGroundYMilliPixels
+                    << " age=" << aSun.mAge;
+                if (!aSun.mActive && aPreviousSun.mActive)
+                {
+                    std::cout
+                        << " previous-position="
+                        << aPreviousSun.mXMilliPixels
+                        << ',' << aPreviousSun.mYMilliPixels
+                        << " previous-age=" << aPreviousSun.mAge;
+                }
+                std::cout << '\n';
+            }
+        }
     }
 
     const auto aFrames =
