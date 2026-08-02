@@ -35,6 +35,44 @@ Pure game behavior normally needs layers 1 and 2. Rendering migrations need all
 five. Golden images containing retail assets remain local and must not be
 committed.
 
+## Golden-image comparison gate
+
+`pvz_image_compare` decodes PNG, JPEG, or GIF inputs through the portable image
+codec, takes either the full image or an explicit crop for each runtime, and
+normalizes both to the logical 800 by 600 canvas. The crop must be exactly 4:3;
+the tool rejects implicit aspect-ratio distortion instead of stretching a bad
+capture until it appears aligned. Scaling uses deterministic fixed-point
+bilinear sampling, so normalization does not depend on Core Graphics, GDI, or
+a platform image API.
+
+Build the tool with `PVZ_BUILD_IMAGE_CODECS=ON`, then compare two local captures:
+
+```sh
+mkdir -p out/parity-images
+./out/portable/parity/pvz_image_compare \
+  --reference-crop=0,0,1600,1200 \
+  --candidate-crop=0,0,800,600 \
+  --channel-tolerance=2 \
+  --max-different-pixels=100 \
+  --write-normalized-reference=out/parity-images/reference.ppm \
+  --write-normalized-candidate=out/parity-images/candidate.ppm \
+  --write-diff=out/parity-images/difference.ppm \
+  windows.png macos.png
+```
+
+The report includes compared and differing pixel counts, the maximum channel
+difference, mean absolute error, root-mean-square error, and the smallest
+rectangle containing every pixel outside the per-channel tolerance. All four
+straight-BGRA channels participate. The optional PPM difference magnifies
+absolute RGB and alpha differences four times for inspection. Exit code 0
+means the declared tolerance and differing-pixel budget passed, 1 means a
+visual mismatch, and 2 means the input or normalization contract was invalid.
+
+The tolerance is not self-approving: every golden scenario must record its
+logical tick, crop, source revisions, and approved limits in the parity
+manifest. Normalized images and difference images are diagnostic derivatives;
+the original user-owned captures remain the evidence and stay outside Git.
+
 ## Reference-first fixture policy
 
 A fixture is reference evidence, not a convenient expected value:
@@ -200,9 +238,10 @@ infrastructure is:
 
 - a fresh Windows version 7 run to make every native per-slot sun trajectory
   field directly comparable with the already matching portable captures;
-- a local image normalizer and difference reporter for user-owned golden
-  screenshots;
-- a parity manifest that records coverage and approved deviations per scene.
+- same-tick Windows and macOS golden captures run through the implemented local
+  normalizer and difference reporter;
+- a parity manifest that records coverage, capture provenance, thresholds, and
+  approved deviations per scene.
 
 The fresh Windows version 3 runtime capture remains the backward-compatibility
 gate through the first normal-zombie spawn. The same 9,169-frame artifact now

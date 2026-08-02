@@ -3,6 +3,7 @@ add_library(
     STATIC
         src/BehaviorCapture.cpp
         src/BehaviorComparison.cpp
+        src/ImageComparison.cpp
 )
 target_compile_features(pvz_parity PUBLIC cxx_std_23)
 target_include_directories(
@@ -58,6 +59,37 @@ else()
     )
 endif()
 
+if(TARGET pvz_image_codecs)
+    add_executable(
+        pvz_image_compare
+        tools/ImageCompare.cpp
+    )
+    target_compile_features(pvz_image_compare PRIVATE cxx_std_23)
+    target_link_libraries(
+        pvz_image_compare
+        PRIVATE
+            pvz_parity
+            pvz_image_codecs
+    )
+    if(MSVC)
+        target_compile_options(
+            pvz_image_compare
+            PRIVATE /W4 /WX /permissive-
+        )
+    else()
+        target_compile_options(
+            pvz_image_compare
+            PRIVATE
+                -Wall
+                -Wextra
+                -Wpedantic
+                -Wconversion
+                -Wsign-conversion
+                -Werror
+        )
+    endif()
+endif()
+
 if(BUILD_TESTING)
     add_executable(
         pvz_parity_tests
@@ -83,4 +115,38 @@ if(BUILD_TESTING)
         )
     endif()
     add_test(NAME pvz_parity_tests COMMAND pvz_parity_tests)
+
+    add_executable(
+        pvz_image_comparison_tests
+        tests/ImageComparisonTests.cpp
+    )
+    target_compile_features(
+        pvz_image_comparison_tests
+        PRIVATE cxx_std_23
+    )
+    target_link_libraries(
+        pvz_image_comparison_tests
+        PRIVATE pvz_parity
+    )
+    if(MSVC)
+        target_compile_options(
+            pvz_image_comparison_tests
+            PRIVATE /W4 /WX /permissive-
+        )
+    else()
+        target_compile_options(
+            pvz_image_comparison_tests
+            PRIVATE
+                -Wall
+                -Wextra
+                -Wpedantic
+                -Wconversion
+                -Wsign-conversion
+                -Werror
+        )
+    endif()
+    add_test(
+        NAME pvz_image_comparison_tests
+        COMMAND pvz_image_comparison_tests
+    )
 endif()

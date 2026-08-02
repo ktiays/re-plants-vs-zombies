@@ -58,6 +58,10 @@ Last updated: 2026-08-02
   independent legacy and portable exporters plus the behavior inspector report
   the first differing tick, field, slot, or decision while versions 1 through 6
   remain readable
+- [x] Deterministic golden-image normalization and comparison: portable image
+  decoding, explicit 4:3 crop validation, fixed-point 800-by-600 resampling,
+  RGBA tolerance metrics, difference bounds, and local PPM diagnostics without
+  committing retail screenshots
 - [x] Engine-owned rendering, input, logging, state, and resource protocols
 - [x] Portable PAK indexing, normalization, validation, and resource reads
 - [x] Validation against the supplied retail PAK: 3,198 entries and

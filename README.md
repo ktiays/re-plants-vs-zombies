@@ -121,6 +121,19 @@ Fixture provenance, evidence layers, and the reference-first update policy are
 documented in
 [docs/PARITY_VALIDATION.md](docs/PARITY_VALIDATION.md).
 
+With `PVZ_BUILD_IMAGE_CODECS=ON`, normalize and compare user-owned Windows and
+macOS screenshots locally. Both full images or explicit crops must be 4:3; the
+tool normalizes them to the logical 800 by 600 canvas and returns exit code 1
+when the approved threshold is exceeded:
+
+```sh
+./out/portable/parity/pvz_image_compare \
+  --channel-tolerance=2 \
+  --max-different-pixels=100 \
+  --write-diff=out/parity-images/level1-diff.ppm \
+  windows-level1.png macos-level1.png
+```
+
 Validate a user-owned PopCap PAK without extracting it:
 
 ```sh
