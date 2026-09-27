@@ -34,6 +34,21 @@ public:
 	virtual void			SetVolume(double theVolume) = 0;
 	virtual void			SetMusicAmplify(int theSongId, double theAmp) = 0;
 	virtual void			Update() = 0;
+
+	// Tracker-module controls used by the game's layered, tempo-synchronized
+	// music. Streamed music ignores them. Positions are packed the way the
+	// original BASS backend reported them with a position scaler of 4:
+	// LOWORD is the order, HIWORD is the row multiplied by 4.
+	virtual bool			IsMusicLoaded(int theSongId) { (void)theSongId; return false; }
+	virtual bool			IsModule(int theSongId) { (void)theSongId; return false; }
+	virtual void			PlayModule(int theSongId, int theOrder, double theVolume, bool theLoop) { (void)theSongId; (void)theOrder; (void)theVolume; (void)theLoop; }
+	virtual void			SetModuleOrder(int theSongId, int theOrder) { (void)theSongId; (void)theOrder; }
+	virtual int				GetMusicOrder(int theSongId) { (void)theSongId; return -1; }
+	virtual void			SetModuleChannelVolume(int theSongId, int theChannel, double theVolume) { (void)theSongId; (void)theChannel; (void)theVolume; }
+	virtual void			SetModuleTempo(int theSongId, float theBPM) { (void)theSongId; (void)theBPM; }
+	virtual float			GetModuleTempo(int theSongId) { (void)theSongId; return 0; }
+	virtual void			SetModuleSpeed(int theSongId, float theSpeed) { (void)theSongId; (void)theSpeed; }
+	virtual float			GetModuleSpeed(int theSongId) { (void)theSongId; return 0; }
 };
 }
 

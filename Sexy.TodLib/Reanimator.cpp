@@ -405,7 +405,7 @@ void Reanimation::Update()
 	if (mFrameCount == 0 || mDead)
 		return;
 
-	TOD_ASSERT(_finite(mAnimRate));
+	TOD_ASSERT(std::isfinite(mAnimRate));
 	mLastFrameTime = mAnimTime;  // 更新上一帧的循环率
 	mAnimTime += SECONDS_PER_UPDATE * mAnimRate / mFrameCount;  // 更新当前循环率
 
@@ -605,23 +605,23 @@ void Reanimation::ReanimBltMatrix(Graphics* g, Image* theImage, SexyMatrix3& the
 		float aScaleY = theTransform.m11;
 		int aPosX = FloatRoundToInt(theTransform.m02 - aScaleX * theSrcRect.mWidth * 0.5f);
 		int aPosY = FloatRoundToInt(theTransform.m12 - aScaleY * theSrcRect.mHeight * 0.5f);
-		int aOldMode = g->GetDrawMode();  // 备份原绘制模式
-		g->SetDrawMode(theDrawMode);
-		Rect aOldClipRect = g->mClipRect;  // 备份原裁剪矩形
-		g->SetClipRect(theClipRect);
+		// The transform and clip rect are already in screen coordinates (they
+		// include g's translation), so draw through an untranslated copy of g.
+		Graphics aDrawG(*g);
+		aDrawG.mTransX = 0.0f;
+		aDrawG.mTransY = 0.0f;
+		aDrawG.SetDrawMode(theDrawMode);
+		aDrawG.SetClipRect(theClipRect);
 
 		if (FloatApproxEqual(aScaleX, 1.0f) && FloatApproxEqual(aScaleY, 1.0f))  // 如果无拉伸
-			g->DrawImage(theImage, aPosX, aPosY, theSrcRect);
+			aDrawG.DrawImage(theImage, aPosX, aPosY, theSrcRect);
 		else
 		{
 			int aWidth = FloatRoundToInt(aScaleX * theSrcRect.mWidth);
 			int aHeight = FloatRoundToInt(aScaleY * theSrcRect.mHeight);
 			Rect aDestRect(aPosX, aPosY, aWidth, aHeight);
-			g->DrawImage(theImage, aDestRect, theSrcRect);
+			aDrawG.DrawImage(theImage, aDestRect, theSrcRect);
 		}
-
-		g->SetDrawMode(aOldMode);  // 还原绘制模式
-		g->SetClipRect(aOldClipRect);  // 还原裁剪矩形
 	}
 	else
 		TodBltMatrix(g, theImage, theTransform, theClipRect, theColor, theDrawMode, theSrcRect);
@@ -1144,7 +1144,7 @@ void ReanimatorEnsureDefinitionLoaded(ReanimationType theReanimType, bool theIsP
 	if (!ReanimationLoadDefinition(aReanimParams->mReanimFileName, aReanimDef))
 	{
 		char aBuf[1024];
-		sprintf_s<1024U>(aBuf, "Failed to load reanim '%s'", aReanimParams->mReanimFileName);
+		snprintf(aBuf, sizeof(aBuf), "Failed to load reanim '%s'", aReanimParams->mReanimFileName);
 		TodErrorMessageBox(aBuf, "Error");
 	}
 	int aDuration = aTimer.GetDuration();
@@ -1318,7 +1318,7 @@ void Reanimation::ParseAttacherTrack(const ReanimatorTransform& theTransform, At
 			break;
 		
 		std::string aCode(aTags + 1, aTagEnds - aTags - 1);  // 取中括号内的文本
-		if (sscanf_s(aCode.c_str(), "%f", &theAttacherInfo.mAnimRate) != 1)  // 尝试将文本作为浮点数扫描，如果扫描成功则将结果作为动画速率
+		if (sscanf(aCode.c_str(), "%f", &theAttacherInfo.mAnimRate) != 1)  // 尝试将文本作为浮点数扫描，如果扫描成功则将结果作为动画速率
 		{
 			if (aCode.compare("hold") == 0)
 				theAttacherInfo.mLoopType = ReanimLoopType::REANIM_PLAY_ONCE_AND_HOLD;

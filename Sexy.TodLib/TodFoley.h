@@ -2,7 +2,7 @@
 #define __TODFOLEY_H__
 
 #include "../Resources.h"
-#include "sound/DSoundInstance.h"
+#include "sound/SoundInstance.h"
 using namespace Sexy;
 
 #define MAX_FOLEY_TYPES 110
@@ -21,7 +21,7 @@ enum FoleyFlags
     FOLEYFLAGS_DONT_REPEAT          // 禁止变式重复，指定该种类的音效每次实际播放的变式不得与上一次相同
 };
 
-enum FoleyType
+enum FoleyType : int
 {
     FOLEY_SUN,
     FOLEY_SPLAT,
@@ -151,17 +151,6 @@ extern FoleyParams gLawnFoleyParamArray[(int)FoleyType::NUM_FOLEY];  //0x69FAD0
 // ######################################################################################################################################################
 // ############################################################ 以下正式开始拟音音效相关声明 ############################################################
 // ######################################################################################################################################################
-
-class TodDSoundInstance : public DSoundInstance
-{
-    friend class TodFoley;
-
-public:
-    TodDSoundInstance(DSoundManager* theSoundManager, LPDIRECTSOUNDBUFFER theSourceSound) : DSoundInstance(theSoundManager, theSourceSound) { }
-
-    /*inline*/ int      GetSoundPosition();
-    /*inline*/ void     SetSoundPosition(int thePosition);
-};
 
 class FoleyInstance
 {

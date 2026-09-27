@@ -71,13 +71,14 @@ void AchievementsWidget::Update() {
 
 	mScrollValue -= mScrollDecay;
 
+	// The page is a child of the game selector, one screen below the main menu,
+	// so its top rests at mApp->mHeight in the selector's coordinates.
+	int aPageTop = mApp->mHeight;
 	int aNewY = mY + mScrollValue * mScrollDirection;
-	if (aNewY >= -1)
-		aNewY = -1;
-	//if (aNewY >= mApp->mHeight)
-	//	aNewY = mApp->mHeight;
+	if (aNewY >= aPageTop)
+		aNewY = aPageTop;
 
-	int aMaxScroll = 2 * mApp->mHeight + 50 - mHeight;
+	int aMaxScroll = aPageTop + 2 * mApp->mHeight + 50 - mHeight;
 	if (aNewY <= aMaxScroll)
 		aNewY = aMaxScroll;
 
@@ -108,7 +109,8 @@ void AchievementsWidget::Draw(Graphics* g) {
 
 	g->DrawImage(IMAGE_ACHEESEMENTS_CHINA, 0, mHeight - IMAGE_ACHEESEMENTS_CHINA->mHeight - /*50*/ 650);
 	
-	if (aBackButtonRect.Contains(mWidgetManager->mLastMouseX - mX, mWidgetManager->mLastMouseY - mY))
+	Point aAbsPos = GetAbsPos();
+	if (aBackButtonRect.Contains(mWidgetManager->mLastMouseX - aAbsPos.mX, mWidgetManager->mLastMouseY - aAbsPos.mY))
 		g->DrawImage(IMAGE_ACHEESEMENTS_BACK_HIGHLIGHT, 128, 55);
 
 	for (int i = 0; i < MAX_ACHIEVEMENTS; i++) {
@@ -149,7 +151,7 @@ void AchievementsWidget::Draw(Graphics* g) {
 
 	g->DrawImage(IMAGE_ACHEESEMENTS_MORE_ROCK, 700, 450);
 
-	bool aIsHighlight = mMoreRockRect.Contains(mWidgetManager->mLastMouseX - mX, mWidgetManager->mLastMouseY - mY);
+	bool aIsHighlight = mMoreRockRect.Contains(mWidgetManager->mLastMouseX - aAbsPos.mX, mWidgetManager->mLastMouseY - aAbsPos.mY);
 	if (mDidPressMoreButton) {
 		g->DrawImage(aIsHighlight ? IMAGE_ACHEESEMENTS_TOP_BUTTON_HIGHLIGHT : IMAGE_ACHEESEMENTS_TOP_BUTTON, 700, 450);
 	}
@@ -223,7 +225,10 @@ bool ReportAchievement::GiveAchievement(LawnApp* theApp, int theAchievement, boo
 	std::string aAchievementName = gAchievementList[theAchievement].name;
 	aAchievementName.append(" Achievement!");
 
-	theApp->mBoard->DisplayAdvice(aAchievementName, MESSAGE_STYLE_ACHIEVEMENT, AdviceType::ADVICE_NONE);
+	// Achievements can also be granted from the main menu, where no board
+	// exists to show the banner.
+	if (theApp->mBoard)
+		theApp->mBoard->DisplayAdvice(aAchievementName, MESSAGE_STYLE_ACHIEVEMENT, AdviceType::ADVICE_NONE);
 	theApp->PlaySample(SOUND_ACHIEVEMENT);
 
 	return true;

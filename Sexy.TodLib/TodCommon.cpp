@@ -9,13 +9,13 @@
 #include "../GameConstants.h"
 #include "graphics/Font.h"
 #include "misc/Debug.h"
-#include "graphics/DDImage.h"
+#include "graphics/DeviceImage.h"
 #include "graphics/Graphics.h"
 #include "graphics/ImageFont.h"
 #include "misc/PerfTimer.h"
 #include "misc/SexyMatrix.h"
-#include "graphics/DDInterface.h"
-#include "graphics/D3DInterface.h"
+#include "graphics/DisplayInterface.h"
+#include "graphics/HardwareRenderer.h"
 
 //0x510BC0
 void Tod_SWTri_AddAllDrawTriFuncs()
@@ -735,10 +735,10 @@ void TodBltMatrix(Graphics* g, Image* theImage, const SexyMatrix3& theTransform,
 	{
 		g->mDestImage->BltMatrix(theImage, aOffsetX, aOffsetY, theTransform, theClipRect, theColor, theDrawMode, theSrcRect, g->mLinearBlend);
 	}
-	else if (DDImage::Check3D(g->mDestImage))
+	else if (DeviceImage::Check3D(g->mDestImage))
 	{
 		theImage->mDrawn = true;
-		D3DInterface* aInterface = ((DDImage*)g->mDestImage)->mDDInterface->mD3DInterface;
+		HardwareRenderer* aInterface = ((DeviceImage*)g->mDestImage)->mDisplay->mRenderer;
 		aInterface->BltTransformed(theImage, nullptr, theColor, theDrawMode, theSrcRect, theTransform, g->mLinearBlend, aOffsetX, aOffsetY, true);
 	}
 	else
@@ -873,7 +873,7 @@ void TodDrawImageCenterScaledF(Graphics* g, Image* theImage, float thePosX, floa
 }
 
 //0x512AC0
-unsigned long AverageNearByPixels(MemoryImage* theImage, unsigned long* thePixel, int x, int y)
+ulong AverageNearByPixels(MemoryImage* theImage, ulong* thePixel, int x, int y)
 {
 	int aRed = 0;
 	int aGreen = 0;
@@ -891,7 +891,7 @@ unsigned long AverageNearByPixels(MemoryImage* theImage, unsigned long* thePixel
 		{
 			if ((x != 0 || j != -1) && (x != theImage->mWidth - 1 || j != 1) && (y != 0 || i != -1) && (y != theImage->mHeight - 1 || i != 1))
 			{
-				unsigned long aPixel = *(thePixel + i * theImage->mWidth + j);
+				ulong aPixel = *(thePixel + i * theImage->mWidth + j);
 				if (aPixel & 0xFF000000UL)  // 如果不是透明像素
 				{
 					aRed += (aPixel >> 16) & 0x000000FFUL;
@@ -929,7 +929,7 @@ void FixPixelsOnAlphaEdgeForBlending(Image* theImage)
 	PerfTimer aTimer;
 	aTimer.Start();
 
-	unsigned long* aBitsPtr = aImage->mBits;
+	ulong* aBitsPtr = aImage->mBits;
 	for (int y = 0; y < theImage->mHeight; y++)
 	{
 		for (int x = 0; x < theImage->mWidth; x++)
@@ -1148,7 +1148,7 @@ bool TodResourceManager::TodLoadNextResource()
 		case ResType_Image:
 		{
 			ImageRes* anImageRes = (ImageRes*)aRes;
-			if ((DDImage*)anImageRes->mImage != nullptr)
+			if ((DeviceImage*)anImageRes->mImage != nullptr)
 			{
 				mCurResGroupListItr++;
 				continue;
@@ -1327,8 +1327,10 @@ int TodVsnprintf(char* theBuffer, int theSize, const char* theFormat, va_list th
 {
 	try
 	{
-		int aCount = _vsnprintf(theBuffer, theSize, theFormat, theArgList);
-		if (aCount == -1)
+		int aCount = vsnprintf(theBuffer, theSize, theFormat, theArgList);
+		// Microsoft's _vsnprintf reported truncation as -1; C99 returns the
+		// length the full string would have had.
+		if (aCount < 0 || aCount >= theSize)
 		{
 			theBuffer[theSize - 1] = '\0';
 			aCount = theSize - 1;

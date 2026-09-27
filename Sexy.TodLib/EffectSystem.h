@@ -16,7 +16,7 @@ public:
     float                       y;
     float                       u;
     float                       v;
-    unsigned long               color;
+    DWORD                       color;
 };
 
 class TodTriangleGroup

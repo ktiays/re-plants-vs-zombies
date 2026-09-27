@@ -11,7 +11,7 @@ namespace Sexy
 class PerfTimer 
 {
 protected:
-	LARGE_INTEGER mStart;
+	int64 mStart;
 	double mDuration;
 	bool mRunning;
 
@@ -24,7 +24,7 @@ public:
 
 	double GetDuration();
 
-	static __int64 GetCPUSpeed(); // in Hz
+	static int64 GetCPUSpeed(); // in Hz
 	static int GetCPUSpeedMHz(); 
 };
 

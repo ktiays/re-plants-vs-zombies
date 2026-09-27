@@ -1,9 +1,9 @@
 #ifndef __POPDRMCOMM_H__
 #define __POPDRMCOMM_H__
 
-#include "misc/CritSect.h"
-using namespace Sexy;
-
+// Communication with the PopCap DRM wrapper that launched the Windows game.
+// The portable build has no DRM wrapper; the protocol reports an unlocked,
+// registered game.
 class PopDRMComm
 {
 public:
@@ -21,19 +21,8 @@ public:
 		PopCapDRM_NumMessages
 	};
 
-public:
-	HWND					mDrmGameWnd;								//+00
-	HWND					mHWnd;										//+0x4
-	HANDLE					mUNKNOWN__FileMapping;						//+08 unknown
-	LPVOID					mUNKNOWN__MapViewPtr;						//+0C unknown
-	bool					mIsWindow;									//+0x10
-	HANDLE					mEventHwnd;									//+0x14
-	HANDLE					mEventThreadHwnd;							//+0x18
-	DWORD					mEventThreadID;								//+0x1C
-	DWORD					mCurrentThreadID;							//+0x20
-	UINT					mWindowMessage[PopCapDRM_NumMessages];		//+0x24
-	CRITICAL_SECTION		mCritSect;									//+0x48
-	
+	bool					mIsWindow;
+
 public:
 	PopDRMComm();  //0x5D5AC0
 	~PopDRMComm();  //0x5D5B60

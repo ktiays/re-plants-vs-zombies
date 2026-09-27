@@ -7,13 +7,13 @@ namespace Sexy
 {
 
 class Image;
-class DDImage;
+class DeviceImage;
 class MemoryImage;
 
 class SharedImage
 {
 public:
-	DDImage*				mImage;
+	DeviceImage*				mImage;
 	int						mRefCount;		
 
 	SharedImage();
@@ -42,7 +42,7 @@ public:
 	MemoryImage*			operator->();
 	operator Image*();
 	operator MemoryImage*();
-	operator DDImage*();
+	operator DeviceImage*();
 };
 
 }

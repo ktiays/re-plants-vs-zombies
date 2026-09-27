@@ -600,14 +600,18 @@ void AwardScreen::DrawAchievements(Graphics* g) {
 		std::string aAchievementDesc = gAchievementList[mAchievementItems[i].mId].description;
 		aAchievementName.append(" Earned!");
 
+		// Each row is the achievement's icon followed by its title and, below it,
+		// its description; the text is centered on the screen like the title.
+		const int aTextWidth = 300;
+		const int aTextX = BOARD_WIDTH / 2 - aTextWidth / 2;
 		Rect aSrcRect = Rect(70 * (mAchievementItems[i].mId % 7), 70 * (mAchievementItems[i].mId / 7), 70, 70);
-		Rect aDestRect = Rect(70, 70, 70, 70);
-		Rect aTextRect = Rect(300, mAchievementItems[i].mY + 20, 300, 60);
+		Rect aDestRect = Rect(aTextX - 90, mAchievementItems[i].mY, 70, 70);
+		Rect aTextRect = Rect(aTextX, mAchievementItems[i].mY + 20, aTextWidth, 60);
 
 		g->DrawImage(IMAGE_ACHEESEMENTS_ICONS, aDestRect, aSrcRect);
 
 		TodDrawString(g, aAchievementName, BOARD_WIDTH / 2, mAchievementItems[i].mY + 25, FONT_DWARVENTODCRAFT15, Color(224, 187, 98), DS_ALIGN_CENTER);
-		TodDrawStringWrapped(g, aAchievementName, aTextRect, FONT_DWARVENTODCRAFT12, Color(255, 255, 255), DS_ALIGN_CENTER_VERTICAL_MIDDLE);
+		TodDrawStringWrapped(g, aAchievementDesc, aTextRect, FONT_DWARVENTODCRAFT12, Color(255, 255, 255), DS_ALIGN_CENTER_VERTICAL_MIDDLE);
 	}
 }
 

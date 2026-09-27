@@ -176,20 +176,16 @@ void EditWidget::UpdateCaretPos()
 	if (aPoint.mY<10) aPoint.mY = 10;
 	else if (aPoint.mY>anApp->mHeight-10) aPoint.mY = anApp->mHeight-10;
 
-	SetCaretPos(aPoint.mX,aPoint.mY);
+	// The Win32 caret positioned the Tablet PC input panel; SDL text input
+	// uses an input rectangle instead.
+	(void)aPoint;
 }
 
 void EditWidget::GotFocus()
 {
 	Widget::GotFocus();
 	if (mWidgetManager && mWidgetManager->mApp->mTabletPC)
-	{
-		SexyAppBase *anApp = mWidgetManager->mApp;
-
-		CreateCaret(anApp->mHWnd,NULL,0,0);
 		UpdateCaretPos();
-		ShowCaret(anApp->mHWnd);
-	}
 	
 	mShowingCursor = true;
 	mBlinkAcc = 0;
@@ -199,12 +195,6 @@ void EditWidget::GotFocus()
 void EditWidget::LostFocus()
 {
 	Widget::LostFocus();
-
-	if (mWidgetManager && mWidgetManager->mApp->mTabletPC)
-	{
-		HideCaret(mWidgetManager->mApp->mHWnd);
-		DestroyCaret();
-	}
 
 	mShowingCursor = false;	
 	MarkDirty();

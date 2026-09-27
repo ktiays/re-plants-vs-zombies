@@ -1,13 +1,10 @@
 #include "LawnApp.h"
 #include "Resources.h"
 #include "Sexy.TodLib/TodStringFile.h"
+#include "platform/Platform.h"
 
-#ifdef PVZ_HAS_REFERENCE_INPUT_CAPTURE
-#include "pvz/platform/windows/LegacyInputCapture.h"
-
-#include <iostream>
-#include <string>
-#endif
+#include <cstdlib>
+#include <filesystem>
 
 using namespace Sexy;
 
@@ -15,8 +12,48 @@ bool (*gAppCloseRequest)();				//[0x69E6A0]
 bool (*gAppHasUsedCheatKeys)();			//[0x69E6A4]
 SexyString (*gGetCurrentLevelName)();
 
+// Finds the directory that contains the user-supplied game data (main.pak and
+// properties/). Checked in order: $PVZ_GAME_DIR, the working directory, the
+// executable's directory (Contents/Resources inside a macOS bundle), and the
+// directories above it, which covers a bundle placed next to the data.
+static std::string FindGameDirectory()
+{
+	namespace fs = std::filesystem;
+
+	auto HasGameData = [](const fs::path& theDir)
+	{
+		std::error_code anError;
+		return fs::exists(theDir / "main.pak", anError) || fs::exists(theDir / "properties" / "resources.xml", anError);
+	};
+
+	if (const char* anEnvDir = std::getenv("PVZ_GAME_DIR"))
+	{
+		if (HasGameData(anEnvDir))
+			return anEnvDir;
+	}
+
+	std::error_code anError;
+	fs::path aCurDir = fs::current_path(anError);
+	if (!anError && HasGameData(aCurDir))
+		return aCurDir.string();
+
+	fs::path aDir = Platform::GetResourceDirectory();
+	for (int i = 0; i < 5 && !aDir.empty(); i++)
+	{
+		if (HasGameData(aDir))
+			return aDir.string();
+
+		fs::path aParent = aDir.parent_path();
+		if (aParent == aDir)
+			break;
+		aDir = aParent;
+	}
+
+	return ".";
+}
+
 //0x44E8F0
-int WINAPI WinMain(_In_ HINSTANCE /* hInstance */, _In_opt_ HINSTANCE /* hPrevInstance */, _In_ LPSTR /* lpCmdLine */, _In_ int /* nCmdShow */)
+int main(int argc, char* argv[])
 {
 	TodStringListSetColors(gLawnStringFormats, gLawnStringFormatCount);
 	gGetCurrentLevelName = LawnGetCurrentLevelName;
@@ -24,40 +61,14 @@ int WINAPI WinMain(_In_ HINSTANCE /* hInstance */, _In_opt_ HINSTANCE /* hPrevIn
 	gAppHasUsedCheatKeys = LawnHasUsedCheatKeys;
 	gExtractResourcesByName = Sexy::ExtractResourcesByName;
 	gLawnApp = new LawnApp();
-	gLawnApp->mChangeDirTo = (!Sexy::FileExists("properties\\resources.xml") && Sexy::FileExists("..\\properties\\resources.xml")) ? ".." : ".";
+	gLawnApp->SetCommandLine(argc, argv);
+	gLawnApp->mChangeDirTo = FindGameDirectory();
 	gLawnApp->Init();
 	gLawnApp->Start();
 	gLawnApp->Shutdown();
 
-	int anExitCode = 0;
-#ifdef PVZ_HAS_REFERENCE_INPUT_CAPTURE
-	if (!pvz::platform::windows::FinalizeLegacyInputCapture())
-	{
-		const std::string anError =
-			"Could not save reference capture: " +
-			std::string(
-				pvz::platform::windows::GetLegacyInputCaptureError());
-		std::cerr << anError << '\n';
-		OutputDebugStringA((anError + "\n").c_str());
-		anExitCode = 1;
-	}
-	else if (pvz::platform::windows::WasLegacyInputCaptureRequested())
-	{
-		const std::string aSummary =
-			(pvz::platform::windows::WasLegacyBehaviorCaptureRequested()
-				? "Reference behavior capture recorded: "
-				: "Reference input replay captured: ") +
-			std::to_string(
-				pvz::platform::windows::
-					GetLegacyInputCaptureFrameCount()) +
-			" frames";
-		std::cout << aSummary << '\n';
-		OutputDebugStringA((aSummary + "\n").c_str());
-	}
-#endif
-
 	if (gLawnApp)
 		delete gLawnApp;
 
-	return anExitCode;
-};
+	return 0;
+}

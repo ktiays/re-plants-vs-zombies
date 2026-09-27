@@ -34,6 +34,34 @@ To play the game using this project you need to have access to the original game
   - [ ] Parse maps from files
   - [ ] Add scripting for custom sequences
 
+## Playing on macOS
+
+The full game builds natively on macOS: the reconstructed sources run on the
+SexyAppFramework with SDL3 for windowing, input, and audio output, and Metal for
+rendering. The design, and how to add backends for other platforms, is in
+[docs/CROSS_PLATFORM_PORT.md](docs/CROSS_PLATFORM_PORT.md).
+
+Install the dependencies:
+
+```sh
+brew install cmake ninja sdl3 libpng jpeg-turbo libopenmpt
+```
+
+Copy `main.pak` and the `properties` folder from your copy of the game into
+`gamedata/` (ignored by git), then build and run:
+
+```sh
+./script/build_macos_game.sh
+```
+
+`./script/build_macos_game.sh bundle` copies the game data into the `.app` so it
+can be launched from Finder. Set `PVZ_GAME_DIR` to use data from another
+folder. Profiles, saves, and settings are stored in
+`~/Library/Application Support/PopCap/PlantsVsZombies/`.
+
+Alt+Enter (or Command+Enter) toggles fullscreen. 3D acceleration can be turned
+off in the in-game options to use the software renderer.
+
 ## Native portability renovation
 
 The native port is being developed on the `port` branch. Its architecture,

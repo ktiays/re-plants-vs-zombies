@@ -21,6 +21,10 @@
 #include "widget/Dialog.h"
 #include "widget/WidgetManager.h"
 
+// The main menu is at the selector's origin; the GOTY "more ways to play" page
+// is laid out one screen to its left and the achievements page one screen below.
+static constexpr int QUICKPLAY_PAGE_X = -BOARD_WIDTH;
+
 static float gFlowerCenter[3][2] = { { 765.0f, 483.0f }, { 663.0f, 455.0f }, { 701.0f, 439.0f } };  //0x665430
 
 //0x448C80
@@ -265,7 +269,7 @@ GameSelector::GameSelector(LawnApp* theApp)
 		Sexy::IMAGE_QUICKPLAY_BACK_BUTTON_HIGHLIGHT,
 		Sexy::IMAGE_QUICKPLAY_BACK_BUTTON_HIGHLIGHT
 	);
-	mQuickPlayButton->Resize(mApp->mWidth - 150, 455, Sexy::IMAGE_QUICKPLAY_BACK_BUTTON->mWidth, Sexy::IMAGE_QUICKPLAY_BACK_BUTTON->mHeight);
+	mQuickPlayButton->Resize(QUICKPLAY_PAGE_X + mApp->mWidth - 150, 455, Sexy::IMAGE_QUICKPLAY_BACK_BUTTON->mWidth, Sexy::IMAGE_QUICKPLAY_BACK_BUTTON->mHeight);
 
 	mApp->mMusic->MakeSureMusicIsPlaying(MusicTune::MUSIC_TUNE_TITLE_CRAZY_DAVE_MAIN_THEME);
 
@@ -336,6 +340,9 @@ GameSelector::GameSelector(LawnApp* theApp)
 	//mZombatarWidget->Resize(800, 0, mApp->mWidth, mApp->mHeight);
 	mAchievementsWidget = new AchievementsWidget(this->mApp);
 	mAchievementsWidget->Move(0, mApp->mHeight);
+	// The achievements and quick play pages are children outside the selector's
+	// own 800x600 rect; they must stay visible while the selector slides.
+	mClip = false;
 
 	this->AddWidget(mAdventureButton);
 	this->AddWidget(mMinigameButton);
@@ -585,7 +592,6 @@ void GameSelector::Draw(Graphics* g)
 	// @Patoke: decided to manually inline these methods as i cannot be arsed to figure out what the name of the 2 functions called in here are
 	// GOTY @Patoke: 0x44FD20
 	g->SetLinearBlend(true);
-	g->Translate(800, 0);
 
 	Reanimation* aSelectorReanim = mApp->ReanimationGet(mSelectorReanimID);
 	aSelectorReanim->DrawRenderGroup(g, 1);  // "SelectorScreen_BG"
@@ -593,7 +599,6 @@ void GameSelector::Draw(Graphics* g)
 		mApp->ReanimationGet(mCloudReanimID[i])->Draw(g);
 	aSelectorReanim->DrawRenderGroup(g, RENDER_GROUP_NORMAL);
 
-	g->Translate(-800, 0);
 	if (mSelectorState == SelectorAnimState::SELECTOR_OPEN)
 	{
 		int aBGIdx = aSelectorReanim->FindTrackIndex("SelectorScreen_BG_Right");
@@ -635,10 +640,11 @@ void GameSelector::Draw(Graphics* g)
 	}
 	 
 	// GOTY @Patoke: 0x4500E0
-	g->DrawImage(IMAGE_SELECTORSCREEN_MOREWAYSTOPLAY_BG, M(0), M(0));
-	g->DrawImage(IMAGE_QUICKPLAY_MINIGAMES_CLOUD, M(20), M(40));
-	g->DrawImage(IMAGE_QUICKPLAY_PUZZLES_CLOUD, M(350), M(285));
-	g->DrawImage(IMAGE_QUICKPLAY_SURVIVAL_CLOUD, M(130), M(135));
+	// The "more ways to play" page sits one screen to the left of the main menu.
+	g->DrawImage(IMAGE_SELECTORSCREEN_MOREWAYSTOPLAY_BG, QUICKPLAY_PAGE_X + M(0), M(0));
+	g->DrawImage(IMAGE_QUICKPLAY_MINIGAMES_CLOUD, QUICKPLAY_PAGE_X + M(20), M(40));
+	g->DrawImage(IMAGE_QUICKPLAY_PUZZLES_CLOUD, QUICKPLAY_PAGE_X + M(350), M(285));
+	g->DrawImage(IMAGE_QUICKPLAY_SURVIVAL_CLOUD, QUICKPLAY_PAGE_X + M(130), M(135));
 }
 
 //0x44AB50
@@ -725,9 +731,7 @@ void GameSelector::DrawOverlay(Graphics* g)
 		g->ClearClipRect();
 	}
 
-	g->Translate(-(mX + 800), 0);
 	mApp->ReanimationGet(mLeafReanimID)->Draw(g);
-	g->Translate(mX + 800, 0);
 
 	for (int i = 0; i < 3; i++)
 		mApp->ReanimationGet(mFlowerReanimID[i])->Draw(g);
@@ -813,32 +817,10 @@ void GameSelector::Update()
 	if (mSlideCounter > 0) {
 		int aNewX = TodAnimateCurve(75, 0, mSlideCounter, mStartX, mDestX, TodCurves::CURVE_EASE_IN_OUT);
 		int aNewY = TodAnimateCurve(75, 0, mSlideCounter, mStartY, mDestY, TodCurves::CURVE_EASE_IN_OUT);
+		// The buttons, overlay and achievements page are children of the
+		// selector, so moving the selector moves all of them.
 		Move(aNewX, aNewY);
-
-		// @Patoke: not from the original binaries but fixes bugs
-		mOverlayWidget->Move(aNewX, aNewY);
-		mAchievementsWidget->mY = aNewY + mApp->mHeight - 1;
-		mAdventureButton->SetOffset(aNewX, aNewY);
-		mMinigameButton->SetOffset(aNewX, aNewY);
-		mPuzzleButton->SetOffset(aNewX, aNewY);
-		mOptionsButton->SetOffset(aNewX, aNewY + 15);
-		mQuitButton->SetOffset(aNewX, aNewY + 5);
-		mHelpButton->SetOffset(aNewX, aNewY + 30);
-		mStoreButton->SetOffset(aNewX, aNewY);
-		mAlmanacButton->SetOffset(aNewX, aNewY);
-		mZenGardenButton->SetOffset(aNewX, aNewY);
-		mSurvivalButton->SetOffset(aNewX, aNewY);
-		mChangeUserButton->SetOffset(aNewX, aNewY);
-		mZombatarButton->SetOffset(aNewX, aNewY);
-		mAchievementsButton->SetOffset(aNewX, aNewY);
-		mQuickPlayButton->SetOffset(aNewX, aNewY);
-
-		// @Patoke: make sure these are drawn even outside of bounds (force redraw)
-		mAchievementsButton->MarkDirty();
-		mOptionsButton->MarkDirty();
-		mHelpButton->MarkDirty();
-		mQuitButton->MarkDirty();
-		mStoreButton->MarkDirty();
+		MarkAllDirty();
 
 		mSlideCounter--;
 	}

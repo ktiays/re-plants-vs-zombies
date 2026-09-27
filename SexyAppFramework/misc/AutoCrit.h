@@ -9,24 +9,22 @@ namespace Sexy
 
 class AutoCrit
 {
-	LPCRITICAL_SECTION		mCritSec;
-public:
-	AutoCrit(LPCRITICAL_SECTION theCritSec) : 
-		mCritSec(theCritSec)
-	{ 
-		EnterCriticalSection(mCritSec); 
-	}
+	const CritSect&			mCritSect;
 
+public:
 	AutoCrit(const CritSect& theCritSect) : 
-		mCritSec((LPCRITICAL_SECTION) &theCritSect.mCriticalSection)
+		mCritSect(theCritSect)
 	{ 
-		EnterCriticalSection(mCritSec); 
+		mCritSect.Lock();
 	}
 
 	~AutoCrit()
 	{ 
-		LeaveCriticalSection(mCritSec); 
+		mCritSect.Unlock();
 	}
+
+	AutoCrit(const AutoCrit&) = delete;
+	AutoCrit& operator=(const AutoCrit&) = delete;
 };
 
 }

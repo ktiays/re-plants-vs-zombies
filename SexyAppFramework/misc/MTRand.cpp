@@ -35,8 +35,6 @@ http://www.math.sci.hiroshima-u.ac.jp/~m-mat/MT/emt.html
 email: m-mat @ math.sci.hiroshima-u.ac.jp (remove space)
 */
 
-#define NOMINMAX 1
-#include <windows.h> 
 #include "MTRand.h"
 #include "Debug.h"
 #include <stdio.h>
@@ -129,8 +127,8 @@ unsigned long MTRand::Next()
 
 unsigned long MTRand::NextNoAssert()
 {
-    unsigned long y;
-    static unsigned long mag01[2]={0x0, MATRIX_A};
+    uint32_t y;
+    static const uint32_t mag01[2]={0x0, MATRIX_A};
     /* mag01[x] = x * MATRIX_A  for x=0,1 */
 
 	if (mti >= MTRAND_N) { /* generate MTRAND_N words at one time */

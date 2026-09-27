@@ -1,17 +1,6 @@
 #ifndef __SEXYAPPFRAMEWORK_COMMON_H__
 #define __SEXYAPPFRAMEWORK_COMMON_H__
 
-#pragma warning(disable:4786)
-#pragma warning(disable:4503)
-
-#undef _WIN32_WINNT
-#undef WIN32_LEAN_AND_MEAN
-
-#define WIN32_LEAN_AND_MEAN
-#define _WIN32_WINNT 0x0500
-#undef _UNICODE
-#undef UNICODE
-
 #include <string>
 #include <vector>
 #include <set>
@@ -19,23 +8,19 @@
 #include <list>
 #include <algorithm>
 #include <cstdlib>
+#include <cstdint>
+#include <cstdarg>
+#include <cstring>
+#include <cwctype>
+#include <cctype>
+#include <ctime>
+#include <utility>
 
-#define NOMINMAX 1
-#include <windows.h>
-#include <shellapi.h> 
-#include <mmsystem.h>
+#include "platform/PlatformTypes.h"
 #include "misc/ModVal.h"
 
-// fallback if NOMINMAX fails (somehow?)
-#undef min
-#undef max
-
 // Define unreachable()
-#ifdef MSVC
 #define unreachable std::unreachable
-#else
-#define unreachable std::unreachable
-#endif
 
 // Removed wide string support
 typedef std::string			SexyString;
@@ -67,8 +52,10 @@ typedef std::string			SexyString;
 typedef unsigned char uchar;
 typedef unsigned short ushort;
 typedef unsigned int uint;
-typedef unsigned long ulong;
-typedef __int64 int64;
+// The framework was written for a 32-bit target where `unsigned long` is a
+// 32-bit ARGB pixel. Keep that width on LP64 platforms.
+typedef std::uint32_t ulong;
+typedef std::int64_t int64;
 
 typedef std::map<std::string, std::string>		DefinesMap;
 typedef std::map<std::wstring, std::wstring>	WStringWStringMap;
@@ -81,7 +68,6 @@ namespace Sexy
 const ulong SEXY_RAND_MAX = 0x7FFFFFFF;
 
 extern bool			gDebug;
-extern HINSTANCE	gHInstance;
 
 int					Rand();
 int					Rand(int range);
@@ -138,6 +124,8 @@ std::string			GetFullPath(const std::string& theRelPath);
 std::string			GetPathFrom(const std::string& theRelPath, const std::string& theDir);
 bool				AllowAllAccess(const std::string& theFileName);
 std::wstring		UTF8StringToWString(const std::string theString);
+// Converts the game's Windows-style relative paths to the host separator.
+std::string			FixPath(const std::string& thePath);
 
 // Read memory and then move the pointer
 void				SMemR(void*& _Src, void* _Dst, size_t _Size);
@@ -148,19 +136,15 @@ void				SMemWStr(void*& _Dst, const std::string& theString);
 
 inline void			inlineUpper(std::string &theData)
 {
-    //std::transform(theData.begin(), theData.end(), theData.begin(), toupper);
-
 	int aStrLen = (int) theData.length();
 	for (int i = 0; i < aStrLen; i++)
 	{
-		theData[i] = toupper(theData[i]);
+		theData[i] = toupper((unsigned char)theData[i]);
 	}
 }
 
 inline void			inlineUpper(std::wstring &theData)
 {
-    //std::transform(theData.begin(), theData.end(), theData.begin(), toupper);
-
 	int aStrLen = (int) theData.length();
 	for (int i = 0; i < aStrLen; i++)
 	{
@@ -170,12 +154,14 @@ inline void			inlineUpper(std::wstring &theData)
 
 inline void			inlineLower(std::string &theData)
 {
-    std::transform(theData.begin(), theData.end(), theData.begin(), tolower);
+	for (char& c : theData)
+		c = (char)tolower((unsigned char)c);
 }
 
 inline void			inlineLower(std::wstring &theData)
 {
-    std::transform(theData.begin(), theData.end(), theData.begin(), tolower);
+	for (wchar_t& c : theData)
+		c = (wchar_t)towlower(c);
 }
 
 inline void			inlineLTrim(std::string &theData, const std::string& theChars = " \t\r\n")
@@ -200,7 +186,7 @@ inline void			inlineTrim(std::string &theData, const std::string& theChars = " \
 	inlineLTrim(theData, theChars);
 }
 
-struct StringLessNoCase { bool operator()(const std::string &s1, const std::string &s2) const { return _stricmp(s1.c_str(),s2.c_str())<0; } };
+struct StringLessNoCase { bool operator()(const std::string &s1, const std::string &s2) const { return stricmp(s1.c_str(),s2.c_str())<0; } };
 
 }
 

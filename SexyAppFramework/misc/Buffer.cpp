@@ -4,7 +4,7 @@
 #define POLYNOMIAL 0x04c11db7L
 
 static BOOL 	     bCrcTableGenerated = FALSE;
-static unsigned long crc_table[256];
+static std::uint32_t crc_table[256];
 
 using namespace Sexy;
 //using namespace std;
@@ -34,10 +34,10 @@ static void GenerateCRCTable(void)
 	bCrcTableGenerated = TRUE;
 
 	int i, j;
-	unsigned long crc_accum;
+	std::uint32_t crc_accum;
 	for (i = 0;  i < 256;  i++)
 	{
-		crc_accum = ((unsigned long) i << 24);
+		crc_accum = ((std::uint32_t) i << 24);
 		for ( j = 0;  j < 8;  j++ )
 		{
 			if (crc_accum & 0x80000000L)
@@ -52,7 +52,7 @@ static void GenerateCRCTable(void)
 //----------------------------------------------------------------------------
 // Update the CRC on the data block one byte at a time.
 //----------------------------------------------------------------------------
-static unsigned long UpdateCRC(unsigned long crc_accum,
+static std::uint32_t UpdateCRC(std::uint32_t crc_accum,
 						const char *data_blk_ptr,
 						int data_blk_size)
 {
@@ -469,10 +469,12 @@ short Buffer::ReadShort() const
 
 long Buffer::ReadLong() const
 {
-	long aLong = ReadByte();
-	aLong |= ((long) ReadByte()) << 8;
-	aLong |= ((long) ReadByte()) << 16;
-	aLong |= ((long) ReadByte()) << 24;
+	// Assemble as 32 bits so negative values sign-extend on LP64 hosts.
+	std::uint32_t aBits = ReadByte();
+	aBits |= ((std::uint32_t) ReadByte()) << 8;
+	aBits |= ((std::uint32_t) ReadByte()) << 16;
+	aBits |= ((std::uint32_t) ReadByte()) << 24;
+	long aLong = (std::int32_t) aBits;
 
 	return aLong;
 }

@@ -1,319 +1,132 @@
 #include "SysFont.h"
-#include "DDImage.h"
-#include "SexyAppBase.h"
 #include "Graphics.h"
-#include "ImageFont.h"
-#include "MemoryImage.h"
-#include "D3DInterface.h"
-#include "graphics/DDInterface.h"
-#include "widget/WidgetManager.h"
-#include <stdlib.h>
+#include "SexyAppBase.h"
 
 using namespace Sexy;
 
+// Classic 5x7 glyphs for ASCII 0x20-0x7E. Each glyph is five columns; bit 0
+// is the top row and bit 7 a descender row.
+static const unsigned char gFont5x7[95][5] =
+{
+	{0x00,0x00,0x00,0x00,0x00}, {0x00,0x00,0x5F,0x00,0x00}, {0x00,0x07,0x00,0x07,0x00}, {0x14,0x7F,0x14,0x7F,0x14},
+	{0x24,0x2A,0x7F,0x2A,0x12}, {0x23,0x13,0x08,0x64,0x62}, {0x36,0x49,0x56,0x20,0x50}, {0x00,0x08,0x07,0x03,0x00},
+	{0x00,0x1C,0x22,0x41,0x00}, {0x00,0x41,0x22,0x1C,0x00}, {0x2A,0x1C,0x7F,0x1C,0x2A}, {0x08,0x08,0x3E,0x08,0x08},
+	{0x00,0x80,0x70,0x30,0x00}, {0x08,0x08,0x08,0x08,0x08}, {0x00,0x00,0x60,0x60,0x00}, {0x20,0x10,0x08,0x04,0x02},
+	{0x3E,0x51,0x49,0x45,0x3E}, {0x00,0x42,0x7F,0x40,0x00}, {0x72,0x49,0x49,0x49,0x46}, {0x21,0x41,0x49,0x4D,0x33},
+	{0x18,0x14,0x12,0x7F,0x10}, {0x27,0x45,0x45,0x45,0x39}, {0x3C,0x4A,0x49,0x49,0x31}, {0x41,0x21,0x11,0x09,0x07},
+	{0x36,0x49,0x49,0x49,0x36}, {0x46,0x49,0x49,0x29,0x1E}, {0x00,0x00,0x14,0x00,0x00}, {0x00,0x40,0x34,0x00,0x00},
+	{0x00,0x08,0x14,0x22,0x41}, {0x14,0x14,0x14,0x14,0x14}, {0x00,0x41,0x22,0x14,0x08}, {0x02,0x01,0x59,0x09,0x06},
+	{0x3E,0x41,0x5D,0x59,0x4E}, {0x7C,0x12,0x11,0x12,0x7C}, {0x7F,0x49,0x49,0x49,0x36}, {0x3E,0x41,0x41,0x41,0x22},
+	{0x7F,0x41,0x41,0x41,0x3E}, {0x7F,0x49,0x49,0x49,0x41}, {0x7F,0x09,0x09,0x09,0x01}, {0x3E,0x41,0x41,0x51,0x73},
+	{0x7F,0x08,0x08,0x08,0x7F}, {0x00,0x41,0x7F,0x41,0x00}, {0x20,0x40,0x41,0x3F,0x01}, {0x7F,0x08,0x14,0x22,0x41},
+	{0x7F,0x40,0x40,0x40,0x40}, {0x7F,0x02,0x1C,0x02,0x7F}, {0x7F,0x04,0x08,0x10,0x7F}, {0x3E,0x41,0x41,0x41,0x3E},
+	{0x7F,0x09,0x09,0x09,0x06}, {0x3E,0x41,0x51,0x21,0x5E}, {0x7F,0x09,0x19,0x29,0x46}, {0x26,0x49,0x49,0x49,0x32},
+	{0x03,0x01,0x7F,0x01,0x03}, {0x3F,0x40,0x40,0x40,0x3F}, {0x1F,0x20,0x40,0x20,0x1F}, {0x3F,0x40,0x38,0x40,0x3F},
+	{0x63,0x14,0x08,0x14,0x63}, {0x03,0x04,0x78,0x04,0x03}, {0x61,0x59,0x49,0x4D,0x43}, {0x00,0x7F,0x41,0x41,0x41},
+	{0x02,0x04,0x08,0x10,0x20}, {0x00,0x41,0x41,0x41,0x7F}, {0x04,0x02,0x01,0x02,0x04}, {0x40,0x40,0x40,0x40,0x40},
+	{0x00,0x03,0x07,0x08,0x00}, {0x20,0x54,0x54,0x78,0x40}, {0x7F,0x28,0x44,0x44,0x38}, {0x38,0x44,0x44,0x44,0x28},
+	{0x38,0x44,0x44,0x28,0x7F}, {0x38,0x54,0x54,0x54,0x18}, {0x00,0x08,0x7E,0x09,0x02}, {0x18,0xA4,0xA4,0x9C,0x78},
+	{0x7F,0x08,0x04,0x04,0x78}, {0x00,0x44,0x7D,0x40,0x00}, {0x20,0x40,0x40,0x3D,0x00}, {0x7F,0x10,0x28,0x44,0x00},
+	{0x00,0x41,0x7F,0x40,0x00}, {0x7C,0x04,0x78,0x04,0x78}, {0x7C,0x08,0x04,0x04,0x78}, {0x38,0x44,0x44,0x44,0x38},
+	{0xFC,0x18,0x24,0x24,0x18}, {0x18,0x24,0x24,0x18,0xFC}, {0x7C,0x08,0x04,0x04,0x08}, {0x48,0x54,0x54,0x54,0x24},
+	{0x04,0x04,0x3F,0x44,0x24}, {0x3C,0x40,0x40,0x20,0x7C}, {0x1C,0x20,0x40,0x20,0x1C}, {0x3C,0x40,0x30,0x40,0x3C},
+	{0x44,0x28,0x10,0x28,0x44}, {0x4C,0x90,0x90,0x90,0x7C}, {0x44,0x64,0x54,0x4C,0x44}, {0x00,0x08,0x36,0x41,0x00},
+	{0x00,0x00,0x77,0x00,0x00}, {0x00,0x41,0x36,0x08,0x00}, {0x02,0x01,0x02,0x04,0x02}
+};
+
 SysFont::SysFont(const std::string& theFace, int thePointSize, bool bold, bool italics, bool underline)
 {
-	Init(gSexyAppBase,theFace,thePointSize,ANSI_CHARSET,bold,italics,underline,false);
+	(void)theFace; (void)italics; (void)underline;
+	Init(gSexyAppBase, thePointSize, bold);
 }
 
 SysFont::SysFont(SexyAppBase* theApp, const std::string& theFace, int thePointSize, int theScript, bool bold, bool italics, bool underline)
 {
-	Init(theApp,theFace,thePointSize,theScript,bold,italics,underline,true);
+	(void)theFace; (void)theScript; (void)italics; (void)underline;
+	Init(theApp, thePointSize, bold);
 }
 
-void SysFont::Init(SexyAppBase* theApp, const std::string& theFace, int thePointSize, int theScript, bool bold, bool italics, bool underline, bool useDevCaps)
+void SysFont::Init(SexyAppBase* theApp, int thePointSize, bool bold)
 {
 	mApp = theApp;
+	mBold = bold;
 
-	HDC aDC = ::GetDC(mApp->mHWnd);
+	// A point is 96/72 pixels; the glyph cell is 8 pixels tall.
+	int aPixelHeight = thePointSize * 96 / 72;
+	mScale = std::max(1, (aPixelHeight + 4) / 9);
 
-	int aHeight = -MulDiv(thePointSize, useDevCaps?GetDeviceCaps(aDC, LOGPIXELSY):96, 72);
-
-	mHFont = CreateFontA(aHeight, 0, 0, 0, bold ? FW_BOLD : FW_NORMAL, italics, underline,
-			false, theScript, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY,
-			DEFAULT_PITCH | FF_DONTCARE, theFace.c_str());
-	
-	TEXTMETRIC aTextMetric;	
-	HFONT anOldFont = (HFONT) SelectObject(aDC, mHFont);
-	GetTextMetrics(aDC, &aTextMetric);
-	SelectObject(aDC, anOldFont);
-	ReleaseDC(mApp->mHWnd, aDC);
-
-	mHeight = aTextMetric.tmHeight;
-	mAscent = aTextMetric.tmAscent;
+	mHeight = 9 * mScale;
+	mAscent = 7 * mScale;
 
 	mDrawShadow = false;
 	mSimulateBold = false;
 }
 
-SysFont::SysFont(const SysFont& theSysFont)
+SysFont::SysFont(const SysFont& theSysFont) : _Font(theSysFont)
 {
-	LOGFONT aLogFont;
-
-	GetObject(theSysFont.mHFont, sizeof(LOGFONT), &aLogFont);
-	mHFont = CreateFontIndirect(&aLogFont);
 	mApp = theSysFont.mApp;
+	mScale = theSysFont.mScale;
+	mBold = theSysFont.mBold;
 	mHeight = theSysFont.mHeight;
 	mAscent = theSysFont.mAscent;
 
-	mDrawShadow = false;
-	mSimulateBold = false;
+	mDrawShadow = theSysFont.mDrawShadow;
+	mSimulateBold = theSysFont.mSimulateBold;
 }
 
 SysFont::~SysFont()
 {
-	DeleteObject(mHFont);
 }
 
-ImageFont* SysFont::CreateImageFont()
+int SysFont::CharWidth(SexyChar theChar)
 {
-	int i;
-	MemoryImage*			anImage;
-	int anImageCharWidth, anImageXOff, anImageYOff;
-
-	////////////////////////////////////////////////////
-	// Step 1: Create image 
-	anImageCharWidth = CharWidth('W')*2;
-	anImageXOff = anImageCharWidth/4;
-	anImageYOff = mHeight/2;
-	int aWidth = 257*anImageCharWidth;
-	int aHeight = mHeight*2;
-
-	BITMAPINFO aBitmapInfo;
-	memset(&aBitmapInfo,0,sizeof(aBitmapInfo));
-	BITMAPINFOHEADER &aHeader = aBitmapInfo.bmiHeader;
-	aHeader.biSize = sizeof(aHeader);
-	aHeader.biWidth = aWidth;
-	aHeader.biHeight = -aHeight;
-	aHeader.biPlanes = 1;
-	aHeader.biBitCount = 32;
-	aHeader.biCompression = BI_RGB;
-
-	HDC aDC = CreateCompatibleDC(NULL);
-
-	DWORD *aBits = NULL;
-	HBITMAP aBitmap = CreateDIBSection(aDC,&aBitmapInfo,DIB_RGB_COLORS,(void**)&aBits,NULL,0);
-
-	HBITMAP anOldBitmap = (HBITMAP)SelectObject(aDC,aBitmap);
-	HFONT anOldFont = (HFONT)SelectObject(aDC,mHFont);
-
-	HBRUSH anOldBrush = (HBRUSH)SelectObject(aDC,GetStockObject(BLACK_BRUSH));
-	Rectangle(aDC,0,0,aWidth,aHeight);
-
-	SetBkMode(aDC, TRANSPARENT); 	
-	SetTextColor(aDC, RGB(255,255,255));
-				
-	int xpos = anImageXOff;
-	int ypos = anImageYOff;
-	for (i=0; i<256; i++)
-	{
-		char aChar = i;
-		TextOutA(aDC,xpos,ypos,&aChar,1);
-		xpos += anImageCharWidth;
-	}
-	GdiFlush();
-
-
-	SelectObject(aDC,anOldBrush);
-	SelectObject(aDC,anOldBitmap);
-	SelectObject(aDC,anOldFont);
-
-	int aSize = aWidth*aHeight;
-	anImage = new MemoryImage(mApp);
-	anImage->Create(aWidth,aHeight);
-	DWORD *src = aBits;
-	DWORD *dst = anImage->GetBits();
-	for (i=0; i<aSize; i++)
-	{
-		DWORD anAlpha = ((*src++)&0xff)<<24;
-		*dst++ = anAlpha | 0xFFFFFF;
-	}
-	anImage->BitsChanged();
-	DeleteObject(aBitmap);
-
-
-	////////////////////////////////////////////////////
-	// Step 2: Create image font
-
-	ImageFont *aFont = new ImageFont(anImage);
-	FontLayer *aFontLayer = &aFont->mFontData->mFontLayerList.back();
-
-	aFontLayer->mAscent = mAscent;
-	aFontLayer->mHeight = mHeight;
-
-	for (i=0; i<256; i++)
-	{
-		char aChar = i;
-
-		//aFontLayer->mCharData[(uchar) aChar].mImageRect = Rect(aChar*anImageCharWidth,0,anImageCharWidth,anImage->mHeight);
-		//aFontLayer->mCharData[(uchar) aChar].mWidth = CharWidth(aChar);
-		//aFontLayer->mCharData[(uchar) aChar].mOffset = Point(-anImageXOff,-anImageYOff);
-		aFontLayer->GetCharData(aChar)->mImageRect = Rect(aChar*anImageCharWidth,0,anImageCharWidth,anImage->mHeight);
-		aFontLayer->GetCharData(aChar)->mWidth = CharWidth(aChar);
-		aFontLayer->GetCharData(aChar)->mOffset = Point(-anImageXOff,-anImageYOff);
-	}
-
-	aFont->GenerateActiveFontLayers();
-	aFont->mActiveListValid = true;
-
-	return aFont;
+	(void)theChar;
+	return (6 + ((mBold || mSimulateBold) ? 1 : 0)) * mScale;
 }
 
-int	SysFont::StringWidth(const SexyString& theString)
+int SysFont::StringWidth(const SexyString& theString)
 {
-	HDC aDC = ::GetDC(mApp->mHWnd);
-	HFONT anOldFont = (HFONT)::SelectObject(aDC, mHFont);
-	int aWidth = 0;
-
-#ifdef _USE_WIDE_STRING
-	if (CheckFor98Mill())
-	{
-		SIZE aSize = { 0, 0 };
-		GetTextExtentPoint32W(aDC, theString.c_str(), theString.length(), &aSize);
-		aWidth = int(aSize.cx);
-	}
-	else
-#endif
-	{
-		RECT aRect = {0, 0, 0, 0};	
-		DrawTextEx(aDC, (SexyChar*)theString.c_str(), theString.length(), &aRect, DT_CALCRECT | DT_NOPREFIX, NULL);
-		aWidth = aRect.right;
-	}
-
-	::SelectObject(aDC, anOldFont);
-	::ReleaseDC(mApp->mHWnd, aDC);
-
-	return aWidth;
+	return (int)theString.length() * CharWidth(' ');
 }
 
 void SysFont::DrawString(Graphics* g, int theX, int theY, const SexyString& theString, const Color& theColor, const Rect& theClipRect)
 {
-	DDImage* aDDImage = dynamic_cast<DDImage*>(g->mDestImage);
+	(void)theClipRect;
 
-	if (aDDImage != NULL)
+	Color anOrigColor = g->GetColor();
+	bool isBold = mBold || mSimulateBold;
+	int aTop = theY - mAscent;
+
+	for (int aPass = mDrawShadow ? 0 : 1; aPass < 2; aPass++)
 	{
-		LPDIRECTDRAWSURFACE aSurface = aDDImage->GetSurface();
-		if (aSurface != NULL)
+		int anOffset = aPass == 0 ? mScale : 0;
+		g->SetColor(aPass == 0 ? Color(0, 0, 0, theColor.mAlpha) : theColor);
+
+		int aX = theX;
+		for (SexyChar aChar : theString)
 		{
-			HDC aDC;
-
-			if (aDDImage->mLockCount > 0)
-				aDDImage->mSurface->Unlock(NULL);
-
-			if ((g->mDestImage == gSexyAppBase->mWidgetManager->mImage) && (gSexyAppBase->Is3DAccelerated()))
-				gSexyAppBase->mDDInterface->mD3DInterface->Flush();				
-			
-			if (aSurface->GetDC(&aDC) == DD_OK)
-			{				
-				HFONT anOldFont = (HFONT) SelectObject(aDC, mHFont);
-				SetBkMode(aDC, TRANSPARENT); 
-				IntersectClipRect(aDC, theClipRect.mX, theClipRect.mY, theClipRect.mX + theClipRect.mWidth, theClipRect.mY + theClipRect.mHeight);
-
-				if (mDrawShadow)
-				{
-					SetTextColor(aDC, RGB(0,0,0));
-					TextOut(aDC, theX + g->mTransX+1, theY - mAscent + 1 + g->mTransY+1, theString.c_str(), theString.length());
-					if (mSimulateBold)
-						TextOut(aDC, theX + g->mTransX+2, theY - mAscent + 1 + g->mTransY+1, theString.c_str(), theString.length());
-				}
-				SetTextColor(aDC, RGB(theColor.GetRed(), theColor.GetGreen(), theColor.GetBlue()));
-				TextOut(aDC, theX + g->mTransX, theY - mAscent + 1 + g->mTransY, theString.c_str(), theString.length());
-				if (mSimulateBold)
-					TextOut(aDC, theX + g->mTransX + 1, theY - mAscent + 1 + g->mTransY, theString.c_str(), theString.length());
-
-				::SelectObject(aDC, anOldFont);
-				aSurface->ReleaseDC(aDC);
-				aDDImage->DeleteAllNonSurfaceData();				
-			}			
-
-			if (aDDImage->mLockCount > 0)
-				aDDImage->mSurface->Lock(NULL, &aDDImage->mLockedSurfaceDesc, DDLOCK_SURFACEMEMORYPTR | DDLOCK_WAIT, NULL);			
-		}
-	}
-	else if (g->mDestImage != &Graphics::mStaticImage) // DrawString can be called when not drawing onto an image.
-	{
-		HDC aDC = CreateCompatibleDC(NULL);
-		HFONT anOldFont = (HFONT) SelectObject(aDC, mHFont);
-
-		int aWidth = StringWidth(theString);
-		int aHeight = mHeight;
-
-		BITMAPINFOHEADER bih;
-		memset(&bih, 0, sizeof(bih));
-
-		bih.biPlanes = 1;
-		bih.biWidth = aWidth;
-		bih.biHeight = -aHeight;
-		bih.biCompression = BI_RGB;
-		bih.biBitCount = 32;
-		bih.biSize = sizeof(BITMAPINFOHEADER);
-
-		ulong* whiteBits, * blackBits;
-		HBITMAP whiteBitmap = (HBITMAP)CreateDIBSection(aDC, (BITMAPINFO*)&bih, DIB_RGB_COLORS, (void**)&whiteBits, NULL, 0);
-		HBITMAP blackBitmap = (HBITMAP)CreateDIBSection(aDC, (BITMAPINFO*)&bih, DIB_RGB_COLORS, (void**)&blackBits, NULL, 0);
-
-		RECT rc = { 0, 0, aWidth, aHeight };
-
-#define DRAW_BITMAP(bmp, brush) \
-		{																							\
-			HBITMAP oldBmp = (HBITMAP) SelectObject(aDC, bmp);										\
-			::FillRect(aDC, &rc, brush);															\
-			SetBkMode(aDC, TRANSPARENT);															\
-																									\
-			if (mDrawShadow)																		\
-			{																						\
-				SetTextColor(aDC, RGB(0,0,0));														\
-				TextOut(aDC, 1, 1, theString.c_str(), theString.length());							\
-				if (mSimulateBold)																	\
-					TextOut(aDC, 2, 1, theString.c_str(), theString.length());						\
-			}																						\
-			SetTextColor(aDC, RGB(theColor.GetRed(), theColor.GetGreen(), theColor.GetBlue()));		\
-			TextOut(aDC, 0, 0, theString.c_str(), theString.length());								\
-			if (mSimulateBold)																		\
-				TextOut(aDC, 1, 0, theString.c_str(), theString.length());							\
-																									\
-			SelectObject(aDC, oldBmp);																\
-		}
-
-		DRAW_BITMAP(whiteBitmap, (HBRUSH)GetStockObject(WHITE_BRUSH));
-		DRAW_BITMAP(blackBitmap, (HBRUSH)GetStockObject(BLACK_BRUSH));
-
-		SelectObject(aDC, anOldFont);
-
-		MemoryImage aTempImage;
-		aTempImage.Create(aWidth, aHeight);
-
-		int aCount = aHeight*aWidth;
-		ulong* ptr1 = whiteBits, *ptr2 = blackBits;
-		while (aCount > 0)
-		{
-			if (*ptr1 == *ptr2)
-				*ptr1 |= 0xFF000000;
-			else if ((*ptr1 & 0xFFFFFF) != 0xFFFFFF || (*ptr2 & 0xFFFFFF) != 0x000000) // if not the background of either, it's a 'blend'
+			unsigned char c = (unsigned char)aChar;
+			if (c >= 0x20 && c <= 0x7E)
 			{
-				int ba = 255 + (*ptr2 & 0xFF) - (*ptr1 & 0xFF);
-				int ga = 255 + ((*ptr2 >> 8) & 0xFF) - ((*ptr1 >> 8) & 0xFF);
-				int ra = 255 + ((*ptr2 >> 16) & 0xFF) - ((*ptr1 >> 16) & 0xFF);
-				int aBlue = 255 * (*ptr2 & 0xFF) / ba;
-				int aGreen = 255 * ((*ptr2 >> 8) & 0xFF) / ga;
-				int aRed = 255 * ((*ptr2 >> 16) & 0xFF) / ra;
-				int anAlpha = std::min(ra, std::min(ga, ba));
-				*ptr1 = (aBlue) | (aGreen << 8) | (aRed << 16) | (anAlpha << 24);
+				const unsigned char* aGlyph = gFont5x7[c - 0x20];
+				for (int aCol = 0; aCol < 5; aCol++)
+				{
+					for (int aRow = 0; aRow < 8; aRow++)
+					{
+						if (aGlyph[aCol] & (1 << aRow))
+						{
+							int aWidth = isBold ? 2 * mScale : mScale;
+							g->FillRect(aX + aCol * mScale + anOffset, aTop + aRow * mScale + anOffset, aWidth, mScale);
+						}
+					}
+				}
 			}
-			else *ptr1 &= 0;
 
-			ptr1++;
-			ptr2++;
-			--aCount;
+			aX += CharWidth(aChar);
 		}
-
-		memcpy(aTempImage.GetBits(), whiteBits, aWidth*aHeight*sizeof(ulong));
-		g->DrawImage(&aTempImage, theX, theY - mAscent);
-
-		DeleteObject(whiteBitmap);
-		DeleteObject(blackBitmap);
-		DeleteDC(aDC);
 	}
+
+	g->SetColor(anOrigColor);
 }
 
 _Font* SysFont::Duplicate()

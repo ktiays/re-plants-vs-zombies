@@ -3,20 +3,24 @@
 
 #include "Common.h"
 
-class CritSync;
+#include <mutex>
 
 namespace Sexy
 {
 
+// A recursive lock, as Win32 critical sections are.
 class CritSect 
 {
 private:
-	CRITICAL_SECTION mCriticalSection;
+	mutable std::recursive_mutex mMutex;
 	friend class AutoCrit;
 
 public:
-	CritSect(void);
-	~CritSect(void);
+	CritSect(void) {}
+	~CritSect(void) {}
+
+	void Lock() const { mMutex.lock(); }
+	void Unlock() const { mMutex.unlock(); }
 };
 
 }

@@ -1447,10 +1447,8 @@ void CreditScreen::TurnOffTongues(Reanimation* theReanim, int aParentTrack)
 //0x437FC0
 void TodsHackyUnprotectedPerfTimer::SetStartTime(int theTimeMillisecondsAgo)
 {
-    QueryPerformanceCounter(&mStart);
-    LARGE_INTEGER aFreq;
-    QueryPerformanceFrequency(&aFreq);
-    mStart.QuadPart += theTimeMillisecondsAgo * aFreq.QuadPart / -1000;
+    Start();
+    mStart -= (int64)theTimeMillisecondsAgo * 1000000;
 }
 
 //0x438010

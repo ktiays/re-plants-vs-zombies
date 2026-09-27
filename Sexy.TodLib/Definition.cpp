@@ -6,7 +6,9 @@
 #include <stddef.h>
 #include "TodDebug.h"
 #include "Definition.h"
-#include "zlib/zlib.h"
+#include <zlib.h>
+#include <alloca.h>
+#include <filesystem>
 #include "paklib/PakInterface.h"
 #include "misc/PerfTimer.h"
 #include "misc/XMLParser.h"
@@ -438,7 +440,7 @@ inline bool DefReadFromCacheImage(void*& theReadPtr, Image** theImage)
 {
     int aLen;
     SMemR(theReadPtr, &aLen, sizeof(int));  // 读取贴图标签字符数组的长度
-    char* aImageName = (char*)_alloca(aLen + 1);  // 在栈上分配贴图标签字符数组的内存空间
+    char* aImageName = (char*)alloca(aLen + 1);  // 在栈上分配贴图标签字符数组的内存空间
     SMemR(theReadPtr, aImageName, aLen);  // 读取贴图标签字符数组
     aImageName[aLen] = '\0';
 
@@ -451,7 +453,7 @@ inline bool DefReadFromCacheFont(void*& theReadPtr, _Font** theFont)
 {
     int aLen;
     SMemR(theReadPtr, &aLen, sizeof(int));  // 读取字体标签字符数组的长度
-    char* aFontName = (char*)_alloca(aLen + 1);  // 在栈上分配字体标签字符数组的内存空间
+    char* aFontName = (char*)alloca(aLen + 1);  // 在栈上分配字体标签字符数组的内存空间
     SMemR(theReadPtr, aFontName, aLen);  // 读取字体标签字符数组
     aFontName[aLen] = '\0';
     
@@ -566,7 +568,7 @@ void* DefinitionUncompressCompiledBuffer(void* theCompressedBuffer, size_t theCo
     Bytef* aUncompressedBuffer = (Bytef*)DefinitionAlloc(aHeader->mUncompressedSize);
     Bytef* aSrc = (Bytef*)((intptr_t)theCompressedBuffer + sizeof(CompressedDefinitionHeader));  // 实际解压数据从第 3 个四字节开始
     // BuGFIXX!!
-    ulong aUncompressedSizeResult = aHeader->mUncompressedSize;  // 用作出参的未压缩数据实际长度
+    uLongf aUncompressedSizeResult = aHeader->mUncompressedSize;  // 用作出参的未压缩数据实际长度
     int aResult = uncompress(aUncompressedBuffer, &aUncompressedSizeResult, aSrc, theCompressedBufferSize - sizeof(CompressedDefinitionHeader));
     (void)aResult; // Compiler can't work out that this is used in the Debug build
     TOD_ASSERT(aResult == Z_OK);
@@ -658,19 +660,18 @@ bool DefinitionIsCompiled(const SexyString& theXMLFilePath)
     if (IsFileInPakFile(aCompiledFilePath))
         return true;
 
-    _WIN32_FILE_ATTRIBUTE_DATA lpFileData;
-    _FILETIME aCompiledFileTime;
-    bool aSucceed = GetFileAttributesEx(aCompiledFilePath.c_str(), _GET_FILEEX_INFO_LEVELS::GetFileExInfoStandard, &lpFileData);
-    if (aSucceed)
-        aCompiledFileTime = lpFileData.ftLastWriteTime;
-    
-    if (!GetFileAttributesEx(theXMLFilePath.c_str(), _GET_FILEEX_INFO_LEVELS::GetFileExInfoStandard, &lpFileData))
+    std::error_code anError;
+    auto aCompiledTime = std::filesystem::last_write_time(FixPath(aCompiledFilePath), anError);
+    bool aSucceed = !anError;
+
+    auto aSourceTime = std::filesystem::last_write_time(FixPath(theXMLFilePath), anError);
+    if (anError)
     {
         TodTrace(_S("Can't file source file to compile '%s'"), theXMLFilePath.c_str());
         return false;
     }
     else
-        return aSucceed && CompareFileTime(&aCompiledFileTime, &lpFileData.ftLastWriteTime) == 1;
+        return aSucceed && aCompiledTime > aSourceTime;
 }
 
 void DefinitionFillWithDefaults(DefMap* theDefMap, void* theDefinition)
@@ -1284,7 +1285,7 @@ bool DefinitionWriteCompiledFile(const SexyString& theCompiledFilePath, DefMap* 
     std::string aFilePath = GetFileDir(theCompiledFilePath);
     MkDir(aFilePath);
 
-    auto aFileStream = fopen(theCompiledFilePath.c_str(), "wb");
+    auto aFileStream = fopen(FixPath(theCompiledFilePath).c_str(), "wb");
     if (aFileStream) {
         unsigned int aBytesWritten = fwrite(aCompressedDef, 1u, aCompressedSize, aFileStream);
 
@@ -1315,43 +1316,23 @@ bool DefinitionCompileFile(const SexyString theXMLFilePath, const SexyString& th
 //0x4447F0 : (void* def, *defMap, string& xmlFilePath)  //esp -= 0xC
 bool DefinitionCompileAndLoad(const SexyString& theXMLFilePath, DefMap* theDefMap, void* theDefinition)
 {
-#ifdef _DEBUG  // 内测版执行的内容
+    SexyString aCompiledFilePath = DefinitionGetCompiledFilePathFromXMLFilePath(theXMLFilePath);
+
+    // Compiled definitions are raw native structures. The retail caches were
+    // written by a 32-bit build, so only a build with the same pointer size
+    // can use them; everything else parses the source XML.
+    if constexpr (sizeof(void*) == 4)
+    {
+        if (DefinitionReadCompiledFile(aCompiledFilePath, theDefMap, theDefinition))
+            return true;
+    }
 
     TodHesitationTrace(_S("predef"));
-    SexyString aCompiledFilePath = DefinitionGetCompiledFilePathFromXMLFilePath(theXMLFilePath);
-    if (DefinitionIsCompiled(theXMLFilePath) && DefinitionReadCompiledFile(aCompiledFilePath, theDefMap, theDefinition))
-    {
-        TodHesitationTrace(_S("loaded %s"), aCompiledFilePath.c_str());
-        return true;
-    }
-    else
-    {
-        PerfTimer aTimer;
-        aTimer.Start();
-        bool aResult = DefinitionCompileFile(theXMLFilePath, aCompiledFilePath, theDefMap, theDefinition);
-        TodTrace(_S("compile %d ms:'%s'"), (int)aTimer.GetDuration(), aCompiledFilePath.c_str());
-        TodHesitationTrace(_S("compiled %s"), aCompiledFilePath.c_str());
-        return aResult;
-    }
-
-#else  // 原版执行的内容
-
-    SexyString aCompiledFilePath = DefinitionGetCompiledFilePathFromXMLFilePath(theXMLFilePath);
-    if (DefinitionReadCompiledFile(aCompiledFilePath, theDefMap, theDefinition))
-        return true;
-
-#ifdef _WIN64
-    // Retail compiled definitions contain the original 32-bit structure
-    // layout. Parse the source definition instead of treating those native
-    // blobs as portable data in the reconstructed x64 reference.
     if (DefinitionLoadXML(theXMLFilePath, theDefMap, theDefinition))
         return true;
-#endif
 
-    TodErrorMessageBox(StrFormat(_S("missing resource %s"), aCompiledFilePath.c_str()).c_str(), _S("Error"));
+    TodErrorMessageBox(StrFormat(_S("missing resource %s"), theXMLFilePath.c_str()).c_str(), _S("Error"));
     exit(0);
-    
-#endif
 }
 
 //0x4448E0

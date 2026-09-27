@@ -23,8 +23,14 @@ extern void OutputDebug(const SexyChar* fmt ...);
 
 #else
 
-#define DBG_ASSERTE(exp)	{ gInAssert = true; assert(exp); gInAssert = false; }
-#define DBG_ASSERT(exp)		{ gInAssert = true; assert(exp); gInAssert = false; }
+// Reports a failed framework assertion. The shipping game compiled these out,
+// and the reconstructed sources trip some of them in ways the original
+// tolerated, so they are logged (once per site) instead of aborting unless
+// PVZ_STRICT_ASSERTS is set.
+extern void SexyAssertFailed(const char* theExpression, const char* theFile, int theLine);
+
+#define DBG_ASSERTE(exp)	{ if (!(exp)) { gInAssert = true; SexyAssertFailed(#exp, __FILE__, __LINE__); gInAssert = false; } }
+#define DBG_ASSERT(exp)		DBG_ASSERTE(exp)
 
 #endif // NDEBUG
 

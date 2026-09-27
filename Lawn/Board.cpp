@@ -24,7 +24,7 @@
 #include "../Sexy.TodLib/EffectSystem.h"
 #include "../Sexy.TodLib/TodStringFile.h"
 #include "graphics/ImageFont.h"
-#include "sound/BassLoader.h"
+#include "sound/MusicInterface.h"
 #include "sound/SoundManager.h"
 #include "widget/ButtonWidget.h"
 #include "widget/WidgetManager.h"
@@ -7269,15 +7269,9 @@ void Board::DrawDebugText(Graphics* g)
 					}
 				}
 
-				HMUSIC aMusicHandle1 = mApp->mMusic->GetBassMusicHandle(mApp->mMusic->mCurMusicFileMain);
-				HMUSIC aMusicHandle2 = mApp->mMusic->GetBassMusicHandle(mApp->mMusic->mCurMusicFileHihats);
-				HMUSIC aMusicHandle3 = mApp->mMusic->GetBassMusicHandle(mApp->mMusic->mCurMusicFileDrums);
-				float bpm1;
-				float bpm2;
-				float bpm3;
-				gBass->BASS_ChannelGetAttribute(aMusicHandle1, BASS_ATTRIB_MUSIC_BPM, &bpm1);
-				gBass->BASS_ChannelGetAttribute(aMusicHandle2, BASS_ATTRIB_MUSIC_BPM, &bpm2);
-				gBass->BASS_ChannelGetAttribute(aMusicHandle3, BASS_ATTRIB_MUSIC_BPM, &bpm3);
+				float bpm1 = mApp->mMusicInterface->GetModuleTempo(mApp->mMusic->mCurMusicFileMain);
+				float bpm2 = mApp->mMusicInterface->GetModuleTempo(mApp->mMusic->mCurMusicFileHihats);
+				float bpm3 = mApp->mMusicInterface->GetModuleTempo(mApp->mMusic->mCurMusicFileDrums);
 				aText += StrFormat(_S("bpm1 %f bmp2 %f bpm3 %f\n"), bpm1, bpm2, bpm3);
 			}
 			else if (mApp->mMusic->mCurMusicTune == MusicTune::MUSIC_TUNE_NIGHT_MOONGRAINS)

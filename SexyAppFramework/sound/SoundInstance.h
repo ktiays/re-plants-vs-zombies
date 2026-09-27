@@ -1,8 +1,6 @@
 #ifndef __SOUNDINSTANCE_H__
 #define __SOUNDINSTANCE_H__
 
-#define NOMINMAX 1
-#include <windows.h>
 #include "Common.h"
 
 namespace Sexy
@@ -28,6 +26,12 @@ public:
 	virtual bool			IsPlaying() = 0;
 	virtual bool			IsReleased() = 0;
 	virtual double			GetVolume() = 0;
+
+	// Playback position in bytes of 16-bit PCM, as DirectSound reported it.
+	virtual int				GetSoundPosition() { return 0; }
+	virtual void			SetSoundPosition(int thePosition) { (void)thePosition; }
+	// False when the instance has no playable data (e.g. audio is disabled).
+	virtual bool			HasSoundData() { return true; }
 };
 
 }

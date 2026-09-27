@@ -417,3 +417,6 @@ tools/res-bak/
 tools/run/
 tools/read-compiled/target
 *.sublime-workspace
+
+# User-owned retail game data used for local runs
+/gamedata/

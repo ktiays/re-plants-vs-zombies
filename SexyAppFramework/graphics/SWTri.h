@@ -17,7 +17,7 @@ public:
 		float	mY;
 		float	mU;
 		float	mV;
-		long	mDiffuse;
+		int32_t	mDiffuse;
 	};
 
 	struct SWVertex
@@ -39,7 +39,7 @@ public:
 		unsigned int		a, r, g, b;
 	};
 
-	typedef	__int64	signed64;
+	typedef	int64_t	signed64;
 
 public:
 	// For drawing

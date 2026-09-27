@@ -3,7 +3,7 @@
 #include "graphics/Graphics.h"
 #include "graphics/Image.h"
 #include "misc/KeyCodes.h"
-#include "graphics/DDImage.h"
+#include "graphics/DeviceImage.h"
 #include "SexyAppBase.h"
 #include "misc/PerfTimer.h"
 #include "misc/Debug.h"
@@ -190,7 +190,8 @@ void WidgetManager::DoMouseUps(Widget* theWidget, ulong theDownCode)
 		if ((theDownCode & (1 << i)) != 0)
 		{
 			theWidget->mIsDown = false;
-			theWidget->MouseUp(mLastMouseX - theWidget->mX, mLastMouseY - theWidget->mY, aClickCountTable[i]);
+			Point anAbsPos = theWidget->GetAbsPos();
+			theWidget->MouseUp(mLastMouseX - anAbsPos.mX, mLastMouseY - anAbsPos.mY, aClickCountTable[i]);
 		}
 	}
 }
@@ -430,7 +431,7 @@ bool WidgetManager::DrawScreen()
 	Graphics aScrG(mImage);
 	mCurG = &aScrG;
 
-	DDImage* aDDImage = dynamic_cast<DDImage*>(mImage);
+	DeviceImage* aDDImage = dynamic_cast<DeviceImage*>(mImage);
 	bool surfaceLocked = false;
 	if (aDDImage != NULL)
 		surfaceLocked = aDDImage->LockSurface();
@@ -613,7 +614,10 @@ bool WidgetManager::MouseUp(int x, int y, int theClickCount)
 			mLastDownWidget = NULL;
 
 		aLastDownWidget->mIsDown = false;
-		aLastDownWidget->MouseUp(x - aLastDownWidget->mX, y - aLastDownWidget->mY, theClickCount);
+		// Like MouseDown and MouseDrag, pass widget-local coordinates; mX/mY
+		// are relative to the parent, which is wrong for nested widgets.
+		Point anAbsPos = aLastDownWidget->GetAbsPos();
+		aLastDownWidget->MouseUp(x - anAbsPos.mX, y - anAbsPos.mY, theClickCount);
 	}	
 	else
 		mDownButtons &= ~aMask;		

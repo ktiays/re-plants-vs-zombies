@@ -1,11 +1,10 @@
 #include "SexyApp.h"
 
 //#include "..\Crypt\RegKey.h"
-#include "misc/SEHCatcher.h"
 //#include "InternetManager.h"
 #include <time.h>
 #include <fstream>
-#include <direct.h>
+#include <filesystem>
 //#include "BetaSupport.h"
 
 using namespace Sexy;
@@ -114,50 +113,10 @@ void SexyApp::ReadFromRegistry()
 {
 	SexyAppBase::ReadFromRegistry();
 
-	if (!mPlayingDemoBuffer)
-	{
-		mTimesPlayed = 0;
-		mTimesExecuted = 0;
-
-		char aFileName[256];
-		GetWindowsDirectory(aFileName, 256);
-		if (aFileName[strlen(aFileName)-1] != '\\')
-			strcat(aFileName, "\\");
-		strcat(aFileName, "popcinfo.dat");
-
-		FILE* fp = fopen(aFileName, "rb");
-		if (fp != NULL)
-		{
-			for (;;)
-			{
-				ushort aLen;
-				if (fread(&aLen, 1, sizeof(short), fp) == 0)
-					break;
-
-				if (aLen < 256)
-				{
-					char aProdName[256];
-					aProdName[aLen] = '\0';
-					fread(aProdName, aLen, sizeof(char), fp);
-
-					if (strcmp(aProdName, mProdName.c_str()) == 0)
-					{
-						short aShort;
-						fread(&aShort, 1, sizeof(short), fp);
-						mTimesPlayed = aShort;
-
-						fread(&aShort, 1, sizeof(short), fp);
-						mTimesExecuted = aShort;
-
-						break;
-					}
-				}
-
-				fseek(fp, sizeof(int), SEEK_CUR);
-			}
-			fclose(fp);
-		}
-	}
+	// Play counts lived in a shared file in the Windows directory; keep them
+	// in the settings store instead.
+	mTimesPlayed = 0;
+	mTimesExecuted = 0;
 
 	RegistryReadString("ReferId", &mReferId);
 	mReferId = GetString("ReferId", mReferId);
@@ -228,58 +187,6 @@ void SexyApp::WriteToRegistry()
 {
 	SexyAppBase::WriteToRegistry();
 
-	if (!mPlayingDemoBuffer)
-	{
-		char aFileName[256];
-		GetWindowsDirectory(aFileName, 256);
-		if (aFileName[strlen(aFileName)-1] != '\\')
-			strcat(aFileName, "\\");
-		strcat(aFileName, "popcinfo.dat");
-
-		FILE* fp = fopen(aFileName, "r+b");
-		if (fp != NULL)
-		{
-			for (;;)
-			{
-				ushort aLen;
-				if (fread(&aLen, 1, sizeof(short), fp) == 0)
-					break;
-
-				if (aLen < 256)
-				{
-					char aProdName[256];
-					aProdName[aLen] = '\0';
-					fread(aProdName, aLen, sizeof(char), fp);
-
-					if (strcmp(aProdName, mProdName.c_str()) == 0)
-					{
-						fseek(fp, -(2 + aLen), SEEK_CUR);
-						break;
-					}
-				}
-
-				fseek(fp, sizeof(int), SEEK_CUR);
-			}
-		}
-		else
-			fp = fopen(aFileName, "wb");
-			
-		if (fp != NULL)
-		{
-			ushort aLen = mProdName.length();
-			fwrite(&aLen, 1, sizeof(short), fp);
-			fwrite(mProdName.c_str(), aLen, sizeof(char), fp);
-
-			short aShort = mTimesPlayed;
-			fwrite(&aShort, 1, sizeof(short), fp);
-
-			aShort = mTimesExecuted;
-			fwrite(&aShort, 1, sizeof(short), fp);
-
-			fclose(fp);
-		}
-	}
-
 	RegistryWriteInteger("LastVerCheckQueryTime", mLastVerCheckQueryTime);
 	RegistryWriteInteger("TimesPlayed", mTimesPlayed);
 	RegistryWriteInteger("TimesExecuted", mTimesExecuted);
@@ -304,21 +211,15 @@ bool SexyApp::OpenHTMLTemplate(const std::string& theTemplateFile, const Defines
 	if (!anInStream.is_open())
 		return false;
 
-	WIN32_FIND_DATA aFindData;
-	HANDLE aHandle = FindFirstFile("temp\\tpl*.html", &aFindData);
-	if (aHandle != NULL)
+	std::error_code anError;
+	for (const auto& anEntry : std::filesystem::directory_iterator("temp", anError))
 	{
-		do
-		{
-			std::string aFilePath = std::string("temp\\") + aFindData.cFileName;
-			DeleteFile(aFilePath.c_str());
-		}
-		while (FindNextFile(aHandle, &aFindData));
-		
-		FindClose(aHandle);
+		std::string aName = anEntry.path().filename().string();
+		if (aName.compare(0, 3, "tpl") == 0 && aName.size() > 5 && aName.substr(aName.size() - 5) == ".html")
+			std::filesystem::remove(anEntry.path(), anError);
 	}
 
-	mkdir("temp");
+	MkDir("temp");
 
 	std::string anOutFilename = StrFormat("temp\\tpl%04d.html", rand()%10000);
 
@@ -443,7 +344,7 @@ bool SexyApp::CheckSignature(const Buffer& theBuffer, const std::string& theFile
 
 	char aSigStr[25];
 
-	FILE* aFP = fopen((theFileName + ".sig").c_str(), "rb");
+	FILE* aFP = fopen(FixPath(theFileName + ".sig").c_str(), "rb");
 	if (aFP == NULL)
 		return false;
 
@@ -522,7 +423,7 @@ void SexyApp::HandleCmdLineParam(const std::string& theParamName, const std::str
 			"Build Num: " + StrFormat("%d", mBuildNum) + "\r\n" +
 			"Build Date: " + mBuildDate;
 
-		MessageBox(NULL, aVersionString.c_str(), "Version Info", MB_ICONINFORMATION | MB_OK);
+		MsgBox(aVersionString, "Version Info", MB_ICONINFORMATION | MB_OK);
 		DoExit(0);
 	}
 	else
@@ -597,25 +498,6 @@ void SexyApp::InitPropertiesHook()
 
 void SexyApp::Init()
 {
-	SEHCatcher::mCrashMessage = 
-		L"An unexpected error has occured!  Pressing 'Send Report' "
-		"will send us helpful debugging information that may help "
-		"us resolve this issue in the future.\r\n\r\n"
-		"You can also contact us directly at feedback@popcap.com.";
-
-	SEHCatcher::mSubmitMessage = 
-		L"Please help us out by providing as much information as "
-		"you can about this crash. Is this the first time it happened? "
-		"Have you used other PopCap Deluxe games successfully before? "
-		"Have you upgraded your drivers or any software recently that "
-		"may be interfering with this program?";
-
-	SEHCatcher::mSubmitErrorMessage = 
-		L"Failed to connect to PopCap servers.  Please check your Internet connection.\n"
-		"If you are on a dial-up connection, you may have to manually connect to your ISP.";
-
-	SEHCatcher::mSubmitHost = "www.popcap.com";
-
 	OutputDebugString(StrFormat("Product: %s\r\n", mProdName.c_str()).c_str());	
 	OutputDebugString(StrFormat("BuildNum: %d\r\n", mBuildNum).c_str());
 	OutputDebugString(StrFormat("BuildDate: %s\r\n", mBuildDate.c_str()).c_str());	

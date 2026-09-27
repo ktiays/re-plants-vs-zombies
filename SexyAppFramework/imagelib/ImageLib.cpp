@@ -1,18 +1,16 @@
 #define XMD_H
 
-#define NOMINMAX 1
-#include <windows.h>
 #include "ImageLib.h"
-#include "png/png.h"
+#include <png.h>
 #include <math.h>
-#include <tchar.h>
+#include <cstdio>
 #include "paklib/PakInterface.h"
 #include "Common.h"
 
 extern "C"
 {
-#include "jpeg/jpeglib.h"
-#include "jpeg/jerror.h"
+#include <jpeglib.h>
+#include <jerror.h>
 }
 
 using namespace ImageLib;
@@ -39,7 +37,7 @@ int	Image::GetHeight()
 	return mHeight;
 }
 
-unsigned long* Image::GetBits()
+uint32_t* Image::GetBits()
 {
 	return mBits;
 }
@@ -125,7 +123,7 @@ Image* GetPNGImage(const std::string& theFileName)
 
 //	int aNumBytes = png_get_rowbytes(png_ptr, info_ptr) * height / 4;
 	png_bytep* row_pointers = new png_bytep[height]; // @Patoke fix: allocate dynamically, we cannot do inline dynamic C-style stack allocations in modern C++
-	unsigned long* aBits = new unsigned long[width * height];
+	uint32_t* aBits = new uint32_t[width * height];
 
 	for (uint i = 0; i < height; i++) {
 		row_pointers[i] = (png_bytep)(aBits + i * width);
@@ -135,7 +133,7 @@ Image* GetPNGImage(const std::string& theFileName)
 
 	delete[] row_pointers;
     /*
-	unsigned long* anAddr = aBits;
+	uint32_t* anAddr = aBits;
 	for (unsigned int i = 0; i < height; i++)
 	{
 		png_read_rows(png_ptr, (png_bytepp) &anAddr, NULL, 1);
@@ -212,7 +210,7 @@ Image* GetTGAImage(const std::string& theFileName)
 
 	anImage->mWidth = anImageWidth;
 	anImage->mHeight = anImageHeight;
-	anImage->mBits = new unsigned long[anImageWidth*anImageHeight];
+	anImage->mBits = new uint32_t[anImageWidth*anImageHeight];
 
 	p_fread(anImage->mBits, 4, anImage->mWidth*anImage->mHeight, aTGAFile);
 
@@ -425,7 +423,7 @@ Image* GetGIFImage(const std::string& theFileName)
 		p_fread(&flag, sizeof(char), 1, fp);  // 读取帧标志的压缩字节
 
 		colors = !BitSet(flag, 0x80) ? global_colors : 1 << ((flag & 0x07) + 1);  // 判断使用全局颜色列表或使用局部颜色列表，并取得列表大小
-		unsigned long* colortable = new unsigned long[colors];  // 申请颜色列表
+		uint32_t* colortable = new uint32_t[colors];  // 申请颜色列表
 
 		interlaced = BitSet(flag, 0x40);  // 当前帧图像数据存储方式，为 1 表示交织顺序存储，0 表示顺序存储
 
@@ -592,7 +590,7 @@ Image* GetGIFImage(const std::string& theFileName)
 		pass = 0;
 		top_stack = pixel_stack;
 
-		unsigned long* aBits = new unsigned long[width * height];
+		uint32_t* aBits = new uint32_t[width * height];
 
 		unsigned char* c = NULL;
 
@@ -603,7 +601,7 @@ Image* GetGIFImage(const std::string& theFileName)
 			//break;
 			//indexes=GetIndexes(image);
 
-			unsigned long* q = aBits + offset * width;
+			uint32_t* q = aBits + offset * width;
 
 
 
@@ -814,7 +812,7 @@ bool ImageLib::WriteJPEGImage(const std::string& theFileName, Image* theImage)
 {
 	FILE *fp;
 
-	if ((fp = fopen(theFileName.c_str(), "wb")) == NULL)
+	if ((fp = fopen(Sexy::FixPath(theFileName).c_str(), "wb")) == NULL)
 		return false;
 
 	struct jpeg_compress_struct cinfo;
@@ -851,7 +849,7 @@ bool ImageLib::WriteJPEGImage(const std::string& theFileName, Image* theImage)
 
 	unsigned char* aTempBuffer = new unsigned char[row_stride];
 
-	unsigned long* aSrcPtr = theImage->mBits;
+	uint32_t* aSrcPtr = theImage->mBits;
 
 	for (int aRow = 0; aRow < theImage->mHeight; aRow++)
 	{
@@ -859,7 +857,7 @@ bool ImageLib::WriteJPEGImage(const std::string& theFileName, Image* theImage)
 
 		for (int aCol = 0; aCol < theImage->mWidth; aCol++)
 		{
-			unsigned long src = *(aSrcPtr++);
+			uint32_t src = *(aSrcPtr++);
 
 			*aDest++ = (src >> 16) & 0xFF;
 			*aDest++ = (src >>  8) & 0xFF;
@@ -886,7 +884,7 @@ bool ImageLib::WritePNGImage(const std::string& theFileName, Image* theImage)
 
 	FILE *fp;
 
-	if ((fp = fopen(theFileName.c_str(), "wb")) == NULL)
+	if ((fp = fopen(Sexy::FixPath(theFileName).c_str(), "wb")) == NULL)
 		return false;
 
 	png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING,
@@ -963,7 +961,7 @@ bool ImageLib::WritePNGImage(const std::string& theFileName, Image* theImage)
 
 bool ImageLib::WriteTGAImage(const std::string& theFileName, Image* theImage)
 {
-	FILE* aTGAFile = fopen(theFileName.c_str(), "wb");
+	FILE* aTGAFile = fopen(Sexy::FixPath(theFileName).c_str(), "wb");
 	if (aTGAFile == NULL)
 		return false;
 
@@ -1012,34 +1010,38 @@ bool ImageLib::WriteTGAImage(const std::string& theFileName, Image* theImage)
 
 bool ImageLib::WriteBMPImage(const std::string& theFileName, Image* theImage)
 {
-	FILE* aFile = fopen(theFileName.c_str(), "wb");
+	FILE* aFile = fopen(Sexy::FixPath(theFileName).c_str(), "wb");
 	if (aFile == NULL)
 		return false;
 
-	BITMAPFILEHEADER aFileHeader;
-	BITMAPINFOHEADER aHeader;
+	auto Write16 = [aFile](uint16_t theValue) { uint8_t b[2] = { (uint8_t)theValue, (uint8_t)(theValue >> 8) }; fwrite(b, 1, 2, aFile); };
+	auto Write32 = [aFile](uint32_t theValue) { uint8_t b[4] = { (uint8_t)theValue, (uint8_t)(theValue >> 8), (uint8_t)(theValue >> 16), (uint8_t)(theValue >> 24) }; fwrite(b, 1, 4, aFile); };
 
-	memset(&aFileHeader,0,sizeof(aFileHeader));
-	memset(&aHeader,0,sizeof(aHeader));
+	const uint32_t aFileHeaderSize = 14;
+	const uint32_t anInfoHeaderSize = 40;
+	uint32_t aNumBytes = theImage->mWidth*theImage->mHeight*4;
 
-	int aNumBytes = theImage->mWidth*theImage->mHeight*4;
+	// BITMAPFILEHEADER
+	Write16(('M'<<8) | 'B');
+	Write32(aFileHeaderSize + anInfoHeaderSize + aNumBytes);
+	Write16(0);
+	Write16(0);
+	Write32(aFileHeaderSize + anInfoHeaderSize);
 
-	aFileHeader.bfType = ('M'<<8) | 'B';
-	aFileHeader.bfSize = sizeof(aFileHeader) + sizeof(aHeader) + aNumBytes;
-	aFileHeader.bfOffBits = sizeof(aHeader); 
+	// BITMAPINFOHEADER
+	Write32(anInfoHeaderSize);
+	Write32((uint32_t)theImage->mWidth);
+	Write32((uint32_t)theImage->mHeight);
+	Write16(1);
+	Write16(32);
+	Write32(0); // BI_RGB
+	Write32(aNumBytes);
+	Write32(0);
+	Write32(0);
+	Write32(0);
+	Write32(0);
 
-	aHeader.biSize = sizeof(aHeader);
-	aHeader.biWidth = theImage->mWidth;
-	aHeader.biHeight = theImage->mHeight;
-	aHeader.biPlanes = 1;
-	aHeader.biBitCount = 32;
-	aHeader.biCompression = BI_RGB;
-
-	fwrite(&aFileHeader,sizeof(aFileHeader),1,aFile);
-	fwrite(&aHeader,sizeof(aHeader),1,aFile);
-	DWORD *aRow = theImage->mBits + (theImage->mHeight-1)*theImage->mWidth;
-	int aRowSize = theImage->mWidth*4;
-	(void)aRowSize; // Unused
+	uint32_t *aRow = theImage->mBits + (theImage->mHeight-1)*theImage->mWidth;
 	for (int i=0; i<theImage->mHeight; i++, aRow-=theImage->mWidth)
 		fwrite(aRow,4,theImage->mWidth,aFile);
 
@@ -1177,8 +1179,8 @@ Image* GetJPEGImage(const std::string& theFileName)
 	unsigned char** buffer = (*cinfo.mem->alloc_sarray)
 		((j_common_ptr) &cinfo, JPOOL_IMAGE, row_stride, 1);
 
-	unsigned long* aBits = new unsigned long[cinfo.output_width*cinfo.output_height];
-	unsigned long* q = aBits;
+	uint32_t* aBits = new uint32_t[cinfo.output_width*cinfo.output_height];
+	uint32_t* q = aBits;
 
 	if (cinfo.output_components==1)
 	{
@@ -1293,8 +1295,8 @@ Image* ImageLib::GetImage(const std::string& theFilename, bool lookForAlphaImage
 			if ((anImage->mWidth == anAlphaImage->mWidth) &&
 				(anImage->mHeight == anAlphaImage->mHeight))
 			{
-				unsigned long* aBits1 = anImage->mBits;
-				unsigned long* aBits2 = anAlphaImage->mBits;
+				uint32_t* aBits1 = anImage->mBits;
+				uint32_t* aBits2 = anAlphaImage->mBits;
 				int aSize = anImage->mWidth*anImage->mHeight;
 
 				for (int i = 0; i < aSize; i++)
@@ -1311,7 +1313,7 @@ Image* ImageLib::GetImage(const std::string& theFilename, bool lookForAlphaImage
 		{
 			anImage = anAlphaImage;
 
-			unsigned long* aBits1 = anImage->mBits;
+			uint32_t* aBits1 = anImage->mBits;
 
 			int aSize = anImage->mWidth*anImage->mHeight;
 			for (int i = 0; i < aSize; i++)
@@ -1325,7 +1327,7 @@ Image* ImageLib::GetImage(const std::string& theFilename, bool lookForAlphaImage
 			const int aColor = gAlphaComposeColor;
 			anImage = anAlphaImage;
 
-			unsigned long* aBits1 = anImage->mBits;
+			uint32_t* aBits1 = anImage->mBits;
 
 			int aSize = anImage->mWidth*anImage->mHeight;
 			for (int i = 0; i < aSize; i++)

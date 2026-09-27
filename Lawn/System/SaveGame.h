@@ -9,7 +9,7 @@
 
 class Board;
 class Trail;
-enum GameMode;
+#include "../../ConstEnums.h"
 class Reanimation;
 class TodParticleSystem;
 class TodParticleEmitter;

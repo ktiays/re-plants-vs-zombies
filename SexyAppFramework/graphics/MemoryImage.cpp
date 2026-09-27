@@ -1,7 +1,7 @@
 #include "MemoryImage.h"
 
-#include "D3DInterface.h"
-#include "DDInterface.h"
+#include "HardwareRenderer.h"
+#include "DisplayInterface.h"
 #include "SexyAppBase.h"
 #include "Graphics.h"
 #include "NativeDisplay.h"
@@ -54,7 +54,7 @@ MemoryImage::MemoryImage(const MemoryImage& theMemoryImage) :
 
 	if ((theMemoryImage.mBits == NULL) && (theMemoryImage.mColorTable == NULL))
 	{
-		// Must be a DDImage with only a DDSurface
+		// Must be a DeviceImage with only a DDSurface
 		aNonConstMemoryImage->GetBits();
 		deleteBits = true;
 	}
@@ -1126,7 +1126,7 @@ void MemoryImage::PurgeBits()
 		if ((mBits == NULL) && (mColorIndices == NULL))
 			return;
 		
-		GetNativeAlphaData(gSexyAppBase->mDDInterface);		
+		GetNativeAlphaData(gSexyAppBase->mDisplay);		
 	}		
 	
 	delete [] mBits;
@@ -1256,7 +1256,7 @@ ulong* MemoryImage::GetBits()
 		}
 		else if (mNativeAlphaData != NULL)
 		{
-			NativeDisplay* aDisplay = gSexyAppBase->mDDInterface;
+			NativeDisplay* aDisplay = gSexyAppBase->mDisplay;
 
 			const int rMask = aDisplay->mRedMask;
 			const int gMask = aDisplay->mGreenMask;
@@ -1283,9 +1283,9 @@ ulong* MemoryImage::GetBits()
 				*(aDestPtr++) = (r << 16) | (g << 8) | (b) | (anAlpha << 24);
 			}
 		}
-		else if ((mD3DData == NULL) || (!mApp->mDDInterface->mD3DInterface->RecoverBits(this)))
+		else if ((mD3DData == NULL) || (!mApp->mDisplay->mRenderer->RecoverBits(this)))
 		{
-			ZeroMemory(mBits, aSize*sizeof(ulong));
+			memset(mBits, 0, aSize*sizeof(ulong));
 		}
 	}	
 
@@ -1772,10 +1772,10 @@ void MemoryImage::BltMatrixHelper(Image* theImage, float x, float y, const SexyM
 
 	SWHelper::XYZStruct aVerts[4] =
 	{
-		{ -w2,	-h2,	u0, v0, static_cast<long int>(0xFFFFFFFF) },
-		{ w2,	-h2,	u1,	v0,	static_cast<long int>(0xFFFFFFFF) },
-		{ -w2,	h2,		u0,	v1,	static_cast<long int>(0xFFFFFFFF) },
-		{ w2,	h2,		u1,	v1,	static_cast<long int>(0xFFFFFFFF) }
+		{ -w2,	-h2,	u0, v0, static_cast<int32_t>(0xFFFFFFFF) },
+		{ w2,	-h2,	u1,	v0,	static_cast<int32_t>(0xFFFFFFFF) },
+		{ -w2,	h2,		u0,	v1,	static_cast<int32_t>(0xFFFFFFFF) },
+		{ w2,	h2,		u1,	v1,	static_cast<int32_t>(0xFFFFFFFF) }
 	};
 
 	for (int i=0; i<4; i++)

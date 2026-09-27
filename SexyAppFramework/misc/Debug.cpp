@@ -245,3 +245,27 @@ void OutputDebug(const SexyChar* fmt ...)
 	OutputDebugStringA(result.c_str());
 }
 
+
+
+#ifndef NDEBUG
+#include <cstdio>
+#include <cstdlib>
+#include <mutex>
+#include <set>
+
+void SexyAssertFailed(const char* theExpression, const char* theFile, int theLine)
+{
+	static std::mutex aMutex;
+	static std::set<std::pair<const char*, int>> aReported;
+
+	{
+		std::lock_guard<std::mutex> aLock(aMutex);
+		if (!aReported.insert(std::make_pair(theFile, theLine)).second)
+			return;
+	}
+
+	fprintf(stderr, "Assertion failed: %s (%s:%d)\n", theExpression, theFile, theLine);
+	if (getenv("PVZ_STRICT_ASSERTS") != nullptr)
+		abort();
+}
+#endif

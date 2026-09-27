@@ -22,7 +22,7 @@ public:
 	ulong*					mBits;
 	int						mBitsChangedCount;
 	void*					mD3DData;
-	DWORD					mD3DFlags;	// see D3DInterface.h for possible values
+	DWORD					mD3DFlags;	// see HardwareRenderer.h for possible values
 
 	ulong*					mColorTable;	
 	uchar*					mColorIndices;

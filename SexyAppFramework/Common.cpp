@@ -1,16 +1,15 @@
 #include "Common.h"
 #include "misc/MTRand.h"
 #include "misc/Debug.h"
-#include <direct.h>
-#include <io.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <errno.h>
-#include <aclapi.h>
+#include <cwchar>
+#include <filesystem>
+#include <system_error>
 
 #include "misc/PerfTimer.h"
 
-HINSTANCE Sexy::gHInstance;
 bool Sexy::gDebug = false;
 static Sexy::MTRand gMTRand;
 namespace Sexy
@@ -40,54 +39,13 @@ void Sexy::SRand(ulong theSeed)
 
 bool Sexy::CheckFor98Mill()
 {
-	static bool needOsCheck = true;
-	static bool is98Mill = false;
-
-	if (needOsCheck)
-	{
-		// bool invalid = false; // unused
-		OSVERSIONINFOEXA osvi;
-		ZeroMemory(&osvi, sizeof(OSVERSIONINFOEXA));
-
-		osvi.dwOSVersionInfoSize = sizeof(OSVERSIONINFOEXA);
-		if( GetVersionExA((LPOSVERSIONINFOA)&osvi) == 0)
-		{
-			osvi.dwOSVersionInfoSize = sizeof (OSVERSIONINFOA);
-			if ( GetVersionExA((LPOSVERSIONINFOA)&osvi) == 0)
-				return false;
-		}
-
-		needOsCheck = false;
-		is98Mill = osvi.dwPlatformId == VER_PLATFORM_WIN32_WINDOWS; // let's check Win95, 98, *AND* ME.
-	}
-
-	return is98Mill;
+	return false;
 }
 
 bool Sexy::CheckForVista()
 {
-	static bool needOsCheck = true;
-	static bool isVista = false;
-
-	if (needOsCheck)
-	{
-		// bool invalid = false; // unused
-		OSVERSIONINFOEXA osvi;
-		ZeroMemory(&osvi, sizeof(OSVERSIONINFOEXA));
-
-		osvi.dwOSVersionInfoSize = sizeof(OSVERSIONINFOEXA);
-		if( GetVersionExA((LPOSVERSIONINFOA)&osvi) == 0)
-		{
-			osvi.dwOSVersionInfoSize = sizeof (OSVERSIONINFOA);
-			if ( GetVersionExA((LPOSVERSIONINFOA)&osvi) == 0)
-				return false;
-		}
-
-		needOsCheck = false;
-		isVista = osvi.dwMajorVersion >= 6;
-	}
-
-	return isVista;
+	// Modern systems all use a per-user data directory.
+	return true;
 }
 
 std::string Sexy::GetAppDataFolder()
@@ -103,7 +61,7 @@ void Sexy::SetAppDataFolder(const std::string& thePath)
 		if (!aPath.empty())
 		{
 			if (aPath[aPath.length()-1] != '\\' && aPath[aPath.length()-1] != '/')
-				aPath += '\\';
+				aPath += '/';
 		}
 
 		Sexy::gAppDataFolder = aPath;
@@ -194,24 +152,13 @@ std::wstring Sexy::StringToWString(const std::string &theString)
 
 std::string Sexy::WStringToString(const std::wstring &theString)
 {
-	size_t aRequiredLength = wcstombs( NULL, theString.c_str(), 0 );
-	if (aRequiredLength < 16384)
-	{
-		char aBuffer[16384];
-		wcstombs( aBuffer, theString.c_str(), 16384 );
-		return std::string(aBuffer);
-	}
-	else
-	{
-		DBG_ASSERTE(aRequiredLength != (size_t)-1);
-		if (aRequiredLength == (size_t)-1) return "";
-
-		char* aBuffer = new char[aRequiredLength+1];
-		wcstombs( aBuffer, theString.c_str(), aRequiredLength+1 );
-		std::string aStr = aBuffer;
-		delete[] aBuffer;
-		return aStr;
-	}
+	// Matches the Windows "C" locale conversion the game was built against:
+	// code points 0-255 map to the same byte, anything else is unrepresentable.
+	std::string aString;
+	aString.reserve(theString.length());
+	for (wchar_t aChar : theString)
+		aString += ((unsigned long)aChar < 256) ? (char)(unsigned char)aChar : '?';
+	return aString;
 }
 
 SexyString Sexy::StringToSexyString(const std::string& theString)
@@ -519,8 +466,8 @@ SexyString Sexy::CommaSeperate(int theValue)
 
 std::string Sexy::GetCurDir()
 {
-	char aDir[256];
-	return _getcwd(aDir, sizeof(aDir));
+	std::error_code anError;
+	return std::filesystem::current_path(anError).string();
 }
 
 std::string Sexy::GetFullPath(const std::string& theRelPath)
@@ -535,6 +482,11 @@ std::string Sexy::GetPathFrom(const std::string& theRelPath, const std::string& 
 
 	if ((theRelPath.length() >= 2) && (theRelPath[1] == ':'))
 		return theRelPath;
+
+#ifndef _WIN32
+	if (!theRelPath.empty() && theRelPath[0] == '/')
+		return theRelPath;
+#endif
 
 	char aSlashChar = '/';
 
@@ -628,169 +580,34 @@ std::string Sexy::GetPathFrom(const std::string& theRelPath, const std::string& 
 
 bool Sexy::AllowAllAccess(const std::string& theFileName)
 {
-	HMODULE aLib = LoadLibraryA("advapi32.dll");
-	if (aLib == NULL)
-		return false;
-
-	BOOL (WINAPI *fnSetFileSecurity)(LPCTSTR lpFileName, SECURITY_INFORMATION SecurityInformation, PSECURITY_DESCRIPTOR pSecurityDescriptor);
-	BOOL (WINAPI *fnSetSecurityDescriptorDacl)(PSECURITY_DESCRIPTOR pSecurityDescriptor, BOOL bDaclPresent, PACL pDacl, BOOL bDaclDefaulted);
-	BOOL (WINAPI *fnInitializeSecurityDescriptor)(PSECURITY_DESCRIPTOR pSecurityDescriptor, DWORD dwRevision);
-	BOOL (WINAPI *fnAllocateAndInitializeSid)(
-	  PSID_IDENTIFIER_AUTHORITY pIdentifierAuthority,
-	  BYTE nSubAuthorityCount,
-	  DWORD dwSubAuthority0,
-	  DWORD dwSubAuthority1,
-	  DWORD dwSubAuthority2,
-	  DWORD dwSubAuthority3,
-	  DWORD dwSubAuthority4,
-	  DWORD dwSubAuthority5,
-	  DWORD dwSubAuthority6,
-	  DWORD dwSubAuthority7,
-	  PSID* pSid
-	);
-	DWORD (WINAPI *fnSetEntriesInAcl)(ULONG cCountOfExplicitEntries, PEXPLICIT_ACCESS pListOfExplicitEntries, PACL OldAcl, PACL* NewAcl);
-	PVOID (WINAPI *fnFreeSid)(PSID pSid);
-
-	*(void**)&fnSetFileSecurity = (void*)GetProcAddress(aLib, "SetFileSecurityA");
-	*(void**)&fnSetSecurityDescriptorDacl = (void*)GetProcAddress(aLib, "SetSecurityDescriptorDacl");
-	*(void**)&fnInitializeSecurityDescriptor = (void*)GetProcAddress(aLib, "InitializeSecurityDescriptor");
-	*(void**)&fnAllocateAndInitializeSid = (void*)GetProcAddress(aLib, "AllocateAndInitializeSid");
-	*(void**)&fnSetEntriesInAcl = (void*)GetProcAddress(aLib, "SetEntriesInAclA");
-	*(void**)&fnFreeSid = (void*) GetProcAddress(aLib, "FreeSid");
-
-	if (!(fnSetFileSecurity && fnSetSecurityDescriptorDacl && fnInitializeSecurityDescriptor && fnAllocateAndInitializeSid && fnSetEntriesInAcl && fnFreeSid))
-	{
-		FreeLibrary(aLib);
-		return false;
-	}
-
-
-	PSID pEveryoneSID = NULL;
-	SID_IDENTIFIER_AUTHORITY SIDAuthWorld = SECURITY_WORLD_SID_AUTHORITY;
-	bool result = false;
-
-    // Create a well-known SID for the Everyone group.
-    if (fnAllocateAndInitializeSid(&SIDAuthWorld, 1,
-                     SECURITY_WORLD_RID,
-                     0, 0, 0, 0, 0, 0, 0,
-                     &pEveryoneSID))
-    {
-		EXPLICIT_ACCESS ea;
-
-		// Initialize an EXPLICIT_ACCESS structure for an ACE.
-		// The ACE will allow Everyone read access to the key.
-		ZeroMemory(&ea, sizeof(EXPLICIT_ACCESS));
-		ea.grfAccessPermissions = STANDARD_RIGHTS_ALL | SPECIFIC_RIGHTS_ALL;
-		ea.grfAccessMode = SET_ACCESS;
-		ea.grfInheritance = SUB_CONTAINERS_AND_OBJECTS_INHERIT;
-		ea.Trustee.TrusteeForm = TRUSTEE_IS_SID;
-		ea.Trustee.TrusteeType = TRUSTEE_IS_WELL_KNOWN_GROUP;
-		ea.Trustee.ptstrName = (LPTSTR) pEveryoneSID;
-
-		// Create a new ACL that contains the new ACEs.
-		PACL pACL = NULL; 
-		if (fnSetEntriesInAcl(1, &ea, NULL, &pACL) == ERROR_SUCCESS)
-		{		
-			// Initialize a security descriptor.  
-			PSECURITY_DESCRIPTOR pSD = (PSECURITY_DESCRIPTOR) new char[SECURITY_DESCRIPTOR_MIN_LENGTH]; 
-						 
-			if (fnInitializeSecurityDescriptor(pSD, SECURITY_DESCRIPTOR_REVISION)) 
-			{  							 
-				// Add the ACL to the security descriptor. 
-				if (fnSetSecurityDescriptorDacl(pSD, 
-						TRUE,     // bDaclPresent flag   
-						pACL, 
-						FALSE))   // not a default DACL 
-				{
-					if (fnSetFileSecurity(theFileName.c_str(), DACL_SECURITY_INFORMATION, pSD))
-						result = true;
-				}
-			}
-		}
-	}
-
-	FreeLibrary(aLib);
-	return result;
+	(void)theFileName;
+	return true;
 }
 
 bool Sexy::Deltree(const std::string& thePath)
 {
-	bool success = true;
-
-	std::string aSourceDir = thePath;
-	
-	if (aSourceDir.length() < 2)
+	if (thePath.length() < 2)
 		return false;
 
-	if ((aSourceDir[aSourceDir.length() - 1] != '\\') ||
-		(aSourceDir[aSourceDir.length() - 1] != '/'))
-		aSourceDir += "\\";		
-	
-	WIN32_FIND_DATAA aFindData;
-
-	HANDLE aFindHandle = FindFirstFileA((aSourceDir + "*.*").c_str(), &aFindData); 
-	if (aFindHandle == INVALID_HANDLE_VALUE)
-		return false;
-	
-	do
-	{		
-		if ((aFindData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0)
-		{
-			if ((strcmp(aFindData.cFileName, ".") != 0) &&
-				(strcmp(aFindData.cFileName, "..") != 0))
-			{
-				// Follow the directory
-				if (!Deltree(aSourceDir + aFindData.cFileName))
-					success = false;
-			}
-		}
-		else
-		{	
-			std::string aFullName = aSourceDir + aFindData.cFileName;
-			if (!DeleteFileA(aFullName.c_str()))
-				success = false;
-		}
-	}
-	while (FindNextFileA(aFindHandle, &aFindData));
-	FindClose(aFindHandle);
-
-	if (rmdir(thePath.c_str()) == 0)
-		success = false;
-
-	return success;
+	std::error_code anError;
+	std::filesystem::remove_all(FixPath(thePath), anError);
+	return !anError;
 }
 
 bool Sexy::FileExists(const std::string& theFileName)
 {
-	WIN32_FIND_DATAA aFindData;
-	
-	HANDLE aFindHandle = FindFirstFileA(theFileName.c_str(), &aFindData); 
-	if (aFindHandle == INVALID_HANDLE_VALUE)
-		return false;
-
-	FindClose(aFindHandle);
-	return true;
+	std::error_code anError;
+	return std::filesystem::exists(FixPath(theFileName), anError);
 }
 
 void Sexy::MkDir(const std::string& theDir)
 {
-	std::string aPath = theDir;
+	std::string aPath = FixPath(theDir);
+	if (aPath.empty())
+		return;
 
-	int aCurPos = 0;
-	for (;;)
-	{
-		int aSlashPos = aPath.find_first_of("\\/", aCurPos);
-		if (aSlashPos == -1)
-		{
-			_mkdir(aPath.c_str());
-			break;
-		}
-
-		aCurPos = aSlashPos+1;
-
-		std::string aCurPath = aPath.substr(0, aSlashPos);
-		_mkdir(aCurPath.c_str());
-	}
+	std::error_code anError;
+	std::filesystem::create_directories(aPath, anError);
 }
 
 std::string Sexy::GetFileName(const std::string& thePath, bool noExtension)
@@ -852,80 +669,29 @@ std::string	Sexy::AddTrailingSlash(const std::string& theDirectory, bool backSla
 
 time_t Sexy::GetFileDate(const std::string& theFileName)
 {
-	time_t aFileDate = 0;
-
-	WIN32_FIND_DATAA aFindData;
-	HANDLE aFindHandle = ::FindFirstFileA(theFileName.c_str(), &aFindData);
-
-	if (aFindHandle != INVALID_HANDLE_VALUE)
-	{		
-		FILETIME aFileTime = aFindData.ftLastWriteTime;
-						
-		//FileTimeToUnixTime(&aFileTime, &aFileDate, FALSE);
-
-		LONGLONG ll = (__int64) aFileTime.dwHighDateTime << 32;
-		ll = ll + aFileTime.dwLowDateTime - 116444736000000000;
-		aFileDate = (time_t) (ll/10000000);
-
-		FindClose(aFindHandle);
-	}
-
-	return aFileDate;
+	struct stat aStat;
+	if (stat(FixPath(theFileName).c_str(), &aStat) != 0)
+		return 0;
+	return aStat.st_mtime;
 }
 
 std::string Sexy::vformat(const char* fmt, va_list argPtr) 
 {
-    // We draw the line at a 1MB string.
-    const int maxSize = 1000000;
+	va_list anArgs;
+	va_copy(anArgs, argPtr);
+	int aNumChars = vsnprintf(nullptr, 0, fmt, anArgs);
+	va_end(anArgs);
 
-    // If the string is less than 161 characters,
-    // allocate it on the stack because this saves
-    // the malloc/free time.
-    const int bufSize = 161;
-	char stackBuffer[bufSize];
+	if (aNumChars <= 0)
+		return std::string();
 
-    int attemptedSize = bufSize - 1;
-
-	int numChars = 0;
-#ifdef _WIN32
-	numChars = _vsnprintf(stackBuffer, attemptedSize, fmt, argPtr);
-#else
-	numChars = vsnprintf(stackBuffer, attemptedSize, fmt, argPtr);
-#endif
-
-	//cout << "NumChars: " << numChars << endl;
-
-    if ((numChars >= 0) && (numChars <= attemptedSize)) 
-	{
-		// Needed for case of 160-character printf thing
-		stackBuffer[numChars] = '\0';
-
-        // Got it on the first try.
-		return std::string(stackBuffer);
-    }
-
-    // Now use the heap.
-    char* heapBuffer = NULL;
-
-    while (((numChars == -1) || (numChars > attemptedSize)) && 
-		(attemptedSize < maxSize)) 
-	{
-        // Try a bigger size
-        attemptedSize *= 2;
-		heapBuffer = (char*)realloc(heapBuffer, (attemptedSize + 1));
-#ifdef _WIN32
-		numChars = _vsnprintf(heapBuffer, attemptedSize, fmt, argPtr);
-#else
-		numChars = vsnprintf(heapBuffer, attemptedSize, fmt, argPtr);
-#endif
-    }
-
-	heapBuffer[numChars] = 0;
-
-	std::string result = std::string(heapBuffer);
-
-    free(heapBuffer);
-    return result;
+	std::string aResult;
+	aResult.resize((size_t)aNumChars + 1);
+	va_copy(anArgs, argPtr);
+	vsnprintf(&aResult[0], aResult.size(), fmt, anArgs);
+	va_end(anArgs);
+	aResult.resize((size_t)aNumChars);
+	return aResult;
 }
 
 //overloaded StrFormat: should only be used by the xml strings
@@ -941,58 +707,25 @@ std::string Sexy::StrFormat(const char* fmt ...)
 
 std::wstring Sexy::vformat(const wchar_t* fmt, va_list argPtr) 
 {
-    // We draw the line at a 1MB string.
-    const int maxSize = 1000000;
+	// We draw the line at a 1MB string.
+	const size_t aMaxSize = 1000000;
+	std::vector<wchar_t> aBuffer(256);
 
-    // If the string is less than 161 characters,
-    // allocate it on the stack because this saves
-    // the malloc/free time.
-    const int bufSize = 161;
-	wchar_t stackBuffer[bufSize];
-
-    int attemptedSize = bufSize - 1;
-
-	int numChars = 0;
-#ifdef _WIN32
-	numChars = _vsnwprintf(stackBuffer, attemptedSize, fmt, argPtr);
-#else
-	numChars = vsnwprintf(stackBuffer, attemptedSize, fmt, argPtr);
-#endif
-
-	//cout << "NumChars: " << numChars << endl;
-
-    if ((numChars >= 0) && (numChars <= attemptedSize)) 
+	for (;;)
 	{
-		// Needed for case of 160-character printf thing
-		stackBuffer[numChars] = '\0';
+		va_list anArgs;
+		va_copy(anArgs, argPtr);
+		int aNumChars = vswprintf(aBuffer.data(), aBuffer.size(), fmt, anArgs);
+		va_end(anArgs);
 
-        // Got it on the first try.
-		return std::wstring(stackBuffer);
-    }
+		if (aNumChars >= 0 && (size_t)aNumChars < aBuffer.size())
+			return std::wstring(aBuffer.data(), (size_t)aNumChars);
 
-    // Now use the heap.
-	wchar_t* heapBuffer = NULL;
+		if (aBuffer.size() >= aMaxSize)
+			return std::wstring();
 
-    while (((numChars == -1) || (numChars > attemptedSize)) && 
-		(attemptedSize < maxSize)) 
-	{
-        // Try a bigger size
-        attemptedSize *= 2;
-		heapBuffer = (wchar_t*)realloc(heapBuffer, (attemptedSize + 1));
-#ifdef _WIN32
-		numChars = _vsnwprintf(heapBuffer, attemptedSize, fmt, argPtr);
-#else
-		numChars = vsnwprintf(heapBuffer, attemptedSize, fmt, argPtr);
-#endif
-    }
-
-	heapBuffer[numChars] = 0;
-
-	std::wstring result = std::wstring(heapBuffer);
-
-    free(heapBuffer);
-
-    return result;
+		aBuffer.resize(aBuffer.size() * 2);
+	}
 }
 
 //overloaded StrFormat: should only be used by the xml strings
@@ -1250,7 +983,7 @@ std::wstring Sexy::XMLEncodeString(const std::wstring& theString)
 std::string Sexy::Upper(const std::string& _data)
 {
 	std::string s = _data;
-	std::transform(s.begin(), s.end(), s.begin(), toupper);
+	for (char& c : s) c = (char)toupper((unsigned char)c);
 	return s;
 }
 
@@ -1264,7 +997,7 @@ std::wstring Sexy::Upper(const std::wstring& _data)
 std::string Sexy::Lower(const std::string& _data)
 {
 	std::string s = _data;
-	std::transform(s.begin(), s.end(), s.begin(), tolower);
+	for (char& c : s) c = (char)tolower((unsigned char)c);
 	return s;
 }
 
@@ -1326,12 +1059,74 @@ bool Sexy::StrPrefixNoCase(const char *theStr, const char *thePrefix, int maxLen
 
 std::wstring Sexy::UTF8StringToWString(const std::string theString)
 {
-	int size = MultiByteToWideChar(CP_UTF8, 0, theString.c_str(), theString.length() + 1, nullptr, 0);
-	wchar_t* buffer = new wchar_t[size];
-	MultiByteToWideChar(CP_UTF8, 0, theString.c_str(), theString.length() + 1, buffer, size);
-	std::wstring result = buffer;
-	delete[] buffer;
-	return result;
+	// Decodes UTF-8. Bytes that do not form a valid sequence are taken as
+	// Latin-1, which is how the retail (single-byte) data files are encoded.
+	std::wstring aResult;
+	aResult.reserve(theString.length());
+
+	size_t i = 0;
+	while (i < theString.length())
+	{
+		unsigned char c = (unsigned char)theString[i];
+		uint32_t aCodePoint = c;
+		int aLength = 1;
+
+		if (c >= 0xC2 && c <= 0xDF)
+			aLength = 2;
+		else if (c >= 0xE0 && c <= 0xEF)
+			aLength = 3;
+		else if (c >= 0xF0 && c <= 0xF4)
+			aLength = 4;
+
+		if (aLength > 1)
+		{
+			bool isValid = i + aLength <= theString.length();
+			for (int j = 1; isValid && j < aLength; j++)
+				isValid = ((unsigned char)theString[i + j] & 0xC0) == 0x80;
+
+			if (isValid)
+			{
+				aCodePoint = c & (0xFF >> (aLength + 1));
+				for (int j = 1; j < aLength; j++)
+					aCodePoint = (aCodePoint << 6) | ((unsigned char)theString[i + j] & 0x3F);
+			}
+			else
+			{
+				aLength = 1;
+				aCodePoint = c;
+			}
+		}
+
+		if (sizeof(wchar_t) == 2 && aCodePoint > 0xFFFF)
+		{
+			aCodePoint -= 0x10000;
+			aResult += (wchar_t)(0xD800 + (aCodePoint >> 10));
+			aResult += (wchar_t)(0xDC00 + (aCodePoint & 0x3FF));
+		}
+		else
+		{
+			aResult += (wchar_t)aCodePoint;
+		}
+
+		i += aLength;
+	}
+
+	return aResult;
+}
+
+std::string Sexy::FixPath(const std::string& thePath)
+{
+#ifdef _WIN32
+	return thePath;
+#else
+	std::string aPath = thePath;
+	for (char& c : aPath)
+	{
+		if (c == '\\')
+			c = '/';
+	}
+	return aPath;
+#endif
 }
 
 void Sexy::SMemR(void*& _Src, void* _Dst, size_t _Size)
